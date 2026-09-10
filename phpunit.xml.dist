@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         cacheDirectory=".phpunit.cache"
+         failOnRisky="true"
+         failOnWarning="true">
+  <testsuites>
+    <testsuite name="core"><directory>packages/core/tests</directory></testsuite>
+    <testsuite name="db"><directory>packages/db/tests</directory></testsuite>
+    <testsuite name="validate"><directory>packages/validate/tests</directory></testsuite>
+    <testsuite name="view"><directory>packages/view/tests</directory></testsuite>
+    <testsuite name="http-client"><directory>packages/http-client/tests</directory></testsuite>
+  </testsuites>
+  <source>
+    <include>
+      <directory>packages/core/src</directory>
+      <directory>packages/db/src</directory>
+      <directory>packages/validate/src</directory>
+      <directory>packages/view/src</directory>
+      <directory>packages/http-client/src</directory>
+    </include>
+  </source>
+</phpunit>

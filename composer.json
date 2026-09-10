@@ -1,0 +1,48 @@
+{
+    "name": "lava/lava",
+    "description": "LavaPHP monorepo — an agent-first PHP framework: small readable core, hard-decoupled packs, self-diagnosing boot.",
+    "type": "project",
+    "license": "MIT",
+    "repositories": {
+        "lava/core": { "type": "path", "url": "packages/core" },
+        "lava/db": { "type": "path", "url": "packages/db" },
+        "lava/validate": { "type": "path", "url": "packages/validate" },
+        "lava/view": { "type": "path", "url": "packages/view" },
+        "lava/http-client": { "type": "path", "url": "packages/http-client" }
+    },
+    "require": {
+        "php": "^8.3"
+    },
+    "require-dev": {
+        "lava/core": "@dev",
+        "lava/db": "@dev",
+        "lava/validate": "@dev",
+        "lava/view": "@dev",
+        "lava/http-client": "@dev",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^12.5"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload-dev": {
+        "psr-4": {
+            "Lava\\Core\\Tests\\": "packages/core/tests/",
+            "Lava\\Db\\Tests\\": "packages/db/tests/",
+            "Lava\\Validate\\Tests\\": "packages/validate/tests/",
+            "Lava\\View\\Tests\\": "packages/view/tests/",
+            "Lava\\HttpClient\\Tests\\": "packages/http-client/tests/"
+        }
+    },
+    "scripts": {
+        "verify": [
+            "Composer\\Config::disableProcessTimeout",
+            "@phpunit",
+            "@phpstan"
+        ],
+        "phpunit": "phpunit --colors=never",
+        "phpstan": "phpstan analyse --no-progress"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          coverage: none
+      - name: Install (monorepo, all packs via path repositories)
+        run: composer install --no-interaction --no-progress
+      - name: Verify (phpunit all suites + phpstan)
+        run: composer verify
+
+  isolated-install:
+    name: Prove pack decoupling by standalone install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - name: Each pack installs with only its own declared dependencies
+        run: |
+          for pkg in db validate view http-client; do
+            rm -rf /tmp/iso && mkdir -p /tmp/iso/packages
+            cp -r packages/core "packages/$pkg" /tmp/iso/packages/
+            (
+              cd "/tmp/iso/packages/$pkg" \
+                && composer install --no-interaction --no-progress \
+                && composer validate --strict \
+                && echo "OK: lava/$pkg installed standalone"
+            )
+          done

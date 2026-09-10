@@ -1,0 +1,28 @@
+{
+    "name": "lava/view",
+    "description": "LavaPHP view pack — Twig integration with strict defaults, autoescaping on, and an explicit function registry.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "lava/core": "@dev",
+        "twig/twig": "^3.28"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.5"
+    },
+    "repositories": {
+        "lava/core": { "type": "path", "url": "../core" }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": { "Lava\\View\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Lava\\View\\Tests\\": "tests/" }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
