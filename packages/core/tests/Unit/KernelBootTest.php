@@ -14,6 +14,7 @@ use Lava\Core\Boot\Steps\CollectFlagDefinitions;
 use Lava\Core\Boot\Steps\LoadConfig;
 use Lava\Core\Boot\Steps\LoadDotEnv;
 use Lava\Core\Boot\Steps\RegisterCoreServices;
+use Lava\Core\Boot\Steps\ValidateWiring;
 use Lava\Core\Boot\Steps\WireAppServices;
 use Lava\Core\Boot\Steps\WireModules;
 use Lava\Core\Features\FlagSource;
@@ -42,6 +43,7 @@ final class KernelBootTest extends TestCase
             WireModules::class,
             WireAppServices::class,
             BuildRouter::class,
+            ValidateWiring::class,
         ], Kernel::STEPS);
     }
 
@@ -283,5 +285,29 @@ final class KernelBootTest extends TestCase
         $middleware = $result->problems->problems()[4];
         self::assertStringContainsString('GhostMiddleware', $middleware->getMessage());
         self::assertSame("route 'mw'", $middleware->context['used_by']);
+    }
+
+    public function testBrokenWiringAppFailsAtBootWithEveryBrokenRegistration(): void
+    {
+        $result = TestApp::bootFixture('broken-wiring-app');
+
+        self::assertInstanceOf(BootFailure::class, $result);
+        $codes = array_map(static fn (LavaProblem $p): string => $p->code(), $result->problems->problems());
+        self::assertSame(['service_not_registered', 'unexpected_failure'], $codes);
+
+        // The missing id is attributed to the factory's own wiring line — the
+        // container names the registration whose factory asked for it, so the
+        // fix lands in the user's file, not the framework's.
+        $missing = $result->problems->problems()[0];
+        self::assertSame('never.registered', $missing->context['id']);
+        self::assertStringEndsWith('app/Services.php:11', $missing->context['referenced_from']);
+
+        // A plain exception inside a constructor is still a structured problem
+        // naming the step, the exception, and the user's file:line.
+        $boom = $result->problems->problems()[1];
+        self::assertSame(ValidateWiring::class, $boom->context['step']);
+        self::assertSame(\LogicException::class, $boom->context['exception']);
+        self::assertStringEndsWith('app/Wiring/Boom.php:12', $boom->context['at']);
+        self::assertStringContainsString('not a LavaPHP wiring problem', $boom->fix);
     }
 }

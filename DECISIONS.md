@@ -106,3 +106,56 @@ retired once its unique checks live in phpunit + the gate below.
    visible to any curl. Agents parse JSON; humans get the HTML diagnostics
    page; pretty-printing belongs to M4's CLI text renderer, not HTTP bodies.
    The plan's own `--json` examples are single-line.
+
+## 2026-09-10 — M3 slice 3: ValidateWiring (the wiring proof)
+
+**Context**: the last boot step, and the reason `Kernel::STEPS` is now 10
+entries. The promise from slice 2 — a `FlagSubjectResolver` registered under
+the wrong class fails at boot, not on request one — is fulfilled here, and
+it generalizes to *every* registration: after `WireAppServices` and
+`BuildRouter` have run, the step resolves each container id once. Verified:
+105 PHPUnit tests / 408 assertions green, real-SAPI gate 36/36.
+
+1. **Eager resolve-all sweep, one `LavaProblem` per id, never fail-fast.**
+   The step iterates `$container->ids()` and calls `get()` on each, adding
+   every failure to the problem set instead of throwing on the first. A
+   broken factory therefore surfaces as a boot report listing *all* broken
+   registrations — an agent fixes the whole file in one round trip rather
+   than rediscovering the next breakage per boot. This is the same
+   one-round-trip philosophy as `LavaProblem`'s file:line + fix hint.
+
+2. **Resolution runs on the real container, so `lava services` gets real
+   traces for free.** The sweep is not static analysis: calling `get()`
+   records the container's own dep/dependent traces, which is exactly what
+   `lava services` (M4) will report. Constructors do no I/O by convention —
+   that convention is what makes an eager resolve-all sweep safe enough to
+   also power `lava check`. A constructor that *does* I/O is a wiring bug the
+   sweep is right to catch at boot.
+
+3. **Attribution names the user's file, not the framework's.** The missing
+   id is reported against the *factory's own wiring line*
+   (`app/Services.php:11` in the fixture) because the container tracks the
+   registration whose factory asked for the id — so the fix hint points into
+   `app/Services.php`, never at `Container.php`. Locked in by the new
+   `testBrokenWiringAppFailsAtBootWithEveryBrokenRegistration`.
+
+4. **A plain `\Throwable` from a constructor is still a structured problem,
+   never a white screen.** Caught as `UnexpectedFailure::of(self::class,
+   $throwable)` → `unexpected_failure`, carrying the step
+   (`ValidateWiring::class`), the exception class, and the user's file:line
+   (`app/Wiring/Boom.php:12`). The report degrades gracefully: an unexpected
+   failure is a first-class problem with the same shape as a typed one.
+
+5. **The `FlagSubjectResolver` re-check swallows a re-throw on purpose.** The
+   step resolves the resolver id and asserts `instanceof FlagSubjectResolver`;
+   a non-conforming registration becomes `invalid_config` naming the wrong
+   class. If *that* `get()` throws, the `catch (\Throwable)` swallows it —
+   the sweep above already reported that registration, so re-reporting would
+   double-count one breakage as two problems. `App::handle` keeps its own
+   check as defense in depth for apps that bypass the boot chain.
+
+6. **`container === null` short-circuits (standard step idiom).** A fatal
+   upstream (e.g. `BuildFeatures` on a bad flag) stops the chain and leaves
+   the container unset; every later step guards on null rather than
+   re-reporting the upstream failure. This is why `bad-flags-app` still
+   yields its single expected code list and the sweep can't shift it.
