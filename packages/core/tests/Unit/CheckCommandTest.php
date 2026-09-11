@@ -86,6 +86,26 @@ final class CheckCommandTest extends CommandTestCase
         );
     }
 
+    public function testAClassThatErrorsAtSetupIsNotASilentPass(): void
+    {
+        // The same trap one command over, and worse here: `--strict` is what CI
+        // runs, and its tests section used to read `ok` on this suite because the
+        // section's verdict came from a report that cannot describe a class-level
+        // setup error. A gate that passes a red suite is not a gate.
+        [$code, $envelope] = $this->json('setup-error-app', ['check', '--strict']);
+
+        self::assertSame(ExitCode::Failure, $code);
+        self::assertSame('failed', $this->section($envelope, 'tests')['status']);
+        self::assertStringContainsString(
+            'incomplete_test_report',
+            (string) $this->section($envelope, 'tests')['detail'],
+        );
+        self::assertSame(['incomplete_test_report'], array_column($envelope['problems'], 'code'));
+        // Filed under 'tests', not 'boot': the app booted fine, and sending an
+        // agent to read app/ files that are not the problem is its own defect.
+        self::assertSame('ok', $this->section($envelope, 'boot')['status']);
+    }
+
     public function testAMissingRunnerIsATestFindingNotABootFinding(): void
     {
         // module-app boots green and has no suite. Filing the missing runner

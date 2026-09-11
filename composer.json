@@ -38,10 +38,12 @@
         "verify": [
             "Composer\\Config::disableProcessTimeout",
             "@phpunit",
-            "@phpstan"
+            "@phpstan",
+            "@phpstan:core"
         ],
         "phpunit": "phpunit --colors=never",
-        "phpstan": "phpstan analyse --no-progress"
+        "phpstan": "phpstan analyse --no-progress",
+        "phpstan:core": "phpstan analyse --no-progress -c phpstan-core-max.neon"
     },
     "config": {
         "sort-packages": true

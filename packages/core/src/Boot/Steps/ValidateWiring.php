@@ -46,11 +46,14 @@ final class ValidateWiring implements BootStep
             try {
                 $resolver = $container->get(FlagSubjectResolver::class);
                 if (!$resolver instanceof FlagSubjectResolver) {
+                    // `get_debug_type` for the same reason as App::handle: the
+                    // offending registration is by definition not a
+                    // FlagSubjectResolver, and it may not be an object at all.
                     $ctx->problems->add(new InvalidConfig(
                         'The service registered under FlagSubjectResolver::class is '
-                            . get_class($resolver) . ', which does not implement FlagSubjectResolver.',
+                            . get_debug_type($resolver) . ', which does not implement FlagSubjectResolver.',
                         'Register a class implementing Lava\\Core\\Features\\FlagSubjectResolver in app/Services.php.',
-                        ['registered' => get_class($resolver)],
+                        ['registered' => get_debug_type($resolver)],
                     ));
                 }
             } catch (\Throwable) {

@@ -55,6 +55,7 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `missing_entry_point` | `MissingEntryPoint` | `lava serve` found no `public/index.php` to run — checked before the server is announced | copy the canonical one from the `lava/app` skeleton |
 | `missing_test_runner` | `MissingTestRunner` | the app has no `vendor/bin/phpunit` to run its suite with | `Run: composer install --dev`, or set `LAVA_PHPUNIT` |
 | `bad_test_report` | `BadTestReport` | the runner ran but wrote no JUnit report, or wrote one that isn't well-formed XML | run the runner directly; its own output rides in `context` |
+| `incomplete_test_report` | `IncompleteTestReport` | the runner exited non-zero but its JUnit report lists no failures and no errors — a test class that errors in `setUpBeforeClass` is written as an empty `<testsuite>`, so the report cannot describe the failure it had | run the runner directly; PHPUnit's own output is the only place the error exists |
 | `not_an_app` | `NotAnApp` | the directory booted has no `app/`, no `config/`, and no `public/index.php` | name the directory and the layout to create |
 | `bad_usage` | `BadUsage` | a command was invoked with a missing or malformed argument (the command exists; the arguments don't) — exit 2 | quote the usage line |
 | `missing_env_var` | `MissingEnvVar` | a declared required env var has no value in the process environment or `config/.env` — **severity warn** | set it in `config/.env` or export it |
@@ -134,8 +135,10 @@ M4 status: all of M4's codes are live and covered — `unknown_command`
 (`tests/Unit/RegisterCommandsTest.php`), `missing_env_var` and
 `unknown_selector` (`tests/Unit/InspectionCommandsTest.php`),
 `missing_entry_point` (`tests/Unit/ServeCommandTest.php`),
-`missing_test_runner` and `bad_test_report` (`tests/Unit/TestCommandTest.php`,
-`tests/Unit/JunitTest.php`), and `not_an_app`
+`missing_test_runner`, `bad_test_report` and `incomplete_test_report`
+(`tests/Unit/TestCommandTest.php`, `tests/Unit/CheckCommandTest.php`,
+`tests/Unit/JunitTest.php` — the fixture app is
+`tests/fixtures/apps/setup-error-app/`), and `not_an_app`
 (`tests/Unit/KernelBootTest.php`). `missing_env_var` is raised by one shared
 rule (`Config/EnvAudit`) used by both `lava env` and `lava check`, so the two
 commands cannot disagree about whether a variable is set. The table is complete
@@ -158,13 +161,25 @@ pack-specific codes (M5+)". They are here; the next pack's codes go in the same
 table with the pack's name in the Class column, which is the whole of the
 convention.
 
-`missing_test_runner` and `bad_test_report` are separated on purpose, because
-they need different fixes: no runner means the app was never installed, while a
-runner that wrote nothing means PHPUnit ran and stopped before testing — a
-broken `phpunit.xml`, a bootstrap that fatals. Neither is ever a *framework*
-problem, so a red suite contributes no problems at all: `lava test` and
-`lava check` let the exit code and `status` go red and leave `problems[]` empty.
-The framework has no business pronouncing on code it never read.
+`missing_test_runner`, `bad_test_report` and `incomplete_test_report` are
+separated on purpose, because they need different fixes: no runner means the app
+was never installed; a runner that wrote nothing means PHPUnit ran and stopped
+before testing — a broken `phpunit.xml`, a bootstrap that fatals; and a runner
+whose report cannot explain its own exit code means the report was readable and
+simply incomplete. All three are findings about the RUN — whether a verdict could
+be read at all — and never about the app's tests. That boundary is the whole
+point: a red suite whose report describes it contributes no problems at all, so
+`lava test` and `lava check` let the exit code and `status` go red and leave
+`problems[]` empty. The framework has no business pronouncing on code it never
+read; it does, however, have to say so when it could not read the answer.
+
+`incomplete_test_report` exists because `--log-junit` has a hole: a test class
+that throws in `setUpBeforeClass` is written as an empty `<testsuite>` with no
+`<testcase>` and no `<error>`, and the file's own totals still read zero
+failures, while PHPUnit's console says `ERRORS!` and it exits 2. That is the
+shape of an app whose tests touch a database when the driver is missing — every
+DB test class errors at setup at once, invisibly. Before this code, the tests
+section of `lava check --strict` reported `ok` on exactly that run.
 
 M6 status: `malformed_body` and the validate pack's three codes are live.
 `malformed_body` is core because the parsing rule is core's — a request that

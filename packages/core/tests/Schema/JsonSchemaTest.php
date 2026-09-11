@@ -97,6 +97,11 @@ final class JsonSchemaTest extends TestCase
             'describe on an app that cannot boot' => [['describe', 'users.show', '--json'], 'broken-wiring-app'],
             'test with no runner installed' => [['test', '--json'], 'module-app'],
             'test with a runner that produced nothing' => [['test', '--json'], 'bad-suite-app'],
+            // The report is readable and incomplete, which is a third failure
+            // shape: a problem in `problems[]` alongside a payload whose counts
+            // come from the report and are therefore all zero.
+            'test with a report that cannot explain the exit code' => [['test', '--json'], 'setup-error-app'],
+            'check on a report that cannot explain the exit code' => [['check', '--json'], 'setup-error-app'],
             'check on a red suite' => [['check', '--json'], 'red-app'],
             'env with a required variable unset' => [['env', '--json'], 'env-app'],
             'config with a wrong-shaped artifact' => [['config', '--json'], 'bad-commands-app'],

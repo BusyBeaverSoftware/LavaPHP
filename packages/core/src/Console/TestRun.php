@@ -15,12 +15,16 @@ namespace Lava\Core\Console;
  *
  * `tests` is the total (passed + everything else), so `tests - failures -
  * errors - skipped` is the green count without a second field.
+ *
+ * @phpstan-type TestCase array{name: string, class: string, file: string, line: int, status: string, type: string, message: string}
  */
 final readonly class TestRun
 {
     /**
      * @param list<string> $suites testsuite names from the report, outermost first
-     * @param list<array<string, mixed>> $cases only failed/errored/skipped cases
+     * @param list<TestCase> $cases only failed/errored/skipped cases
+     * @param int $exitCode the runner's own exit status — the verdict, where the
+     *        report is only the detail. See {@see unreportedFailure()}.
      */
     public function __construct(
         public ?string $suite,
@@ -32,13 +36,57 @@ final readonly class TestRun
         public int $assertions,
         public float $time,
         public array $cases,
+        public int $exitCode = 0,
     ) {
     }
 
-    /** Green means PHPUnit would have exited 0: no failures and no errors. */
+    /**
+     * Green means PHPUnit would have exited 0: no failures, no errors, AND an
+     * exit status of 0.
+     *
+     * The exit code is not a redundancy. `--log-junit` omits class-level setup
+     * errors entirely, so a run can be red with a report that describes nothing
+     * — and a verdict that read only the report would call that green. See
+     * {@see unreportedFailure()}.
+     */
     public function ok(): bool
     {
-        return $this->failures === 0 && $this->errors === 0;
+        return $this->exitCode === 0 && $this->failures === 0 && $this->errors === 0;
+    }
+
+    /**
+     * True when the runner's exit code says something went wrong and the report
+     * does not contain it.
+     *
+     * The narrow case, not "anything red": a suite with counted failures is
+     * described by its report and stays the app's own finding. This is the run
+     * the report cannot explain, and the only honest response is to say so
+     * rather than to report the zero failures the XML actually contains.
+     */
+    public function unreportedFailure(): bool
+    {
+        return $this->exitCode !== 0 && $this->failures === 0 && $this->errors === 0;
+    }
+
+    /**
+     * The framework's findings about the RUN — as opposed to the app's findings
+     * about its own code, which are `failures`/`errors`/`cases`.
+     *
+     * It lives here rather than in the two commands that need it so they cannot
+     * disagree, and cannot forget: `lava test` and `lava check` read the same
+     * object and must reach the same verdict about it. A red suite whose report
+     * describes it returns nothing, which is what keeps the framework out of
+     * pronouncing on code it never read.
+     *
+     * @return list<\Lava\Core\Problem\LavaProblem>
+     */
+    public function problems(): array
+    {
+        if (!$this->unreportedFailure()) {
+            return [];
+        }
+
+        return [\Lava\Core\Problem\IncompleteTestReport::of($this->exitCode, $this->tests, count($this->cases))];
     }
 
     /** @return array<string, mixed> the stable `lava.test/1` / `lava.check/1` shape */

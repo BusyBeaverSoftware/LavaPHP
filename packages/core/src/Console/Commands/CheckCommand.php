@@ -59,7 +59,7 @@ final class CheckCommand extends AppCommand
         'env' => ['missing_env_var'],
         'commands' => ['duplicate_command'],
         'map' => ['stale_map'],
-        'tests' => ['missing_test_runner', 'bad_test_report'],
+        'tests' => ['missing_test_runner', 'bad_test_report', 'incomplete_test_report'],
     ];
 
     /** The order sections are reported in — the order an app is built in. */
@@ -221,7 +221,14 @@ final class CheckCommand extends AppCommand
         }
 
         try {
-            return [(new PhpUnitRunner($appDir))->run($args->value('filter'), $args->value('env')), null];
+            $run = (new PhpUnitRunner($appDir))->run($args->value('filter'), $args->value('env'));
+            // The run's own findings — a report that cannot explain the runner's
+            // exit code — are the framework's, so they join the report and land
+            // in the tests section with the other runner-level problems.
+            foreach ($run->problems() as $problem) {
+                self::add($report, $problem);
+            }
+            return [$run, null];
         } catch (LavaProblem $problem) {
             // A missing runner is a problem, not a skip: `lava check` promising
             // a verification it could not perform has to say so.

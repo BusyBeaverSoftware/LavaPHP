@@ -156,7 +156,18 @@ final class Container implements ContainerInterface
                 throw CircularService::of([...array_keys($seen), $id]);
             }
             $seen[$id] = true;
-            $id = (string) $registration->value;
+            // `alias()` takes a string, so this holds one. The guard is the
+            // same kind as the factory check in get(): it makes the invariant
+            // explicit where it is relied on, instead of a cast that would turn
+            // a wrong registration into the id "Array" or "1" and send the
+            // reader hunting for a service that was never registered.
+            if (!is_string($registration->value)) {
+                throw new \LogicException(
+                    "Alias '{$id}' does not name a string id (it holds "
+                    . get_debug_type($registration->value) . ').',
+                );
+            }
+            $id = $registration->value;
         }
     }
 

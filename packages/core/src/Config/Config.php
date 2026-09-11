@@ -28,42 +28,88 @@ final class Config
         return array_key_exists($key, $this->values);
     }
 
-    /** Required accessors: a missing key or wrong type is a Problem, never a silent null. */
+    /**
+     * Required accessors: a missing key or a wrong type is a Problem, never a
+     * silent null.
+     *
+     * Each of these narrows the value it read and says so in its own body,
+     * rather than handing a predicate to a shared helper. That is a few more
+     * lines, and it buys two things worth more than the lines: the type a caller
+     * gets back is visible where it is enforced, and the label and the check
+     * cannot drift apart. A helper called as `('string', is_int(...))` type-checks
+     * fine and then hands an `int` to something that declared `string` — the
+     * caller reads the declaration, so the declaration has to be the enforcement.
+     */
     public function needString(string $key): string
     {
-        return $this->typed($key, 'string', is_string(...));
+        $value = $this->requiredValue($key, 'string');
+        if (!is_string($value)) {
+            $this->wrongType($key, 'string', $value);
+        }
+
+        return $value;
     }
 
     public function needInt(string $key): int
     {
-        return $this->typed($key, 'integer', is_int(...));
+        $value = $this->requiredValue($key, 'integer');
+        if (!is_int($value)) {
+            $this->wrongType($key, 'integer', $value);
+        }
+
+        return $value;
     }
 
     public function needBool(string $key): bool
     {
-        return $this->typed($key, 'boolean', is_bool(...));
+        $value = $this->requiredValue($key, 'boolean');
+        if (!is_bool($value)) {
+            $this->wrongType($key, 'boolean', $value);
+        }
+
+        return $value;
     }
 
     /** @return array<mixed> */
     public function needArray(string $key): array
     {
-        return $this->typed($key, 'array', is_array(...));
+        $value = $this->requiredValue($key, 'array');
+        if (!is_array($value)) {
+            $this->wrongType($key, 'array', $value);
+        }
+
+        return $value;
     }
 
-    /** Optional accessors: missing key uses the given default; wrong type is still a Problem. */
+    /** Optional accessors: a missing key uses the given default; a wrong type is still a Problem. */
     public function string(string $key, string $default): string
     {
-        return $this->optional($key, $default, 'string', is_string(...));
+        $value = $this->optionalValue($key, $default);
+        if (!is_string($value)) {
+            $this->wrongType($key, 'string', $value);
+        }
+
+        return $value;
     }
 
     public function int(string $key, int $default): int
     {
-        return $this->optional($key, $default, 'integer', is_int(...));
+        $value = $this->optionalValue($key, $default);
+        if (!is_int($value)) {
+            $this->wrongType($key, 'integer', $value);
+        }
+
+        return $value;
     }
 
     public function bool(string $key, bool $default): bool
     {
-        return $this->optional($key, $default, 'boolean', is_bool(...));
+        $value = $this->optionalValue($key, $default);
+        if (!is_bool($value)) {
+            $this->wrongType($key, 'boolean', $value);
+        }
+
+        return $value;
     }
 
     /**
@@ -72,7 +118,12 @@ final class Config
      */
     public function array(string $key, array $default): array
     {
-        return $this->optional($key, $default, 'array', is_array(...));
+        $value = $this->optionalValue($key, $default);
+        if (!is_array($value)) {
+            $this->wrongType($key, 'array', $value);
+        }
+
+        return $value;
     }
 
     /** @return list<string> every key, in load order */
@@ -117,9 +168,16 @@ final class Config
         return $out;
     }
 
-    private function typed(string $key, string $expected, callable $check): mixed
+    /**
+     * The raw value of a required key, or a Problem naming the file that should
+     * have set it.
+     *
+     * Returns `mixed` on purpose: the type is enforced by the accessor that
+     * called this, one line later, where the narrowing is visible.
+     */
+    private function requiredValue(string $key, string $expected): mixed
     {
-        // Split before the branch: the wrong-type path below needs $file too.
+        // Split before the branch: the message below needs $file too.
         [$file, $name] = $this->splitKey($key);
         if (!$this->has($key)) {
             throw new InvalidConfig(
@@ -129,34 +187,40 @@ final class Config
                 ['key' => $key, 'expected' => $expected],
             );
         }
-        $value = $this->values[$key];
-        if (!$check($value)) {
-            throw InvalidConfig::badType(
-                $key,
-                $expected,
-                get_debug_type($value),
-                $this->provenance[$key] ?? "config/{$file}.php",
-            );
-        }
-        return $value;
+
+        return $this->values[$key];
     }
 
-    private function optional(string $key, mixed $default, string $expected, callable $check): mixed
+    /**
+     * The raw value of an optional key, or the caller's own default when the key
+     * is absent.
+     *
+     * Absent is `array_key_exists`, not `??`: a config file that sets a key to
+     * null has set it, and a null is a wrong type the accessor should report
+     * rather than a missing key it should quietly paper over.
+     */
+    private function optionalValue(string $key, mixed $default): mixed
     {
-        if (!$this->has($key)) {
-            return $default;
-        }
-        $value = $this->values[$key];
-        if (!$check($value)) {
-            [$file] = $this->splitKey($key);
-            throw InvalidConfig::badType(
-                $key,
-                $expected,
-                get_debug_type($value),
-                $this->provenance[$key] ?? "config/{$file}.php",
-            );
-        }
-        return $value;
+        return $this->has($key) ? $this->values[$key] : $default;
+    }
+
+    /**
+     * A value that was read and is the wrong type.
+     *
+     * `never`, so a caller that checks the type and calls this on failure is
+     * narrowed by the check alone — the throw is what makes the branch terminal
+     * rather than the reader having to know this always throws.
+     */
+    private function wrongType(string $key, string $expected, mixed $value): never
+    {
+        [$file] = $this->splitKey($key);
+
+        throw InvalidConfig::badType(
+            $key,
+            $expected,
+            get_debug_type($value),
+            $this->provenance[$key] ?? "config/{$file}.php",
+        );
     }
 
     /** @return list<string> [filename, bare key] */

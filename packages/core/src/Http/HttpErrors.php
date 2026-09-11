@@ -21,13 +21,41 @@ final class HttpErrors
         $report = new ProblemReport();
         $report->add($problem);
         $response = self::reportToResponse($report, $problem->httpStatus(), $request, $env);
-        if ($problem->code() === 'method_not_allowed'
-            && isset($problem->context['allowed'])
-            && is_array($problem->context['allowed'])) {
+        if ($problem->code() === 'method_not_allowed') {
             // A 405 must say what IS allowed (RFC 9110 §15.5.5).
-            $response = $response->withHeader('Allow', implode(', ', $problem->context['allowed']));
+            $allowed = self::methodNames($problem->context['allowed'] ?? null);
+            if ($allowed !== []) {
+                $response = $response->withHeader('Allow', implode(', ', $allowed));
+            }
         }
         return $response;
+    }
+
+    /**
+     * The method names a 405 is allowed to advertise.
+     *
+     * The context is `array<string, mixed>` — a problem carries whatever the
+     * code that raised it put there — so the value is checked rather than
+     * assumed. A non-string is dropped instead of cast: a header can only carry
+     * text, and `(string)` on an array would raise a TypeError from inside the
+     * rendering of the very error meant to explain a bad request.
+     *
+     * @return list<string>
+     */
+    private static function methodNames(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $names = [];
+        foreach ($value as $name) {
+            if (is_string($name) && $name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
     }
 
     /**

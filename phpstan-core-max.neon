@@ -1,0 +1,25 @@
+# `phpstan.neon` at `max` — for `lava/core` alone.
+#
+# Two levels, one repository, and that is a deliberate split rather than an
+# unfinished job. `phpstan.neon` holds the level everything must clear (8, all
+# five packs plus the canonical app and its tests). This file holds the level
+# the CORE must clear, and the difference is what the two trees are:
+#
+#   - core is the code an app author cannot replace. Every inference core makes
+#     about a value it did not construct is a promise the framework keeps on
+#     that author's behalf, so core is held to the strictest reading of its own
+#     types — including the strict-array rules `max` adds, which is where the
+#     remaining `offsetAccess` errors in the packs live.
+#   - a pack is replaceable and an app is the user's own. Holding them at 8
+#     keeps a real bar under them (the level that catches wrong argument types,
+#     missing returns, and dead code) without making a pack author clear core's
+#     bar to ship.
+#
+# Standalone rather than `includes: phpstan.neon`, so what it checks is exactly
+# what this file says. NEON merges array parameters across includes, so an
+# `includes` here would silently keep every path from the parent and the run
+# would grow to the whole repository the moment someone added one there.
+parameters:
+    level: max
+    paths:
+        - packages/core/src

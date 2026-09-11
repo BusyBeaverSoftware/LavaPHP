@@ -59,8 +59,40 @@ final class TestCommandTest extends CommandTestCase
         self::assertStringContainsString('the fixture fails this on purpose', (string) $case['message']);
     }
 
-    public function testARunnerThatProducesNoReportIsADiagnosis(): void
+    /**
+     * The one failure mode an agent-first framework cannot have: a red suite
+     * reported as green.
+     *
+     * PHPUnit writes a test class that throws in `setUpBeforeClass` as an EMPTY
+     * `<testsuite>` — no `<testcase>`, no `<error>`, and the report's own totals
+     * still read zero failures — while its console says ERRORS! and it exits 2.
+     * `setup-error-app` is that shape, and it is not exotic: it is every DB test
+     * class at once when the driver is missing.
+     */
+    public function testAClassThatErrorsAtSetupIsNotASilentPass(): void
     {
+        [$code, $envelope] = $this->json('setup-error-app', ['test']);
+
+        self::assertSame(ExitCode::Failure, $code);
+        self::assertSame('failed', $envelope['status']);
+        self::assertSame(['incomplete_test_report'], array_column($envelope['problems'], 'code'));
+
+        $problem = $envelope['problems'][0];
+        self::assertSame(2, $problem['context']['exit_code']);
+        // The fix has to send the reader to PHPUnit's own output, because that
+        // is the only place the error exists — the report will never show it.
+        self::assertStringContainsString('php vendor/bin/phpunit', (string) $problem['fix']);
+        self::assertStringContainsString('setUpBeforeClass', (string) $problem['fix']);
+
+        // The payload keeps reporting what the REPORT contains. Rewriting the
+        // counts to match the exit code would invent numbers PHPUnit never wrote
+        // down; the problem is what says the report is incomplete.
+        self::assertSame(1, $envelope['data']['tests']);
+        self::assertSame(0, $envelope['data']['errors']);
+        self::assertSame([], $envelope['data']['cases']);
+    }
+
+    public function testARunnerThatProducesNoReportIsADiagnosis(): void    {
         // PHPUnit exits 2 with "Test directory … not found" and writes an empty
         // report. The runner DID run, so this is not `missing_test_runner` — and
         // PHPUnit's own output is the only diagnosis available, so it travels in

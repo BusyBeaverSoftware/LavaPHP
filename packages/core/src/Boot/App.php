@@ -158,11 +158,16 @@ final class App implements RequestHandlerInterface
         if ($this->container->has(FlagSubjectResolver::class)) {
             $resolver = $this->container->get(FlagSubjectResolver::class);
             if (!$resolver instanceof FlagSubjectResolver) {
+                // `get_debug_type`, not `get_class`: this branch means the value
+                // is not a FlagSubjectResolver, and it need not be an object at
+                // all — `get_class` on a scalar registered under this id would
+                // raise a TypeError from inside the error report, turning a
+                // diagnosable misconfiguration into a blank 500.
                 return HttpErrors::toResponse(new InvalidConfig(
                     'The service registered under FlagSubjectResolver::class is '
-                        . get_class($resolver) . ', which does not implement FlagSubjectResolver.',
+                        . get_debug_type($resolver) . ', which does not implement FlagSubjectResolver.',
                     'Register a class implementing Lava\\Core\\Features\\FlagSubjectResolver in app/Services.php.',
-                    ['registered' => get_class($resolver)],
+                    ['registered' => get_debug_type($resolver)],
                 ), $request, $this->env);
             }
             $features = $features->forSubject($resolver->subjectFor($request));

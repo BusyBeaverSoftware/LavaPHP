@@ -23,6 +23,8 @@ use Lava\Core\Problem\ProblemReport;
  * Red tests exit 1 but are NOT problems: they are the app's findings, and
  * rendering them as framework problems would have the framework pronounce on
  * code it never read. `problems[]` stays for framework findings.
+ *
+ * @phpstan-import-type TestCase from \Lava\Core\Console\TestRun
  */
 final class TestCommand extends Command
 {
@@ -67,21 +69,44 @@ final class TestCommand extends Command
             $io->data($key, $value);
         }
 
+        // A run can be red with a report that describes nothing — a class-level
+        // setup error is absent from --log-junit entirely. Those findings come
+        // from the run itself; a suite whose failures ARE in the report
+        // contributes none, which is what keeps the framework from pronouncing
+        // on code it never read.
+        $report = new ProblemReport();
+        foreach ($run->problems() as $problem) {
+            $report->add($problem);
+        }
+
         $io->text($run->summary() . "\n");
         if ($filter !== null) {
             $io->text("filter: {$filter}\n");
         }
-        $io->text((new Table(['status', 'class', 'test', 'message'], array_map(
-            static fn (array $case): array => [
-                (string) $case['status'],
-                (string) $case['class'],
-                (string) $case['name'],
-                self::firstLine((string) $case['message']),
-            ],
-            $run->cases,
-        )))->render());
+        $io->text((new Table(['status', 'class', 'test', 'message'], array_map(self::caseRow(...), $run->cases)))->render());
 
-        return $io->emit($this->name(), null, failed: !$run->ok());
+        return $io->emit($this->name(), $report, failed: !$run->ok());
+    }
+
+    /**
+     * One failed/errored/skipped case as one table row.
+     *
+     * A named method rather than an inline closure so the case shape reaches
+     * the cells: a closure parameter declared `array` would erase it and leave
+     * four `mixed` values needing casts. Nothing here casts — the shape says
+     * these are already strings, and the analyser holds the shape to account.
+     *
+     * @param TestCase $case
+     * @return list<string>
+     */
+    private static function caseRow(array $case): array
+    {
+        return [
+            $case['status'],
+            $case['class'],
+            $case['name'],
+            self::firstLine($case['message']),
+        ];
     }
 
     /** @return array<string, mixed> */

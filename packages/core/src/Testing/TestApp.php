@@ -132,8 +132,17 @@ final class TestApp
     }
 
     /**
-     * @param array<string, string> $envBefore
-     * @param array<string, string> $serverBefore
+     * Puts the three environment sources back exactly as they were.
+     *
+     * `array<mixed>`, not `array<string, string>`: these two are verbatim
+     * snapshots of `$_ENV` and `$_SERVER` — whatever PHP's SAPI put in them —
+     * and this method's only job is to put them back. A narrower claim would be
+     * a promise nothing here keeps, and the analyser is right to reject it:
+     * `$_SERVER` genuinely may hold a non-string (`argv`, a nested array under
+     * a SAPI that sets one), and the restore is a straight assignment.
+     *
+     * @param array<mixed> $envBefore
+     * @param array<mixed> $serverBefore
      * @param array<string, string> $realBefore
      */
     private static function restoreEnv(array $envBefore, array $serverBefore, array $realBefore): void

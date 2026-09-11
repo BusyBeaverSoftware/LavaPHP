@@ -17,11 +17,22 @@ use Lava\Core\Problem\BadTestReport;
  * suite) and because DOM reports malformed XML as a value instead of a
  * warning — a truncated report is a diagnosis we want to report, not noise in
  * the agent's stdout.
+ *
+ * The runner's exit code is carried through, not dropped, because the report
+ * alone is not a verdict: see {@see TestRun::unreportedFailure()}.
  */
 final class Junit
 {
-    /** @throws BadTestReport when the XML is not well-formed */
-    public static function parse(string $xml): TestRun
+    /**
+     * `$exitCode` is required rather than defaulted, and that is deliberate: a
+     * default of 0 would mean "assume the run was green", which is precisely the
+     * mistake this parameter exists to prevent. A caller that forgets it cannot
+     * be written.
+     *
+     * @param int $exitCode the runner's exit status, carried onto the TestRun
+     * @throws BadTestReport when the XML is not well-formed
+     */
+    public static function parse(string $xml, int $exitCode): TestRun
     {
         $document = self::document($xml);
         $xpath = new \DOMXPath($document);
@@ -76,6 +87,7 @@ final class Junit
             $assertions,
             round($time, 3),
             $cases,
+            $exitCode,
         );
     }
 

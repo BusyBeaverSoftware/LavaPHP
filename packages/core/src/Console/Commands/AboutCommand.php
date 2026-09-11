@@ -22,6 +22,9 @@ use Lava\Core\Modules\ModuleRef;
  * must still print the runtime facts when the app FAILS to boot. "Why won't
  * this app start" is answered better by `lava about` than by any other command,
  * and an AppCommand would have nothing to say.
+ *
+ * @phpstan-type PhpFacts array{version: string, sapi: string, os: string, extensions: list<string>, pdo_drivers: list<string>}
+ * @phpstan-type PackFacts array{package: string, feature: string, module_class: string, state: string, installed: bool, config_files: list<string>, env_vars: list<string>, declared_at: string}
  */
 final class AboutCommand extends Command
 {
@@ -64,22 +67,45 @@ final class AboutCommand extends Command
         $io->data('app', ['dir' => $boot->appDir, 'env' => $boot->env]);
         $io->data('packs', $packs);
         $io->text(sprintf("app: %s (env %s)\npacks:\n", $boot->appDir, $boot->env));
-        $io->text((new Table(['package', 'feature', 'state', 'installed', 'config files', 'env vars'], array_map(
-            static fn (array $pack): array => [
-                $pack['package'],
-                $pack['feature'],
-                $pack['state'],
-                $pack['installed'] ? 'yes' : 'no',
-                implode(' ', $pack['config_files']),
-                implode(' ', $pack['env_vars']),
-            ],
-            $packs,
-        )))->render());
+        $io->text(self::packsTable($packs));
 
         return $io->emit($this->name(), $boot->problems);
     }
 
-    /** @return array<string, mixed> */
+    /** @param list<PackFacts> $packs */
+    private static function packsTable(array $packs): string
+    {
+        return (new Table(
+            ['package', 'feature', 'state', 'installed', 'config files', 'env vars'],
+            array_map(self::packRow(...), $packs),
+        ))->render();
+    }
+
+    /**
+     * One pack as one table row.
+     *
+     * The row is built here, not in an inline closure, because a closure
+     * parameter declared `array` erases the shape its caller knew — the four
+     * cells would come back as `mixed` and the table would have to cast them
+     * back to text. A named method carries the shape in its own signature, so
+     * the mapping from data to cells is checked instead of asserted.
+     *
+     * @param PackFacts $pack
+     * @return list<string>
+     */
+    private static function packRow(array $pack): array
+    {
+        return [
+            $pack['package'],
+            $pack['feature'],
+            $pack['state'],
+            $pack['installed'] ? 'yes' : 'no',
+            implode(' ', $pack['config_files']),
+            implode(' ', $pack['env_vars']),
+        ];
+    }
+
+    /** @return PhpFacts */
     private static function phpFacts(): array
     {
         return [
@@ -89,8 +115,35 @@ final class AboutCommand extends Command
             'extensions' => self::extensions(),
             // Reported even when empty: "PDO is present but has no drivers" is
             // a diagnosis, and an absent key would hide it.
-            'pdo_drivers' => class_exists(\PDO::class) ? \PDO::getAvailableDrivers() : [],
+            'pdo_drivers' => self::pdoDrivers(),
         ];
+    }
+
+    /**
+     * PDO's available drivers, as a list of names.
+     *
+     * `PDO::getAvailableDrivers()` is typed `array<int|string, mixed>` — the
+     * stub cannot say more — while its contract is a list of driver names. The
+     * names are collected here so the declared shape is one something actually
+     * enforces; declaring `array` instead would push a cast onto every reader
+     * of the key, and a cast is not a check.
+     *
+     * @return list<string>
+     */
+    private static function pdoDrivers(): array
+    {
+        if (!class_exists(\PDO::class)) {
+            return [];
+        }
+
+        $drivers = [];
+        foreach (\PDO::getAvailableDrivers() as $driver) {
+            if (is_string($driver)) {
+                $drivers[] = $driver;
+            }
+        }
+
+        return $drivers;
     }
 
     private static function renderPhp(): string
@@ -112,7 +165,7 @@ final class AboutCommand extends Command
         return $names;
     }
 
-    /** @return list<array<string, mixed>> */
+    /** @return list<PackFacts> */
     private static function packs(App $app): array
     {
         $out = [];

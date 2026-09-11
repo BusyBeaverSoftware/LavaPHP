@@ -1958,3 +1958,251 @@ survives on the test's own port.
 
 The two open findings from M7 slice 1 (decisions 18 and 22) remain unacted on and
 still need your call. Nothing in this slice changed their shape.
+
+## 2026-09-11 — M9 slice 1 (`lava/core` at PHPStan `max`)
+
+The plan's M9 row says "phpstan max on core". It does not say max everywhere, and
+that distinction turned out to be the whole slice: `packages/core/src` went from
+**30 errors in 10 files** to zero at `max`, while the same run over the packs and
+the canonical app still reports **86**. Core is now enforced at `max` by
+`composer verify`; everything else stays at level 8. Both facts are recorded
+below, because a gate that says "max on core" without saying what that left
+behind is a gate that reads stronger than it is.
+
+117. **`phpstan.neon` stays at level 8 for everything; a second file holds core at
+    `max`.** The split is about what the two trees ARE, not about how much time I
+    had. Core is the code an app author cannot replace: every inference core makes
+    about a value it did not construct is a promise the framework keeps on that
+    author's behalf, so core is held to the strictest reading of its own types —
+    including the strict-array rules `max` adds. A pack is replaceable and an app
+    is the user's own; level 8 keeps a real bar under them (wrong argument types,
+    missing returns, dead code) without making a pack author clear core's bar to
+    ship. `composer verify` now runs `@phpstan` then `@phpstan:core`, so the
+    stronger promise is enforced by the gate and not by a sentence in a plan.
+
+118. **The new config is standalone, not `includes: phpstan.neon`.** NEON merges
+    array parameters across an `includes`, so a child config carrying only
+    `level: max` would silently inherit every path from the parent — the run would
+    grow to the whole repository the first time someone added a path there, and it
+    would fail for a reason that has nothing to do with the change that caused it.
+    `phpstan-core-max.neon` therefore repeats its two parameters and nothing else.
+    The file carries the reasoning inline, so the next reader meets the argument
+    where the decision is.
+
+119. **What `max` found outside core, recorded rather than implied.** 86 errors:
+    32 `cast.string`, 32 `offsetAccess.nonOffsetAccessible`, 13 `argument.type`,
+    7 `cast.int`, 1 `foreach.nonIterable`, 1 `return.type`. By file:
+    `apps/demo/tests/TasksTest.php` 41, `packages/db/src/Schema/SchemaSnapshot.php`
+    27, `apps/demo/app/Tasks/Task.php` 4, `apps/demo/tests/UpstreamTest.php` 3,
+    `packages/db/src/Migration/MigrationRunner.php` 3, and singles in
+    `apps/demo/app/Services.php` (2), `apps/demo/tests/PagesTest.php` (2),
+    `apps/demo/app/Http/TasksController.php`, the demo's upstream fixture router,
+    `packages/db/src/Connection.php`, `packages/db/src/Sql/SchemaCompiler.php`.
+    46 of the 86 are in the demo's own tests. This is a follow-up, not a
+    regression: nothing was at `max` before this slice, so none of it is newly
+    broken.
+
+120. **The `Config` accessors narrow in their own bodies.** The old
+    `typed()`/`optional()` pair took a `callable $check` and returned `mixed`, so
+    the type label and the checker were two separate facts that could drift —
+    `typed('string', is_int(...))` type-checked fine and handed an `int` to a
+    caller that had declared `string`. Each accessor now reads the raw value from
+    a `mixed`-returning helper and does its own `is_string`/`is_int`/`is_bool`/
+    `is_array` check one line later, with `wrongType(): never` making the failing
+    branch terminal. Eight errors gone, and the shape is one the analyser can
+    follow: the declaration is now the enforcement, in the same body, visible to
+    whoever reads the accessor. `has()` is `array_key_exists`, unchanged — a key
+    set to `null` has been set, and `??` would have hidden the wrong type the
+    accessor exists to report.
+
+121. **`get_debug_type`, not `get_class`, in the two `FlagSubjectResolver`
+    reports.** `App::handle` and `ValidateWiring` both guard a container value
+    that failed the `instanceof`, and both then reported the offender's class.
+    `get_class` on a scalar raises a TypeError — from inside the rendering of the
+    very problem meant to explain the misconfiguration, which turns a diagnosable
+    boot failure into a blank 500. The branch exists precisely because the value
+    need not be a `FlagSubjectResolver` and need not be an object; the report now
+    says what it actually is. `ValidateWiring`'s copy is the one that runs first
+    (boot, before traffic), and `App::handle`'s is the defense-in-depth re-check.
+
+122. **Named shapes replaced `array<string, mixed>` in `AboutCommand` and
+    `TestRun`, and the reason is a closure.** The eleven errors in `AboutCommand`
+    were not really about `array<string, mixed>`; they were about an inline
+    `static fn (array $pack): array` whose declared `array` parameter erased the
+    shape the caller knew, leaving four `mixed` cells that had to be cast back to
+    text. Same in `TestCommand`. So the fix is two parts: the producers declare
+    what they build (`@phpstan-type PhpFacts`/`PackFacts` on `AboutCommand`,
+    `TestCase` on `TestRun`, imported by `TestCommand`), and the row mapping moved
+    out of the closure into a named method whose `@param` carries the shape. The
+    four `(string)` casts in `TestCommand` are gone rather than kept-and-ignored:
+    a cast asserts nothing, and the shape now says those values are already
+    strings. `@phpstan-type` was already the house idiom (`SchemaSnapshot`,
+    `RegexRule`), so this is not a new pattern to learn.
+
+123. **`InvalidConfig::outOfRange()` takes `int|float`, not `mixed`.** All three
+    callers pass an `int` (a timeout, a retry count, a backoff), and the docblock
+    already described the method as being about numeric ranges — "a negative
+    timeout, a retry count below zero, a percentage above 100". `mixed` was
+    looser than the method's own description; a value that is the wrong TYPE is
+    `badType()`'s subject, not this one's. Tightening it also made the
+    interpolation analysable without a cast, which is the tell that the type was
+    the problem rather than the message. This is a BC break for a hypothetical
+    external caller, at 0.1.0, in the direction of a stricter promise.
+
+124. **`TestApp::restoreEnv()` declares `array<mixed>`, because that is what it
+    is.** The parameters were typed `array<string, string>` — a claim about what
+    the environment contains — while the method does no type work at all: it
+    snapshots `$_ENV` and `$_SERVER` and assigns them back. `$_SERVER` genuinely
+    may hold a non-string, and the analyser was right to reject the narrower
+    claim. The honest fix is the wider type plus a docblock saying why, not a cast
+    or an ignore at the assignment.
+
+125. **The alias target is guarded, not cast.** `resolveAliases()` read
+    `(string) $registration->value`. `alias()` takes a string so that cast is
+    never lossy today — but if it ever were, `(string)` on an array is a fatal and
+    on an `int` yields the id `"5"`, sending the reader after a service nobody
+    registered. It now throws the same `\LogicException` the neighbouring
+    no-factory guard throws, naming the alias and the actual type. Two guards, one
+    idiom, both making an invariant explicit where it is relied on.
+
+126. **The `Allow` header narrows its method names instead of trusting
+    `is_array`.** A problem's `context` is `array<string, mixed>`, so
+    `is_array($context['allowed'])` proved the container and nothing about the
+    contents; `implode` on it was the analyser's complaint, and it was a fair one
+    — `(string)` on a nested array would have raised inside the rendering of a
+    405. A `methodNames()` helper collects the non-empty strings and drops the
+    rest, and an empty result now omits the header entirely rather than sending
+    `Allow: ` with nothing in it. Covered where it already was:
+    `HttpTest.php:57` asserts `GET, PUT`, and `ServeTest.php:174` and
+    `KernelBootTest.php:343` assert it over a real socket and through the kernel.
+
+127. **`PDO::getAvailableDrivers()` is collected, not declared.** The stub returns
+    `array<int|string, mixed>` while the contract is a list of driver names, so
+    `pdoDrivers()` walks the result and keeps the strings — which also gathered
+    the `class_exists(\PDO::class)` guard into one place. The alternative was
+    declaring the key `array` and casting at the use site, which is the same
+    non-check as decision 126.
+
+128. **Some of these guards are unreachable, and the coverage threshold must not
+    be set to force tests for them.** `alias()` cannot produce a non-string
+    target; a 405's `allowed` list is built by `MethodNotAllowed` from strings;
+    `class_exists(\PDO::class)` is always true on the machines this runs on. Those
+    branches exist to make an invariant explicit and to replace a cast that could
+    fail silently, and they cost coverage by construction. When the coverage
+    threshold lands later in M9 it will be set from what the suite reaches, with
+    these named as deliberate exclusions — writing a test that registers a
+    non-string alias would be testing a state the public API cannot produce, and
+    that is coverage theatre, not coverage. Logged now so the number is argued
+    about once, in the open, rather than quietly excluded at threshold time.
+
+Verified by running. `packages/core/src` at `--level=max` reports `[OK] No
+errors`, from a measured baseline of 30 errors in 10 files. `composer verify`
+with the live database tests enabled is **875 tests, 4270 assertions**, level 8
+`[OK] No errors` across all five packs plus `apps/demo/app` and `apps/demo/tests`,
+and the new `@phpstan:core` leg `[OK] No errors`. The behaviour touched by the
+refactors is not merely analysed: the `Allow` header has three existing
+assertions including one over a real socket, and the `Config` accessors are
+covered by that pack's own 32 tests / 136 assertions.
+
+## 2026-09-11 — M9 slice 2 (a red suite that `lava check` called green)
+
+Found while finishing slice 1, and it is the most serious defect of the run so
+far. `lava check --strict` reported the demo's tests section `ok` — exit 0, no
+problems — while the demo's suite was **red with two errors**. The trigger was
+the environment (no PDO SQLite driver, so the demo's two DB test classes error in
+`setUpBeforeClass`), which is exactly why it had gone unnoticed: on a machine
+with the driver the suite is green, and no test asserted what happens when a
+class cannot set itself up.
+
+The mechanism, measured rather than reasoned about: PHPUnit writes a test class
+that throws in `setUpBeforeClass` to `--log-junit` as an **empty `<testsuite>`**
+— no `<testcase>`, no `<error>`, and the file's own totals still read zero
+failures — while its console prints `ERRORS!` and it exits 2. For the demo the
+XML said `tests=6 errors=0 failures=0` and the console said `Tests: 8, Errors: 2`.
+So `Junit::parse`, which walks `//testcase` elements, saw a clean run, and every
+verdict built from it — `TestRun::ok()`, the tests section, the exit code —
+called a red suite green. An agent running `lava check` would have shipped it.
+
+129. **The exit code is the verdict; the report is the detail.** `TestRun` now
+    carries the runner's exit status and `ok()` requires it to be 0. The
+    alternative — inferring the loss from the XML — is a heuristic with a
+    false-positive: a `<testsuite>` with zero tests is also what a legitimately
+    empty test class produces, and `--log-junit` gives no way to tell the two
+    apart. PHPUnit's exit status is exact, documented, and already captured by
+    `PhpUnitRunner` (it was being used only for the no-report case and otherwise
+    discarded).
+
+130. **`Junit::parse()`'s `$exitCode` is required, not defaulted.** A default of
+    `0` would mean "assume the run was green", which is the precise mistake this
+    parameter exists to prevent — a future caller could forget it and silently
+    reinstate the bug. Requiring it forced every call site to state the exit code
+    it means, which is why `JunitTest`'s eight calls now read `, 2)` for the red
+    fixture report and `, 0)` for the green ones.
+
+131. **`incomplete_test_report` is a new code, and it does not contradict "a red
+    suite contributes no problems".** That rule (docs/problem-codes.md) is about
+    the framework not pronouncing on the app's code, and it still holds: a suite
+    whose failures the report describes contributes nothing, which
+    `testACountedFailureIsTheAppsFindingAndNotTheFrameworks` pins. This code is a
+    finding about the RUN — the framework saying it could not read the answer —
+    which is the same category `bad_test_report` and `missing_test_runner`
+    already occupy. The sentence in the doc that said neither of those "is ever a
+    framework problem" was imprecise enough to mislead, and is rewritten to state
+    the boundary: problems are for whether a verdict could be read at all.
+
+132. **`TestRun::problems()` rather than the same rule in both commands.**
+    `lava test` and `lava check` read the same `TestRun` and must reach the same
+    verdict about it; putting the rule in one place is what makes that structural
+    rather than a coincidence to be maintained. `lava check` files the problem
+    under `tests` by adding the code to `SECTIONS`, so it lands beside the other
+    runner-level problems instead of defaulting to `boot`.
+
+133. **The payload still reports what the report contains.** The `tests` counts
+    stay `1 test, 0 errors` for a fixture whose runner exited 2, because that is
+    what PHPUnit wrote down; the problem is what says the report is incomplete.
+    Rewriting the counts to match the exit code would invent numbers PHPUnit
+    never produced and would erase the very discrepancy the code exists to
+    report. This also kept the `lava.test/1` / `lava.check/1` payload shape
+    unchanged, so the frozen schemas needed no edit.
+
+134. **`setup-error-app` reproduces the mechanism without the environment
+    condition.** A fixture whose `setUpBeforeClass` simply throws needs no
+    missing driver and no database, so the case is a CI regression test rather
+    than something only a misconfigured machine can find. That is the whole
+    reason this defect survived a full green gate: the condition that triggers it
+    is absent exactly where the gate runs.
+
+135. **`ok()`'s exit-code check is defense-in-depth, and the probe showed it.**
+    Reverting only `ok()` to the report-only verdict left both CLI tests passing,
+    because the CLI outcome is protected by the problem's Fatal severity
+    (`IO::emit` ORs in `hasFatals()`, and the check section ORs in `$fatals !==
+    []`). Only the `ok()` contract test failed. Reverting `problems()` instead
+    failed all three. So the two halves are pinned by different tests, and
+    `ok()` stays honest anyway: "is this run green?" answering yes for an exit-2
+    run is simply wrong, whichever caller asks.
+
+136. **Fatal, not Warn.** An unreadable verdict must stop the agent rather than
+    be ranked below something cheaper — the same severity as its sibling
+    `bad_test_report`. Severity does not change the outcome here (the section is
+    `failed` either way, because `ok()` is also false), so this is about
+    rendering and ordering, and Fatal is what the situation is.
+
+Verified by running, in both directions, through the real binary on the demo —
+the exact scenario that exposed the bug. Without the PDO driver: `lava check
+--strict` now exits **1**, the tests section reads `failed`, and the problem is
+`incomplete_test_report` with `PHPUnit exited 2 but its JUnit report lists no
+failures and no errors (6 tests, 0 non-passing cases)`. With the driver:
+`lava check --strict` exits **0** with all nine sections `ok` and `Tests: 24,
+Assertions: 99`. The regression tests were proved to fail against the old
+behaviour (decision 135's two probes). `composer verify` with the live database
+tests enabled is **881 tests, 4346 assertions** (from 875 / 4270 — six new tests,
+76 new assertions), level 8 and core-at-`max` both `[OK] No errors`, and the two
+new `JsonSchemaTest` cases confirm the envelope still obeys its own frozen
+schema in this failure shape.
+
+Both changes in this section and the one above touch `TestRun.php` and
+`TestCommand.php`, so they are committed together rather than split: separating
+them would have meant committing a version of those two files that is in neither
+state.
+
+

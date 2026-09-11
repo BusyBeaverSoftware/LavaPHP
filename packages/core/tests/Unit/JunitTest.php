@@ -23,7 +23,7 @@ final class JunitTest extends TestCase
         // The real wrapper PHPUnit writes: one synthetic testsuite named after
         // phpunit.xml.dist, with the configured suites inside it. Reporting the
         // wrapper would put a machine-specific path in the envelope.
-        $run = Junit::parse($this->report(suite: 'ok-app'));
+        $run = Junit::parse($this->report(suite: 'ok-app'), 2);
 
         self::assertSame('ok-app', $run->suite);
         self::assertSame(['ok-app'], $run->suites);
@@ -31,7 +31,7 @@ final class JunitTest extends TestCase
 
     public function testItCountsEveryOutcomeAndKeepsOnlyTheNonPassingCases(): void
     {
-        $run = Junit::parse($this->report(suite: 'ok-app'));
+        $run = Junit::parse($this->report(suite: 'ok-app'), 2);
 
         self::assertSame(4, $run->tests);
         self::assertSame(1, $run->failures);
@@ -58,7 +58,7 @@ final class JunitTest extends TestCase
 
     public function testTheGreenCountIsDerivableWithoutASecondField(): void
     {
-        $run = Junit::parse($this->report(suite: 'ok-app'));
+        $run = Junit::parse($this->report(suite: 'ok-app'), 2);
 
         self::assertSame(1, $run->tests - $run->failures - $run->errors - $run->skipped);
     }
@@ -79,7 +79,7 @@ final class JunitTest extends TestCase
             </testsuites>
             XML;
 
-        $run = Junit::parse($xml);
+        $run = Junit::parse($xml, 0);
 
         // No single answer exists, so `suite` refuses to invent one.
         self::assertNull($run->suite);
@@ -96,7 +96,7 @@ final class JunitTest extends TestCase
             </testsuite>
             XML;
 
-        $run = Junit::parse($xml);
+        $run = Junit::parse($xml, 0);
 
         self::assertSame('core', $run->suite);
         self::assertSame(1, $run->tests);
@@ -104,7 +104,7 @@ final class JunitTest extends TestCase
 
     public function testAnEmptyReportIsAGreenRunWithNothingInIt(): void
     {
-        $run = Junit::parse('<?xml version="1.0" encoding="UTF-8"?><testsuites/>');
+        $run = Junit::parse('<?xml version="1.0" encoding="UTF-8"?><testsuites/>', 0);
 
         self::assertSame([], $run->suites);
         self::assertNull($run->suite);
@@ -117,7 +117,7 @@ final class JunitTest extends TestCase
         // A truncated report is exactly what a crashed PHPUnit leaves behind,
         // and the agent has to be told that — with the parser's own line number.
         try {
-            Junit::parse('<?xml version="1.0"?><testsuites><testsuite name="x">');
+            Junit::parse('<?xml version="1.0"?><testsuites><testsuite name="x">', 2);
             self::fail('a malformed report must throw');
         } catch (BadTestReport $problem) {
             self::assertSame('bad_test_report', $problem->code());
@@ -132,7 +132,7 @@ final class JunitTest extends TestCase
     {
         // `lava check`'s tests section detail embeds this exact string, so it is
         // a contract, not a formatting choice.
-        $run = Junit::parse($this->report(suite: 'ok-app'));
+        $run = Junit::parse($this->report(suite: 'ok-app'), 2);
 
         self::assertSame(
             'Tests: 4, Assertions: 3, Failures: 1, Errors: 1, Skipped: 1 (0.020s)',
@@ -142,6 +142,69 @@ final class JunitTest extends TestCase
             ['suite', 'suites', 'tests', 'failures', 'errors', 'skipped', 'assertions', 'time', 'cases'],
             array_keys($run->json()),
         );
+    }
+
+    /**
+     * The report this test reads is exactly what `--log-junit` writes for a test
+     * class that throws in `setUpBeforeClass`: an empty `<testsuite>` for the
+     * class, no `<testcase>` and no `<error>` for it, and totals that read zero
+     * failures. PHPUnit's console says ERRORS! and it exits 2.
+     *
+     * A verdict built from this report alone calls the run green — which is how
+     * `lava check --strict` came to report `ok` on a red suite. The exit code is
+     * the half of the truth the XML does not carry.
+     */
+    public function testAnExitCodeTheReportCannotExplainIsNotGreen(): void
+    {
+        $xml = <<<'XML'
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuites>
+              <testsuite name="/app/phpunit.xml.dist" tests="1" errors="0" failures="0">
+                <testsuite name="demo" tests="1" errors="0" failures="0">
+                  <testsuite name="App\Tests\GreenAppTest" tests="1" errors="0" failures="0">
+                    <testcase name="testSomethingThatWorks" class="App\Tests\GreenAppTest" assertions="1" time="0.001"/>
+                  </testsuite>
+                  <testsuite name="App\Tests\SetupErrorTest" tests="0" errors="0" failures="0"/>
+                </testsuite>
+              </testsuite>
+            </testsuites>
+            XML;
+
+        $run = Junit::parse($xml, 2);
+
+        // Everything the report says is true, and the run is still red.
+        self::assertSame(1, $run->tests);
+        self::assertSame(0, $run->failures);
+        self::assertSame(0, $run->errors);
+        self::assertSame(2, $run->exitCode);
+        self::assertTrue($run->unreportedFailure());
+        self::assertFalse($run->ok());
+
+        $problems = $run->problems();
+        self::assertCount(1, $problems);
+        self::assertSame('incomplete_test_report', $problems[0]->code());
+        self::assertSame(2, $problems[0]->context['exit_code']);
+        self::assertSame(1, $problems[0]->context['tests']);
+        self::assertSame(0, $problems[0]->context['cases']);
+        // The fix has to name the trap, because PHPUnit's own output is where
+        // the error actually is and the report will never show it.
+        self::assertStringContainsString('php vendor/bin/phpunit', $problems[0]->fix);
+        self::assertStringContainsString('setUpBeforeClass', $problems[0]->fix);
+    }
+
+    /**
+     * The other side of the same rule, and the one that keeps the framework out
+     * of the app's business: when the report DOES describe the failure, the run
+     * contributes no problems at all. `red-app` is this case, and it is why a
+     * red suite leaves `problems[]` empty.
+     */
+    public function testACountedFailureIsTheAppsFindingAndNotTheFrameworks(): void
+    {
+        $run = Junit::parse($this->report(suite: 'ok-app'), 2);
+
+        self::assertFalse($run->ok());
+        self::assertFalse($run->unreportedFailure());
+        self::assertSame([], $run->problems());
     }
 
     /**

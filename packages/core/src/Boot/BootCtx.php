@@ -47,7 +47,18 @@ final class BootCtx
      */
     public array $envFromFile = [];
 
-    /** @var array<string, mixed> raw 'set' section of config/features.php, validated by BuildFeatures */
+    /**
+     * The 'set' section of config/features.php.
+     *
+     * `Flag`, not `mixed`: `CollectFlagDefinitions::absorbSet()` refuses any
+     * entry that is not a `Flag` — with a problem naming the malformed entry —
+     * before it stores one, so this holds only what passed that check. The
+     * declaration was looser than the invariant and said the validation happened
+     * later, in `BuildFeatures`, which is where the value is consumed rather than
+     * checked.
+     *
+     * @var array<string, \Lava\Core\Features\Flag>
+     */
     public array $rawFlagSet = [];
 
     /** @var list<string> global middleware class-strings from app/Middleware.php */

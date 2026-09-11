@@ -54,9 +54,11 @@ final class InvalidConfig extends LavaProblem
      * instead of inventing a code of its own.
      *
      * @param string $key the full key, e.g. "http_client.timeout"
+     * @param int|float $got the value that is out of range — shown to the reader, so
+     *                      it is the number itself, never a type name
      * @param string $expected what a usable value looks like, e.g. "a positive number of seconds"
      */
-    public static function outOfRange(string $key, mixed $got, string $expected, string $file): self
+    public static function outOfRange(string $key, int|float $got, string $expected, string $file): self
     {
         [, $name] = self::splitKey($key);
         return new self(

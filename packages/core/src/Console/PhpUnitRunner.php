@@ -58,7 +58,11 @@ final class PhpUnitRunner
             throw BadTestReport::empty($exitCode, $output);
         }
 
-        return Junit::parse($xml);
+        // The exit code rides along: it is the verdict, and the report is only
+        // the detail. A class-level setup error is written as an empty
+        // <testsuite> and is absent from the XML entirely, so a TestRun built
+        // from the report alone would call that run green.
+        return Junit::parse($xml, $exitCode);
     }
 
     /** @throws MissingTestRunner */
