@@ -448,3 +448,32 @@ the temporary real-SAPI gate.
     is an `enum` in `lava.check/1`, so M7 adding `map` is a payload change that
     needs `lava.check/2` rather than an edit — the frozen-`/N` rule applies to
     the section list like anything else.
+
+### Open finding, not acted on (needs your call)
+
+**`flags()` is descriptive, not enforced: an undeclared flag is silently
+ignored.** Verified live: `lava routes --strct` exits 0 and prints the route
+table — `routes` declares `['json','all','env']`, and nothing compares argv
+against that list. So a typo'd flag is the one class of mistake in this CLI that
+fails *silently*, which is the thing the framework's own pillar forbids, and an
+agent will typo flags. Same for `lava env --strict` (there is no `--strict` on
+`env`; it is a `check` flag) — it runs as if the flag were not there.
+
+Not fixed here because the fix is a product decision, not a slice-3 task:
+
+- **Recommended**: an undeclared flag is `bad_usage` (exit 2), with the
+  command's declared list and `lava <cmd> --help` in the fix. The reasoning is
+  the same as the bad-port case: it is about how the command was *typed*, not
+  about the app, so exit 2 and `unknown_command`'s "you typed it wrong" family.
+- **The decision it forces**: `--json`, `--help`, `--quiet` (and `--env`?) are
+  accepted by every command today but declared by almost none, so they would
+  have to become an implicit global set — and `--env` is the interesting one,
+  because it is genuinely per-command in `flags()` but meaningful everywhere
+  boot happens. `--` literal-args handling and pack-defined flags would need to
+  keep working too.
+- **Cheaper alternative**: warn instead of failing (`problems[]` with a
+  `severity: warn`), leaving exit 0. Less correct, zero risk of breaking a
+  caller that passes an unknown flag on purpose.
+
+No code depends on the current permissiveness, so either option is available
+whenever you want it.
