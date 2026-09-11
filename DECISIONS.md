@@ -2550,3 +2550,111 @@ exact 10 lines (decision 158). The `NOT IN` NULL trap, the LEFT JOIN difference
 and the OR/AND precedence surprise are all asserted against real SQLite
 (decisions 161-162). The db floor change was confirmed to still exit 0
 (decision 165).
+
+## 2026-09-11 — M9 slice 5 (conventions.md, the release checklist, and a stale skeleton map)
+
+166. **`conventions.md` was audited against the tree, not read for tone.** A script
+    (`/tmp/conv-audit.php`, throwaway) extracted every backticked path, `Class::member`
+    pair and schema name from the file and checked each against the filesystem. It
+    reported two hard defects and six pairs to confirm by hand. The pairs were all
+    real — `Feature::define` (`Features/Feature.php:26`), `Kernel::CORE_SERVICES`
+    (`Boot/Kernel.php:51`), `FlagSubjectResolver` (`Features/FlagSubjectResolver.php`),
+    `HandlerInvoker::plan` (`Routing/HandlerInvoker.php:39`), `Method::Head`
+    (`Routing/Method.php:11`), `UrlGenerator::url` (`Routing/UrlGenerator.php:24`) —
+    so the audit's value was the two hits, not a clean bill of health. An audit that
+    can only ever say "looks fine" is not an audit.
+
+167. **The `/1` example in the CLI contract was pointing at a file that does not
+    exist.** Line 180 read `file: \`lava.check/1\` means \`docs/schemas/lava.check/1.json\``
+    — but decision 46 deliberately DELETED `lava.check/1.json`, and `lava.check` is at
+    `/2`. A document whose example names a missing file is worse than one with no
+    example: the reader goes looking, finds nothing, and stops trusting the rule. Fixed
+    by making the example `lava.routes/1` (which exists), stating the `/N` rule so the
+    example's numeral cannot go stale again, and adding one paragraph that says the
+    numeral is per command and `docs/schemas/` is the list — naming `lava.check` at `/2`
+    and why. The explanation was aligned to decision 46's actual reasoning (nothing
+    could emit `/1`, nothing had pinned it, the first release is untagged) rather than
+    to a rationale invented for the paragraph; the first draft of the fix did the
+    latter, and it was rewritten.
+
+168. **`tests/Unit/FrameworkReferenceTest.php` was a wrong path** — the real one is
+    `packages/core/tests/Unit/FrameworkReferenceTest.php`. The repo is a monorepo, so a
+    path without a package prefix reads as "at the root" and there is no such directory.
+    Fixed. This is the failure mode of the whole file: every path in it is either
+    app-relative (correct as written — `app/Routes.php` means the app's, not the repo's)
+    or repo-relative (needs the package prefix), and the two are indistinguishable
+    unless you go look.
+
+169. **A stale measurement in prose is a defect, and there were two.** `README.md` and
+    `.github/workflows/ci.yml` both still explained the coverage instrument with the
+    pre-chain-tests db number ("81%"). Both now say 55% — the parent-only figure, which
+    is the one the sentence is actually about and does not move when the suite grows. A
+    number in prose that tracks the code is a number that will be wrong; the fix is to
+    cite the one that is a property of the instrument.
+
+170. **The skeleton's committed `AGENTS.md` was STALE, and that is R2 broken in the
+    committed tree.** `lava map --check` in `packages/app` failed: hash `69c87bdd…`
+    recorded, `56720f28…` expected. The cause is provable from history rather than
+    guessed: commit `377b736` (M8 slice 1, lava/view) registered `Router` and
+    `UrlGenerator` as container ids in `Boot/Steps/BuildRouter.php`, which changes the
+    services list — and therefore the fingerprint — of EVERY app. `8085486` (M8 slice 3)
+    regenerated the demo's map because it touched the demo, so the demo stayed fresh;
+    the skeleton's map was last written in `e9274b1` (M7 slice 2) and nothing
+    regenerated it. It survived M8 and M9 because `composer verify` cannot see it — no
+    test asserts the skeleton's AGENTS.md — and the CI job that does (`skeleton`, step
+    `lava map --check`) has never had a green run on GitHub. Fixed by regenerating:
+    the diff is the two service rows plus the hash, nothing else.
+
+171. **The regeneration was verified path-independent, which is the property that
+    makes the fix trustworthy.** A map that reads "current" only at `packages/app` would
+    be a fingerprint that depends on where the checkout lives, contradicting the
+    "no absolute paths" rule the document itself states. The regenerated file was copied
+    to `/tmp/skel-check/app` with `vendor/lava/core` repointed at the real core, and
+    `lava map --check` there answers "current" with the same hash. Same bytes, different
+    absolute path — so the fix is a fact about the app, not about this machine.
+
+172. **R2's promise has a precondition the doc did not state, and the release checklist
+    now does.** The skeleton "ships a pre-generated AGENTS.md accurate from the moment of
+    `composer install`" — accurate against the core it was generated from. Any core
+    change that adds a container id invalidates every app's map, so the maps must be
+    regenerated as the LAST step before a tag, not at some earlier convenient point.
+    `docs/releasing.md` step 4 is that step.
+
+173. **The release checklist is `docs/releasing.md`, and it states what is NOT
+    verified.** A checklist that implies everything was checked is worse than one that
+    lists the gaps, so it names three: the CI coverage job has never run green on
+    GitHub (the mechanism is proven locally, setup-php's image is not), PHP 8.3/8.4 are
+    CI-only (development is on 8.5.4), and no release has been published so
+    `create-project` from Packagist is untested. It also fixes the 0.x promise
+    precisely — stable: the pillars, the artifact paths, the problem codes, the
+    envelope schemas; not stable: class/method signatures inside a pack.
+
+174. **No `CHANGELOG.md`, and the omission is deliberate.** The record is this file
+    plus `git log`; a hand-maintained changelog beside them is a third account of the
+    same events, and it drifts first and is believed second. If consumers want one it
+    should be generated from the commit log at tag time. Recorded in `docs/releasing.md`
+    so it reads as a decision rather than an oversight, and flagged here as reversible.
+
+175. **`composer.json` carries no `version` field and no command prints a framework
+    version.** Packagist derives the version from the tag, so a field would be a second
+    answer that goes stale the first time a tag is cut from a branch. The first draft of
+    `releasing.md` claimed `lava about` reports the framework version; it does not — it
+    reports the RUNTIME's facts (PHP, extensions, PDO drivers, which packs the app can
+    see). Corrected before committing, because a checklist that sends a reader to a
+    field that is not there is the same defect as decision 167.
+
+176. **`lava check --quick` on the demo is 0.03–0.05s against R4's <2s budget** —
+    measured three times, not estimated. R4 is met with two orders of magnitude to
+    spare, which is worth recording because it means the budget is not a constraint on
+    what `check` may add; it is a constraint that has been paid for already.
+
+### Verified by running
+
+`composer verify` after the doc edits: **958 tests, 4598 assertions**, level 8 and
+core-at-`max` both `[OK] No errors`. `lava check --strict` on `apps/demo`: every
+section ok, 24 tests / 99 assertions, exit 0. `lava check --quick` on the demo:
+exit 0, timed 0.05/0.03/0.03s. `lava map --check` on `apps/demo`: current, exit 0.
+`lava map --check` on `packages/app`: FAILED before the fix (stale), current after,
+and current again from `/tmp/skel-check/app` — a different absolute path. Only the
+root `composer.lock` is tracked; every pack's and app's lock exists on disk and is
+ignored, as documented. `composer validate` passes on all four packs and the root.

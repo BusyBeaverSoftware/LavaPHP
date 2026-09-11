@@ -79,9 +79,9 @@ rely on:
 
 The framework reference section teaches the canonical minimal form of every
 artifact, held as constants in `Lava\Core\Map\FrameworkReference` and covered by
-`tests/Unit/FrameworkReferenceTest.php`, which parses each PHP snippet and checks
-that every class and method it names exists. A snippet that teaches a method the
-framework does not have fails the build.
+`packages/core/tests/Unit/FrameworkReferenceTest.php`, which parses each PHP
+snippet and checks that every class and method it names exists. A snippet that
+teaches a method the framework does not have fails the build.
 
 `AGENTS.md` is the one generated artifact in the framework. It is never
 hand-edited: change the app and run `lava map`.
@@ -177,10 +177,19 @@ not disabled-in-place.
 Every command writes two views of one result: text for a human on a terminal,
 and — under `--json` — a single envelope on stdout, which suppresses the text.
 The envelope's `schema` field names the contract it obeys, and the contract is a
-file: `lava.check/1` means `docs/schemas/lava.check/1.json`. The `/N` is frozen.
+file: `lava.routes/1` means `docs/schemas/lava.routes/1.json`. The `/N` is frozen.
 A breaking change to a payload means a new `/N`, never an edit — so an agent
 that pinned a version keeps working, and `packages/core/tests/Schema/` fails the
 build when a payload and its schema drift apart.
+
+The numeral is per command, and `docs/schemas/` is the list of what exists — the
+one place to look. It is not always `1`: `lava.check` is at `/2`, because `map`
+was added to its `sections` enum when `lava map` landed, and a widened enum is a
+breaking change to that payload. `/1` was deleted rather than kept beside it,
+because nothing could emit it and nothing had pinned it — the first release was
+not tagged — so it would have been a schema file no code can produce, which is a
+document that lies about what exists. The version has one home,
+`Envelope::schema()`, so a bump cannot be half-applied.
 
 - **Exit codes**: `0` ok, `1` a problem or a red result, `2` a malformed
   invocation (a typo'd command name, a bad flag value). Only `2` is about how

@@ -59,9 +59,9 @@ jobs:
         #    `php -d`, for the same reason: the harness forwards the ENVIRONMENT
         #    to its children, not the command line.
         #
-        # Without both, `db` reads 55% instead of 81% and the gate fails on a
-        # floor it cannot meet — which is the tripwire doing its job, not a
-        # flake. See tools/coverage-check.php.
+        # Without both, `db` reads 55% — the parent-only measurement — and the
+        # gate fails on a floor it cannot meet, which is the tripwire doing its
+        # job, not a flake. See tools/coverage-check.php.
         run: |
           ini_dir="$RUNNER_TEMP/lava-coverage-ini"
           mkdir -p "$ini_dir"

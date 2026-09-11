@@ -37,7 +37,7 @@ driver (pcov) and `pdo_sqlite`, and a gate that cannot run on a fresh checkout
 is a gate that gets skipped. It measures the `packages/*/src` trees, counts the
 `bin/lava` subprocesses the end-to-end tests spawn, and fails below a floor per
 pack — see [`tools/coverage-check.php`](tools/coverage-check.php) for the
-numbers, the floors, and why `db` reads 81% rather than 55%.
+numbers, the floors, and why `db` reads 55% until the subprocesses are counted.
 
 Status: pre-release (0.x under active development). PHP `^8.3`.
 
