@@ -216,7 +216,7 @@ final class MapCommandTest extends TestCase
         $current = LavaCli::run(['map', '--check'], $dir);
         self::assertSame(ExitCode::Failure, $current->exit);
         self::assertStringContainsString('is not current', $current->stdout);
-        self::assertStringContainsString('routes: 4  services: 10  features: 1  commands: 12', $current->stdout);
+        self::assertStringContainsString('routes: 4  services: 12  features: 1  commands: 12', $current->stdout);
 
         $written = LavaCli::run(['map'], $dir);
         self::assertStringContainsString('Wrote ' . $dir . '/' . MapDocument::FILENAME, $written->stdout);

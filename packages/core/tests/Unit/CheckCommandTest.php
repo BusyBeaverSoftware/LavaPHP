@@ -42,8 +42,12 @@ final class CheckCommandTest extends CommandTestCase
     {
         [, $envelope] = $this->json('ok-app', ['check', '--no-tests']);
 
+        // 12, not 10: the Router and its UrlGenerator are container services as
+        // of M8, so every app's service count moved by two. The number is
+        // asserted rather than derived because this test's job is to notice a
+        // count that changed without anyone deciding it should.
         self::assertSame(
-            ['routes' => 4, 'services' => 10, 'features' => 1, 'commands' => 12, 'middleware' => 1],
+            ['routes' => 4, 'services' => 12, 'features' => 1, 'commands' => 12, 'middleware' => 1],
             $envelope['data']['counts'],
         );
     }
@@ -191,7 +195,7 @@ final class CheckCommandTest extends CommandTestCase
 
         self::assertStringContainsString('routes', $text);
         self::assertStringContainsString('tests', $text);
-        self::assertStringContainsString('routes: 4  services: 10  features: 1  commands: 12', $text);
+        self::assertStringContainsString('routes: 4  services: 12  features: 1  commands: 12', $text);
     }
 
     /**

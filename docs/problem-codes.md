@@ -71,6 +71,10 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `validation_failed` | `ValidationFailed` (validate) | a declared field's value fails a rule — **422**, the only problem that is the *caller's* fault | name the field, the rule, what it wanted, and redact the value if the field looks secret |
 | `invalid_rule` | `InvalidRule` (validate) | a rule cannot do its job: an unparsable or undelimited pattern, an empty allowed set, a negative length, a bound with no type rule to decide from, a bound on a boolean, or a `->custom()` predicate that threw | name the declaration to rewrite, at the line that declares it |
 | `unreadable_field` | `UnreadableField` (validate) | the handler read a field that has no readable value — absent (optional, so validation let it through missing) or not coercible to the type asked for | `->required()` on the field, a `->has()` check, or the type rule that matches how it is read |
+| `template_not_found` | `TemplateNotFound` (view) | a template was rendered that is not in the template directory | list what is there, extension included, and name the exact file to create |
+| `template_failed` | `TemplateFailed` (view) | a template does not compile, or threw while rendering — most often a context variable the handler never passed, because `strict_variables` is on | the file and line Twig already computed; name the *handler* when the fault is a missing variable |
+| `view_dir_missing` | `ViewDirMissing` (view) | the `views` feature is on and `view.path` is not a directory — raised at **boot** | the path to create, or the config key to change |
+| `bad_view_call` | `BadViewCall` (view) | a template called `url()` or `feature()` with an argument those functions cannot use | the template's own fix — never the value that was passed |
 
 `not_an_app` is the one code that exists because booting the wrong directory
 **succeeds**. Every user-authored artifact is optional (see
@@ -215,6 +219,43 @@ health, and a documentation lag is a warning on it; `map --check` is asked one
 question and answers it, and a verification command that answers "no" with exit
 0 is useless to a build. `lava check --strict` is where the warning becomes a
 build failure, which is the same door `missing_env_var` uses.
+
+M8 status: the view pack's four codes are live in `Lava\View\Problem\`, covered
+by `packages/view/tests/` — the three render-time ones over real HTTP through
+the fixture app (`tests/Http/ViewOverHttpTest.php`), the boot-time one and the
+config branches in `tests/Unit/ViewModuleTest.php`.
+
+`template_failed` is one code with two factories, `syntax()` and `runtime()`, and
+the split is the fix rather than the diagnosis. A template that does not compile
+is a typo in the template text; a template that threw while rendering is, with
+`strict_variables` on, almost always a variable the *handler* never passed into
+the context. Those send the reader to different files, so they get different fix
+text — but they get one code, because a consumer of the registry acts on both
+identically: read the fix, open `source.file:line`, edit.
+
+`bad_view_call` exists because the alternative is a PHP `TypeError` raised from
+inside Twig's compiled template in `var/views/`, naming a class the template
+author never typed and a line in a file that no longer resembles what they wrote.
+Four factories — a non-string route name, params that are not a map, a param
+value that cannot be in a URL, a non-string flag name — share one code for the
+same reason `stale_map`'s three `why` values do: a reader does the same thing
+with each. The messages name the *type* of what was passed and never its value,
+because a problem report is an error page and a log line and a route param can
+hold anything the app put in its model.
+
+The renderer unwraps a `LavaProblem` that a template function raised, so
+`bad_view_call` reaches the caller as itself rather than as the `template_failed`
+Twig would otherwise wrap it in. That is the same rule `migration_failed`
+follows — a wrapper problem wraps only throwables that are not already
+`LavaProblem`s — and it is what keeps the specific code, and the specific fix,
+from being buried inside Twig's own sentence.
+
+`view_dir_missing` is raised at boot, alone among this pack's codes, and the
+difference is what the reader can do about it. A missing *template* is the normal
+state of an app being built — `lava check`, `lava routes` and `lava serve` all
+have to work on it — so that one waits for the request. A missing template
+*directory* makes every render fail identically, so N request-time errors
+collapse into one boot message naming the path and the config key.
 
 ## App-owned codes are not in this registry
 

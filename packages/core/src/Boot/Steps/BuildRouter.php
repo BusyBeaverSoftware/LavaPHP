@@ -15,6 +15,7 @@ use Lava\Core\Problem\ServiceNotRegistered;
 use Lava\Core\Problem\SourceLocation;
 use Lava\Core\Routing\HandlerInvoker;
 use Lava\Core\Routing\Router;
+use Lava\Core\Routing\UrlGenerator;
 use Psr\Http\Server\MiddlewareInterface;
 
 /**
@@ -105,6 +106,21 @@ final class BuildRouter implements BootStep
                 $ctx->problems->add($problem);
             }
         }
+
+        // The router and its reversal are services like any other, registered
+        // here because this is the step that builds them — and registered at
+        // all so a handler or a pack can reach them BY TYPE instead of closing
+        // over the boot context, which no handler or pack has.
+        //
+        // Order matters and is load-bearing: this runs after app/Services.php
+        // (so an app that registered these ids gets a duplicate_service naming
+        // both sites rather than silently losing its own) and before
+        // ValidateWiring (so anything that depends on them is resolved and
+        // checked at boot). A pack's factory may therefore depend on
+        // UrlGenerator even though the pack's register() ran earlier — the
+        // closure is called here, not there.
+        $ctx->container->singleton(Router::class, static fn (): Router => $router);
+        $ctx->container->singleton(UrlGenerator::class, static fn (): UrlGenerator => new UrlGenerator($router));
     }
 
     /** @return list<string> class-strings from the optional app/Middleware.php */

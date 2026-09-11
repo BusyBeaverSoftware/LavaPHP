@@ -4,5 +4,7 @@ parameters:
         - packages/core/src
         - packages/db/src
         - packages/validate/src
+        - packages/view/src
+        - packages/http-client/src
     excludePaths:
         - packages/*/tests

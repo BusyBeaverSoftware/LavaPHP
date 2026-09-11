@@ -21,11 +21,18 @@ use Lava\Core\Boot\Steps\ValidateWiring;
 use Lava\Core\Boot\Steps\WireAppServices;
 use Lava\Core\Boot\Steps\WireModules;
 use Lava\Core\Features\FlagSource;
+use Lava\Core\Http\Responses;
 use Lava\Core\Problem\LavaProblem;
+use Lava\Core\Routing\HandlerInvoker;
 use Lava\Core\Routing\HandlerPlan;
+use Lava\Core\Routing\RouteArgs;
+use Lava\Core\Routing\Router;
+use Lava\Core\Routing\UrlGenerator;
 use Lava\Core\Testing\TestApp;
 use Lava\Core\Testing\TestClient;
+use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Boots the real kernel against the fixture apps. The fixtures double as
@@ -88,6 +95,63 @@ final class KernelBootTest extends TestCase
 
         $record = $app->container->describe(\App\Greeter::class);
         self::assertSame('Services.php', basename($record->file)); // the wiring file, not the framework
+    }
+
+    public function testTheRouterAndItsUrlGeneratorAreContainerServices(): void
+    {
+        $app = TestApp::bootFixture('ok-app');
+
+        // Registered by BuildRouter, because that is the step that builds them.
+        // Before M8 they were reachable only through the boot context, which no
+        // handler and no pack has — so `url()` in a template (lava/view) and a
+        // handler that generates a URL both had no way to ask for one.
+        self::assertTrue($app->container->has(Router::class));
+        self::assertTrue($app->container->has(UrlGenerator::class));
+
+        // The id is the SAME router the app dispatches through, not a second
+        // empty one: a copy would generate URLs for a route table that does not
+        // exist, and every generated link would 404.
+        self::assertSame($app->router, $app->container->get(Router::class));
+
+        $url = $app->container->get(UrlGenerator::class);
+        self::assertInstanceOf(UrlGenerator::class, $url);
+        self::assertSame('/users/7', $url->url('users.show', ['id' => 7]));
+
+        // And it is a singleton like every other service — two gets, one object.
+        self::assertSame($url, $app->container->get(UrlGenerator::class));
+    }
+
+    public function testAHandlerCanTakeTheUrlGeneratorAsAnInjectedParameter(): void
+    {
+        // What the registration above is FOR, stated as the thing a user does:
+        // a handler type-hints UrlGenerator and gets a working one. Driven
+        // through the real HandlerInvoker rather than by reading the container,
+        // because "it is registered" and "it can be injected" are different
+        // claims and only the second one is useful.
+        $app = TestApp::bootFixture('ok-app');
+        $invoker = new HandlerInvoker($app->container);
+
+        $plan = $invoker->plan([UrlGeneratingController::class, 'show']);
+        self::assertSame(
+            [
+                ['kind' => 'args', 'type' => RouteArgs::class, 'name' => 'args'],
+                ['kind' => 'service', 'type' => UrlGenerator::class, 'name' => 'url'],
+            ],
+            $plan->injects,
+        );
+
+        $response = $invoker->invoke(
+            $plan,
+            new ServerRequest('GET', '/users/7'),
+            new RouteArgs('users.show', ['id' => '7']),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        // Decoded, not string-matched: Responses::json writes unescaped slashes,
+        // and asserting on the encoded form would be testing PHP's JSON flags
+        // instead of the URL that came out.
+        $body = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(['url' => '/users/7'], $body);
     }
 
     public function testOkAppFlagResolvesThroughTheConfigLayer(): void
@@ -378,5 +442,21 @@ final class KernelBootTest extends TestCase
         self::assertSame('lava/redefined-pack', $redefinition->context['package']);
         self::assertStringContainsString('is the gate for pack lava/redefined-pack', $redefinition->getMessage());
         self::assertStringContainsString("override it in 'set'", $redefinition->fix);
+    }
+}
+
+/**
+ * A handler that takes the UrlGenerator, which is the whole point of
+ * registering it: a URL a template or a redirect can be built from a route
+ * NAME, so renaming a route's path cannot leave a hardcoded link behind.
+ *
+ * The constructor is parameterless and the dependency arrives as a typed
+ * method parameter — the handler contract, not a convenience.
+ */
+final class UrlGeneratingController
+{
+    public function show(RouteArgs $args, UrlGenerator $url): ResponseInterface
+    {
+        return Responses::json(['url' => $url->url('users.show', ['id' => $args->int('id')])]);
     }
 }

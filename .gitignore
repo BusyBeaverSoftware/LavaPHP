@@ -8,6 +8,11 @@
 # published skeleton. `composer create-project lava/app` has to resolve
 # lava/core from packagist, so it must ship no lock at all.
 /packages/app/composer.lock
+# A pack installed on its own (`cd packages/view && composer install`) gets a lock
+# too, and it is not an artifact to commit for the same reason: it pins lava/core
+# to the `../core` path repository, which is a monorepo-local arrangement no
+# consumer has.
+/packages/*/composer.lock
 # apps/ are APPS, not packages: each gets its own vendor/ from its own
 # composer.json, and none of that is an artifact to commit. Same reason for the
 # lock as above — it would pin lava/* to path repositories.

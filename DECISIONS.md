@@ -1421,3 +1421,157 @@ demo's suite and the CI replication above were run with an extracted `sqlite3.so
 + `pdo_sqlite.so` on `PHP_INI_SCAN_DIR` — no sudo, no system change. The plan's
 prerequisite is `sudo apt install php8.5-sqlite3`; CI needs nothing, since
 `ubuntu-latest` + `setup-php` ships `pdo_sqlite`.
+
+## 2026-09-11 — M8 slice 1 (`lava/view`: Twig with strict defaults and a real problem surface)
+
+74. **`Router` and `UrlGenerator` are container services, registered by core's
+    `BuildRouter`.** `ViewModule` needs the generator for `url()`, and it cannot
+    have it any other way: a module's `register()` runs in `WireModules`, which
+    is BEFORE `BuildRouter`, so the router does not exist yet. The app cannot
+    register them either — `WireAppServices` also runs before `BuildRouter`, and
+    the app never sees the `Router` at all. The alternative I rejected was
+    having `ViewModule` implement `ProvidesRoutes` with an empty body purely to
+    capture the router as an argument: a trick that works and that the
+    framework's philosophy forbids, because a reader of `Modules.php` would then
+    be reading a lie. So core registers both ids itself, at the end of
+    `BuildRouter::run()`, and the order is load-bearing in two directions: after
+    `app/Services.php` (so an app that registered these ids gets a
+    `duplicate_service` naming both sites rather than silently losing its own)
+    and before `ValidateWiring` (so anything depending on them is resolved and
+    checked at boot). A pack's factory may therefore depend on `UrlGenerator`
+    even though the pack's `register()` ran earlier — the closure is called at
+    `ValidateWiring` time, not at register time. `UrlGenerator` is a singleton,
+    not a factory: it is stateless, and a second instance would be a second
+    thing to keep in step with the router.
+
+75. **Three golden service counts moved 10 → 12, and they stay asserted rather
+    than derived.** `CheckCommandTest` (two tests) and `MapCommandTest` (one).
+    The numbers are literals on purpose — the test's job is to notice a count
+    that changed without anyone deciding it should, which a computed count could
+    never do. The comment added next to one of them says so, so the next person
+    to see it fail knows it is a decision point rather than a chore.
+
+76. **Twig has no default extension, so the pack normalizes the name.** Found by
+    driving the loader directly rather than by reading Twig's docs:
+    `new FilesystemLoader($dir)->exists('page')` returns `false` while
+    `page.twig` sits right there, because the loader looks for exactly the name
+    it is given. Every template reported `template_not_found` before this.
+    `ViewRenderer::normalize()` appends `.twig` when it is missing, which is one
+    rule rather than two ways to do a thing, and it matches the convention the
+    framework already uses for a file a package owns (`PackInfo` names a config
+    file as `'database'`; the loader supplies `.php`). The pack owns `.twig` the
+    same way.
+
+77. **Three defects in the missing-template path, all found by writing the test
+    rather than by reading the code.** (a) `templates()` stripped `.twig` from
+    the names it listed while the message's subject line named
+    `does/not/exist.twig` — one message spelling the same file two ways, and a
+    list whose entries were not the strings `render()` was documented to take.
+    (b) `TemplateNotFound::of()` appended `.twig` to a name that already had it,
+    so the fix told its reader to create `does/not/exist.twig.twig` — a file the
+    loader would still not find. (c) `$listed` (the `Available: …` sentence) was
+    computed and then never interpolated, so the message listed nothing while
+    the fix said "call render() with one of the names above". All three are
+    fixed and each now has an assertion, including a `assertStringNotContainsString('.twig.twig', …)`
+    that would have caught (b) on its own.
+
+78. **A `LavaProblem` raised inside a template passes through untouched.**
+    Twig wraps anything a template function throws in a `RuntimeError` whose
+    message is `An exception has been thrown during the rendering of a template
+    ("…")`, which buried `bad_view_call` — code and fix both — inside a generic
+    `template_failed`. `ViewRenderer::raised()` walks the previous chain
+    (bounded at 8, because a throwable cycle is not something to hang on) and
+    rethrows a `LavaProblem` as itself. This is the same rule `lava/db`'s
+    `MigrationFailed` documents: a wrapper problem wraps only throwables that
+    are not already `LavaProblem`s.
+
+79. **`TemplateFailed` is one code with two factories.** `syntax()` and
+    `runtime()` differ in the fix, not the diagnosis: a template that does not
+    compile is a typo in template text, while one that threw while rendering is,
+    with `strict_variables` on, almost always a variable the handler never
+    passed into the context — so the second fix names `render()` in the handler
+    and the first names the template. One code because a consumer acts on both
+    identically (read the fix, open `source.file:line`, edit). The `source()`
+    fallback is the template name AS GIVEN, not `$template . '.twig'`: the
+    renderer normalizes before calling, and appending again would put a second
+    copy of the naming rule in a problem class — two places to change, and a
+    `broken.twig.twig` the day they disagree.
+
+80. **`ViewFunctions::registry()` is asserted as an ordered list of names, not a
+    count.** The pack's promise is that the entire template namespace is one
+    array in one file that an agent can read. A third function arriving from a
+    bundle, an extension, or a stray `addFunction()` is exactly what that test
+    exists to notice, and a count would not notice a swap.
+
+81. **The view fixture gained a `config/view.php`, because the fixture's own
+    docblock claimed something untrue.** `app/Modules.php` said the fixture
+    "exercises both halves of the manifest: `config/view.php` is read by
+    `LoadPackConfig` at boot" — and no such file existed, so the claim was
+    decoration. Rather than weaken the docblock, the file was added (with the
+    default value, deliberately, so it tests the wiring rather than the file)
+    and a test now asserts `Config::provenance('view.path') === 'config/view.php'`.
+    That assertion is the only thing in the repository proving
+    `configFiles: ['view']` is not a dead declaration: without it, the pack could
+    name a config file nothing ever reads and every other test in the suite would
+    still pass. Discrimination proven — rename the file away and the test fails
+    with `'(unset)'`; restore it and it passes.
+
+82. **`bad_view_call` names a type and never a value, and there is a test for
+    it.** `describe()` returns `'null'` or `'a ' . get_debug_type($value)`.
+    A route param can hold anything an app put in its model, and a problem
+    report is an error page, a log line, and a `--json` body that gets pasted
+    into an issue — the same non-disclosure rule `lava/validate` applies to a
+    submitted field, applied here to a template's context. The test passes a
+    secret inside a param value and asserts it appears nowhere in the rendered
+    problem JSON.
+
+83. **PHPStan now analyses `packages/view/src` and `packages/http-client/src`.**
+    They were missing from `phpstan.neon`'s paths — view and http-client were
+    the two packs whose source no static analysis had ever read. Level 8, no
+    errors, and no suppressions, no baseline entries, no casts added to silence
+    anything: the same rule the rest of the repository is held to. `TwigFunction::getCallable()`
+    returns `mixed`, so the tests narrow it with a real `instanceof`-free
+    `@var callable` on a value they just checked — which is a test-local
+    narrowing, not a suppression in source.
+
+84. **The HTTP test lives in `tests/Http/`, matching `lava/validate`'s layout.**
+    The first version sat directly in `tests/` and resolved its fixture with
+    `dirname(__DIR__)`, which pointed at `packages/view/fixtures/…` — one
+    directory too high, so all twelve tests failed with `not_an_app`. The pack
+    convention (`tests/Http/`) is what makes `dirname(__DIR__)` correct, so the
+    file moved rather than the path being special-cased. The test helper that
+    boots the fixture now puts the boot problems in the failure message: a bare
+    `assertInstanceOf` reported "expected App, got BootFailure" twelve times and
+    said nothing about why, which is the opposite of what this framework is for.
+
+85. **`/packages/*/composer.lock` is now gitignored.** Installing a pack on its
+    own (`cd packages/view && composer install`, which is how the standalone
+    claim in its docs is verified) leaves a lock in the package directory, and
+    `.gitignore` only named `/packages/app/composer.lock`. The lock is not an
+    artifact to commit for exactly the reason already written next to that line:
+    it pins `lava/core` to the `../core` path repository, which is a
+    monorepo-local arrangement no consumer has. Generalised rather than adding a
+    second specific line, so the next pack that gets installed standalone does
+    not repeat this.
+
+Verified this slice by running the pack, not by reading it: 70 tests / 238
+assertions in the view suite, all green, covering every route of the fixture
+over the real dispatch path and every one of the four problem codes; the full
+gate is **776 tests, 4009 assertions** with SQLite enabled (26 of them skip
+without a driver, which is why the count moves between environments) and
+PHPStan level 8 reports no errors. The Twig behaviours are asserted where they
+can be observed rather than by reading options back: escaping by rendering
+`<script>` and checking for `&lt;script&gt;`, `strict_variables` by rendering an
+undefined variable and expecting the failure, the cache by `getCache()` in both
+environments. Two claims were proven to discriminate rather than asserted: the
+`ProjectMap`-style check on the pack config file (fails without it, passes with
+it) and the `.twig.twig` guard (the fix text is asserted to name the file once).
+
+The standalone claim in `docs/packs/lava-view.md` was also run rather than
+copied from `lava/validate`'s doc: `cd packages/view && composer install` pulls
+`twig/twig` and `lava/core` from the path repository for real, and the pack's own
+`phpunit.xml.dist` then reports the same 70 tests / 238 assertions green. That
+is the layout a consumer gets, not the monorepo's.
+
+The two open findings from M7 slice 1 (decisions 18 and 22) remain unacted on and
+still need your call. Nothing in this slice changed their shape.
