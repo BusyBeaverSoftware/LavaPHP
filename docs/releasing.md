@@ -26,8 +26,8 @@ worth stating exactly, because "pre-1.0" is otherwise read as "no promises":
 
 ## Before the tag
 
-Run these from a clean checkout. The first two are the whole gate; the rest are
-the claims the gate cannot make on its own.
+Run these from a clean checkout. The first three are the whole gate; the rest
+are the claims the gate cannot make on its own.
 
 1. **`composer verify`** — the suite, PHPStan at level 8 across every pack's
    `src`, `apps/demo/app`, `apps/demo/tests` and `tools`, and `lava/core` alone
@@ -36,22 +36,33 @@ the claims the gate cannot make on its own.
    counted with the `bin/lava` subprocesses included. Expect exit 0 and a
    non-zero "child processes captured" count; a zero there means the instrument
    is blind, not that the code is covered. Needs `pcov` and `pdo_sqlite`.
-3. **`lava check --strict` on `apps/demo`** — the canonical app boots, its map is
+3. **`composer check:floor`** — every tracked file parses on the oldest PHP
+   `composer.json` claims to support (8.3 today). Expect `N file(s) parse on PHP
+   8.3`. Needs docker unless the host PHP *is* the floor. This is not a
+   restatement of step 1: `verify` runs on whatever PHP you have, and a
+   construct 8.4 added parses happily there while being a parse error — which
+   is fatal to the whole file, not to one statement — on 8.3.
+4. **`lava check --strict` on `apps/demo`** — the canonical app boots, its map is
    current, and its suite is green, with warnings promoted to failures. This is
    the end-to-end proof that the packs still work together in an app that
    actually uses them.
-4. **`lava map --check` on `packages/app`** — the skeleton's committed
+5. **`lava map --check` on `packages/app`** — the skeleton's committed
    `AGENTS.md` is accurate from a fresh install, with no `lava map` run first.
-5. **Each pack installs standalone** — `db`, `validate`, `view` and
+6. **Each pack installs standalone** — `db`, `validate`, `view` and
    `http-client`, each copied out with only `core` beside it, `composer install`
    then `composer validate`. This is the decoupling claim: a pack that has grown
    an undeclared dependency on a sibling fails here and nowhere else.
-6. **CI is green on the tag commit.** The five jobs are the authority on PHP
-   8.3, 8.4 and 8.5, on a machine that is not this one. This step is the one that
-   cannot be run from this checkout: it has **no git remote configured**, so the
-   workflow has never run. Push a branch, watch the five jobs go green, and only
-   then cut the tag — a tag on a commit CI has not seen is a tag that may have to
-   move, and a tag that moves is worse than a late one.
+7. **CI is green on the tag commit.** The five jobs are the authority on PHP
+   8.3, 8.4 and 8.5, on a machine that is not this one. Push a branch, watch the
+   jobs go green, and only then cut the tag — a tag on a commit CI has not seen
+   is a tag that may have to move, and a tag that moves is worse than a late
+   one.
+
+   The jobs are the authority, and they are also *slower and blunter* than the
+   local gate: PHPUnit stops at the first test file that will not compile, so a
+   commit with three 8.4-isms needs three pushes to learn about all three.
+   That is what step 3 is for — run it before the push, and the first CI run is
+   about the things only CI can tell you.
 
 ## The tag
 

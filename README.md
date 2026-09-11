@@ -30,6 +30,7 @@ docs/                — conventions, per-pack docs, stable JSON schemas for eve
 composer install     # installs all packs via path repositories
 composer verify      # phpunit (all suites) + phpstan level 8 + lava/core at max
 composer coverage    # per-pack line coverage, floors enforced
+composer check:floor # every tracked file parses on the oldest PHP we claim to support
 ```
 
 `composer coverage` is deliberately not part of `verify`: it needs a coverage
@@ -38,6 +39,16 @@ is a gate that gets skipped. It measures the `packages/*/src` trees, counts the
 `bin/lava` subprocesses the end-to-end tests spawn, and fails below a floor per
 pack — see [`tools/coverage-check.php`](tools/coverage-check.php) for the
 numbers, the floors, and why `db` reads 55% until the subprocesses are counted.
+
+`composer check:floor` is not part of `verify` either, for the same reason: it
+needs a PHP of the floored version, which it takes from docker unless the host
+already is one. It reads the floor out of `composer.json`'s `require.php` and
+lints every tracked file with it, reporting **every** file that does not parse
+rather than the first. PHP 8.4 syntax is a parse error on 8.3, and a parse
+error takes down the whole file — CI's 8.3 job found three of them one push at
+a time, because PHPUnit stops at the first test file it cannot compile. See
+[`tools/php-floor-check.php`](tools/php-floor-check.php), which also records why
+php-parser cannot do this job.
 
 Status: pre-release (0.x under active development). PHP `^8.3`.
 

@@ -63,7 +63,7 @@ final class CustomRuleTest extends TestCase
     {
         self::assertSame(['not_in' => ['new', 'edit']], self::rule(static fn (): bool => true)->expects());
         self::assertNull(
-            new CustomRule('x', static fn (): bool => true, 'm', 'f')->expects(),
+            (new CustomRule('x', static fn (): bool => true, 'm', 'f'))->expects(),
             'a predicate with no declared expectation must report null, not an invented one',
         );
     }

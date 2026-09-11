@@ -47,6 +47,10 @@
         "coverage": [
             "Composer\\Config::disableProcessTimeout",
             "@php tools/coverage-check.php"
+        ],
+        "check:floor": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php tools/php-floor-check.php"
         ]
     },
     "config": {

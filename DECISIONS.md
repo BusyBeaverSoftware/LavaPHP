@@ -3029,3 +3029,165 @@ one-problem report; universal and short flags are accepted everywhere;
 `lava map --check` reports `lava.map/2` with `fresh: true` and exits 0, which is
 also the proof that the version bump reached the binary rather than only the
 class.
+
+## 2026-09-11 — the first CI run: three parse errors, a PHP 8.3 `php -S` difference, and a new gate
+
+206. **CI ran, and `test (8.3)` failed on a real violation.** Six of seven jobs
+    went green on the first push of `m9-post-release` (`demo`, `test (8.5)`,
+    `test (8.4)`, `isolated-install`, `skeleton`, `coverage`); `test (8.3)`
+    reported `syntax error, unexpected token "->"` at
+    `packages/db/tests/Query/QueryBuilderTest.php:140`. This is the first
+    information the repository has ever had about the `^8.3` floor it declares,
+    and the information is that the floor was being violated. Entry 205 said
+    "see the entry that records what was pushed and what CI said" — this is it.
+
+207. **The violation was PHP 8.4 syntax: parentheses-free `new` in member
+    access.** `new QueryBuilder('users')->where(…)` is legal from 8.4 and a
+    PARSE error on 8.3, which matters because a parse error kills the whole
+    file, and with it the run. Fixed to `(new QueryBuilder('users'))->…` in both
+    places it appeared. The class of bug is only reachable by a parse at the
+    floored version: the host is 8.5, PHPStan is happy, and the suite is green
+    locally, all while the file cannot compile on a version the manifest claims
+    to support.
+
+208. **PHPUnit stops at the FIRST file it cannot compile, which is why the
+    local sweep mattered.** A repo-wide `php -l` under a real 8.3 found a
+    *third* occurrence CI had not reached:
+    `packages/validate/tests/Rules/CustomRuleTest.php:66`, same construct. CI
+    would have found it too — on the next push, after the first was fixed. One
+    local pass reported all of them; three CI cycles would have been needed
+    otherwise. That asymmetry is the whole argument for the gate in 210.
+
+209. **php-parser CANNOT check the floor, and this was measured rather than
+    assumed.** The obvious implementation — `nikic/php-parser` is already in
+    `vendor/`, so parse every file with `PhpVersion::fromString('8.3')` — does
+    not work, and fails *silently*, which is the worst way for a gate to fail.
+    Three findings, all on v5.8.0:
+    `ParserFactory::createForVersion()`'s own docblock says the parser "will
+    generally accept code for the newest supported version" and only the LEXER
+    is version-aware; a probe confirmed `new Foo()->bar()` and property hooks
+    both parse cleanly at target 8.3 while `= =` still throws, so it catches
+    token-level nonsense and not newer grammar; and the two spellings produce
+    **byte-identical ASTs** (`Expr_MethodCall(var: Expr_New(…))` either way),
+    so no AST visitor can tell them apart afterwards either. The plan was
+    abandoned at this point rather than shipped as a check that passes
+    everything. It is recorded here so it is not re-attempted.
+
+210. **The systemic fix is `composer check:floor` — a real floored interpreter,
+    borrowed from docker.** `tools/php-floor-check.php` lints every tracked and
+    untracked-but-not-ignored PHP file with the oldest version `composer.json`
+    claims to support, and prints **every** file that does not parse, not the
+    first. Three decisions inside it:
+    - **The floor is READ from `require.php`, never restated.** A second copy of
+      "8.3" in the tool is a copy that can drift, and the drifting one is the
+      one nobody reads. The constraint shape is asserted rather than
+      pattern-matched loosely, so a future `>=7.4 || ^8.3` fails loudly instead
+      of quietly linting the repository against 7.4.
+    - **Not part of `composer verify`**, for the same reason `coverage` is not:
+      it needs a PHP of the floored version. `verify` stays runnable anywhere.
+      When docker is absent on a newer host it FAILS with the fix rather than
+      passing quietly — a floor check that skips itself is indistinguishable
+      from a floor that holds.
+    - **One container for the whole list**, not one per file: a container start
+      dominates `php -l`, and a gate slow enough to be skipped is a gate that
+      gets skipped. It uses the host interpreter directly when the host IS the
+      floor, which is the only case needing no container at all.
+
+    It was proven by injection, not by reading: two files carrying an 8.4-ism
+    each (the paren-free `new`, and a property hook) were added, the gate
+    reported BOTH with their real interpreter messages and exited 1, and it
+    went green again when they were deleted. A gate that has never failed is a
+    gate you do not know works.
+
+211. **A second, unrelated 8.3 incompatibility: `php -S` ignores
+    `auto_prepend_file` on 8.3.** With the syntax fixed, `test (8.3)`'s
+    equivalent — the full suite in a `php:8.3-cli` container — still failed, on
+    **20 of 22 `ServeTest` cases**, every one a 500 where a 200 or 404 was
+    expected. The isolation that made this actionable:
+    - the same container with `php:8.5-cli` passed **all 992**, so it was not
+      the container, the mounts, or the environment: it was 8.3;
+    - the 500 body named the cause precisely — `App\Http\TimingMiddleware`,
+      `App\Greeter` and the controllers "do not exist", i.e. the fixture's
+      `App\` autoloader was absent;
+    - a direct probe settled it: a prepend file that appends to a log inside
+      `php -S` workers ran **on 8.5 and never ran on 8.3**.
+
+    So `ServeCommand::prependArguments()`, which forwards the parent's
+    `auto_prepend_file` to the `php -S` child, is a **no-op on 8.3**. Only
+    `serve` is affected, which is why nothing else failed: every other harness
+    path spawns a plain `php bin/lava`, and there the prepend does run on 8.3.
+
+212. **The fix is in the fixtures, not the framework, and that placement is the
+    point.** A real app's `public/index.php` requires its own composer
+    autoloader, which maps `App\` — serve works for real apps on 8.3 and always
+    did. The prepend exists only because fixture apps have no `composer.json`.
+    So the four fixture entry points (`ok-app`, `module-app`, `subject-app`,
+    `bad-routes-app`) now `require` the shared
+    `packages/core/tests/Support/fixture-autoload.php` themselves. That file is
+    idempotent (`$GLOBALS['lava_fixture_autoloader']`), so where the prepend did
+    run it costs one function call, and the mapping rule keeps its single home
+    instead of gaining four copies. **No production code changed** — the
+    framework's HTTP path never depended on the prepend.
+
+213. **`prependArguments()` was kept, not removed.** It is still the mechanism
+    by which a SERVED app gets pcov coverage capture (the prepend is where
+    `pcov\start()` lives for children), and the `coverage` job runs on 8.5 where
+    it works. Removing it would trade a documented 8.3 no-op for an
+    undiagnosed coverage hole. The no-op is now recorded in the fixture
+    comments and here rather than left to be rediscovered.
+
+214. **Docs were updated where the work made them false.** `docs/releasing.md`
+    step 6 still claimed the repository "has **no git remote configured**, so
+    the workflow has never run" — untrue since entry 205. It now describes the
+    jobs as the authority on the versions, adds `composer check:floor` as step 3
+    (renumbering the rest), and states the asymmetry CI cannot fix: PHPUnit
+    stops at the first uncompilable file, so a commit with N 8.4-isms costs N
+    pushes. `README.md` gained the `check:floor` line and the reason it and
+    `coverage` sit outside `verify`.
+
+### What is still not verified
+
+- **CI has not seen these commits.** The 8.3 fixes, the fixture change and the
+  gate are verified locally and in containers (below), but `test (8.3)` on
+  GitHub has not re-run. That is the next push's job, and it is the only
+  remaining authority on whether the floor now holds.
+- **`php:8.3-cli` is not GitHub's 8.3.** The container is a faithful-enough
+  proxy (it reproduced CI's exact parse error, message for message) but it is
+  not the same image `shivammathur/setup-php` builds. The `ServeTest` fix is
+  verified against the *behaviour* — the prepend not reaching `php -S` workers
+  — which is a property of PHP itself, not of the image.
+- **The floor gate needs network on a cold machine.** `php:8.3-cli` must be
+  pulled once. The gate says so rather than failing obscurely, but a CI machine
+  without docker or without network cannot run it — which is why it is not in
+  `verify`, and why the 8.3 matrix job remains the authority.
+- **`lava serve` on a real app on 8.3 is untested here.** The fix is reasoned
+  from the fixture/app difference (a real app has its own autoloader) but the
+  only 8.3 serve exercised is a fixture's.
+
+### Verified by running
+
+The full suite in containers, one per floored version, with `DB_TEST_DSN` set:
+**992 tests, 0 failures on php 8.3, 8.4 and 8.5** (1 skip in each: the
+`pdo_sqlite`-gated CLI case, which those images lack). Before the fixture fix
+the 8.3 run had 20 failures, all `ServeTest`, all 500s; the 8.5 run of the same
+container was green throughout, which is the control that made the diagnosis
+possible.
+
+`composer verify` on the host: **992 tests, 5382 assertions, OK**, then
+`[OK] No errors` from PHPStan level 8 and again from `phpstan:core` at `max`.
+The host run reaches one test and 5 assertions more than the containers because
+it has `pdo_sqlite` and pcov on `PHP_INI_SCAN_DIR`.
+
+`composer check:floor`: **"448 file(s) parse on PHP 8.3"**. Proven by injection
+— two probe files each carrying an 8.4-only construct were reported together
+with their real messages, exit 1, and the gate returned to green when they were
+removed. The 8.3 diagnosis itself was confirmed against a real interpreter
+before anything was changed: `php -l` on 8.3 reproduces CI's
+`syntax error, unexpected token "->"` verbatim on the old spelling and accepts
+the new one.
+
+The `php -S` finding was measured directly rather than inferred: a prepend that
+writes a line in the worker logged `ran pid=7 env='/probe/path'` under
+`php -S … PHP_CLI_SERVER_WORKERS=2` on 8.5, and produced no file at all on 8.3,
+while `variables_order` (`EGPCS`) and `getenv()`'s contents were identical on
+both — which is what ruled out the environment and left the SAPI behaviour.
