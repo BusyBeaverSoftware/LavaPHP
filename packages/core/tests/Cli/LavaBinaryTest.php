@@ -20,6 +20,17 @@ use PHPUnit\Framework\TestCase;
  */
 final class LavaBinaryTest extends TestCase
 {
+    /** @var list<string> */
+    private array $tempDirs = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->tempDirs as $dir) {
+            self::removeTree($dir);
+        }
+        $this->tempDirs = [];
+    }
+
     public function testTheBinaryAnswersFromTheWorkingDirectory(): void
     {
         // The binary lives in packages/core/bin; the app is resolved from the
@@ -30,6 +41,92 @@ final class LavaBinaryTest extends TestCase
         self::assertSame(ExitCode::Ok, $result->exit, $result->stderr);
         self::assertSame('lava.about/1', $result->schema());
         self::assertStringEndsWith('ok-app', (string) $result->data()['app']['dir']);
+    }
+
+    public function testTheAppsOwnAutoloaderWinsOverTheOneBesideTheBinary(): void
+    {
+        // The bug this pins: the binary used to look for `autoload.php` only
+        // relative to its OWN location. Installed with `vendor/lava/core` as a
+        // SYMLINK — which is every path-repo install, including this monorepo's
+        // own `packages/app` — `__DIR__` resolves through the link to the
+        // package's real home, so the binary loaded the MONOREPO's autoloader
+        // while booting the app's directory. Every class the app provided for
+        // itself then read as `bad_handler: the class does not exist`, pointing
+        // at a file sitting right there in the app.
+        //
+        // `Console::main` takes the app directory from the working directory and
+        // nothing else, so the two can never legitimately disagree: `<cwd>` is
+        // the app, and its autoloader is the answer. The class below is
+        // reachable ONLY through the app's own vendor/ — the harness's
+        // auto_prepend_file maps `App\` and nothing else — so this test fails
+        // loudly if the binary ever goes back to guessing from its own path.
+        $dir = $this->tempDir('lava-autoload-');
+        $root = dirname(__DIR__, 4);
+
+        self::write($dir . '/app/Routes.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            use Lava\Core\Routing\Router;
+
+            return function (Router $r): void {
+                $r->get('/site', 'site.show')->handler([\Site\Handler::class, 'show']);
+            };
+            PHP);
+
+        // The app's own namespace, in the app's own tree.
+        self::write($dir . '/site/Handler.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace Site;
+
+            use Lava\Core\Http\Responses;
+            use Psr\Http\Message\ResponseInterface;
+
+            final class Handler
+            {
+                public function show(): ResponseInterface
+                {
+                    return Responses::json(['site' => true]);
+                }
+            }
+            PHP);
+
+        // Stands in for the app's composer autoloader: a real install's provides
+        // the framework AND the app's own namespaces, and this one does both.
+        self::write($dir . '/vendor/autoload.php', sprintf(
+            <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            require %s;
+
+            spl_autoload_register(static function (string $class): void {
+                if (!str_starts_with($class, 'Site\\')) {
+                    return;
+                }
+                $file = %s . '/' . str_replace('\\', '/', substr($class, 5)) . '.php';
+                if (is_file($file)) {
+                    require_once $file;
+                }
+            });
+            PHP,
+            var_export($root . '/vendor/autoload.php', true),
+            var_export($dir . '/site', true),
+        ));
+
+        self::assertFileExists($dir . '/site/Handler.php');
+
+        $result = LavaCli::run(['routes', '--json'], $dir);
+
+        self::assertSame(ExitCode::Ok, $result->exit, $result->stderr);
+        self::assertSame([], $result->codes());
+        self::assertSame(['site.show'], array_column($result->data()['routes'], 'name'));
+        self::assertSame('Site\Handler', $result->data()['routes'][0]['handler']['class']);
     }
 
     public function testABareInvocationLists(): void
@@ -201,8 +298,47 @@ final class LavaBinaryTest extends TestCase
     /** A directory that is not an app, made fresh so nothing can be there. */
     private function emptyDir(): string
     {
-        $dir = sys_get_temp_dir() . '/lava-not-an-app-' . bin2hex(random_bytes(6));
-        self::assertTrue(mkdir($dir));
+        return $this->tempDir('lava-not-an-app-');
+    }
+
+    /**
+     * A fresh temp directory, registered for cleanup.
+     *
+     * @param string $prefix what the directory is, for a human reading `ls /tmp`
+     */
+    private function tempDir(string $prefix): string
+    {
+        $dir = sys_get_temp_dir() . '/' . $prefix . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($dir, 0o755, true));
+        $this->tempDirs[] = $dir;
+
         return $dir;
+    }
+
+    /** Writes a file, creating the directories it needs. */
+    private static function write(string $path, string $contents): void
+    {
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            self::assertTrue(mkdir($dir, 0o755, true));
+        }
+        self::assertNotFalse(file_put_contents($path, $contents));
+    }
+
+    private static function removeTree(string $path): void
+    {
+        if (!is_dir($path)) {
+            return;
+        }
+
+        foreach (scandir($path) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $child = $path . '/' . $entry;
+            is_dir($child) ? self::removeTree($child) : unlink($child);
+        }
+
+        rmdir($path);
     }
 }

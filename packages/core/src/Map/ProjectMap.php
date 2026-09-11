@@ -402,7 +402,14 @@ final readonly class ProjectMap
      */
     private static function configFiles(App $app): array
     {
-        $files = ['app/Modules.php', 'app/Routes.php', 'app/Services.php', 'app/Middleware.php', 'config/.env'];
+        $files = [
+            'app/Modules.php',
+            'app/Routes.php',
+            'app/Services.php',
+            'app/Middleware.php',
+            'app/Commands.php',
+            'config/.env',
+        ];
 
         foreach (glob($app->appDir . '/config/*.php') ?: [] as $file) {
             $files[] = 'config/' . basename($file);

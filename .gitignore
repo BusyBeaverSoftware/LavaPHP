@@ -2,6 +2,12 @@
 # A pack installed on its own (`cd packages/<pack> && composer install`) gets its own vendor/.
 # That install is how a pack's standalone claim is verified, not an artifact to commit.
 /packages/*/vendor/
+# lava/app is the one package of type "project", so it is the one that CAN have a
+# lock — and the one that must not commit it: the lock this monorepo generates
+# pins lava/core to a `../core` PATH repository, which does not exist in a
+# published skeleton. `composer create-project lava/app` has to resolve
+# lava/core from packagist, so it must ship no lock at all.
+/packages/app/composer.lock
 /composer.phar
 /.phpunit.cache/
 .phpunit.result.cache

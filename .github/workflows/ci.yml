@@ -32,6 +32,12 @@ jobs:
           php-version: '8.5'
           coverage: none
       - name: Each pack installs with only its own declared dependencies
+        # `composer validate`, NOT `--strict`. Every pack requires `lava/core:
+        # @dev`, which is what a path repository needs before the packs are on
+        # packagist; composer calls that an unbound constraint and `--strict`
+        # turns the warning into a non-zero exit, so `--strict` here failed the
+        # build on every pack. Plain `validate` still fails on a real error in
+        # the file, which is what this step is actually checking.
         run: |
           for pkg in db validate view http-client; do
             rm -rf /tmp/iso && mkdir -p /tmp/iso/packages
@@ -39,7 +45,33 @@ jobs:
             (
               cd "/tmp/iso/packages/$pkg" \
                 && composer install --no-interaction --no-progress \
-                && composer validate --strict \
+                && composer validate \
                 && echo "OK: lava/$pkg installed standalone"
             )
           done
+
+  skeleton:
+    name: Prove lava/app boots green from a fresh install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - name: Fresh copy of the skeleton, beside core, installed for real
+        # The layout matters: `vendor/lava/core` is a SYMLINK to the sibling
+        # core, which is what every path-repo install looks like. That symlink is
+        # what made the binary load the monorepo's autoloader instead of the
+        # app's, so this job fails if that regression ever comes back.
+        run: |
+          rm -rf /tmp/skeleton && mkdir -p /tmp/skeleton/packages
+          cp -r packages/core packages/app /tmp/skeleton/packages/
+          rm -rf /tmp/skeleton/packages/app/vendor /tmp/skeleton/packages/app/composer.lock
+          cd /tmp/skeleton/packages/app
+          composer install --no-interaction --no-progress
+          # R2: the skeleton ships a pre-generated AGENTS.md that is accurate
+          # from the moment of `composer install` — no chicken-and-egg with
+          # `lava map`, so this passes on a fresh checkout with no map run.
+          ./vendor/bin/lava map --check
+          ./vendor/bin/lava check --strict

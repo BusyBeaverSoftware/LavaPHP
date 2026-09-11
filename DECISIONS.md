@@ -1105,3 +1105,164 @@ told to trust can drift from the classes in silence. The proposed fix is
 unchanged and still small — a test reflecting over `LavaProblem` subclasses and
 asserting the code set equals the table's first column, in both directions. It
 remains unacted on because it changes what the table *is*, which is your call.
+
+## 2026-09-11 — M7 slice 2 (`lava/app` skeleton, pre-generated map, CI enforcement)
+
+53. **Handlers take dependencies as METHOD parameters, and the skeleton's first
+    draft got this wrong.** `HandlerInvoker` constructs a handler class with
+    `new $class()` and no arguments; services arrive as typed method parameters.
+    My skeleton shipped `HelloController(private readonly Greeter $greeter)`,
+    which boot refused with `bad_handler: the constructor has required
+    parameters` — correctly, and with the fix in the message. This is the one
+    place a competent PHP developer's instinct (constructor injection) is wrong
+    here, so it is worth recording that the framework was right and the skeleton
+    was wrong, not the reverse. The rule was ALREADY documented — `docs/
+    conventions.md` §"The handler contract" says "no required parameters —
+    dependencies arrive as typed method parameters" — and I had written the
+    skeleton without reading it. Nothing in the docs needed changing. Fixed by
+    moving `Greeter` to a method parameter, and the wrong story in
+    `app/Routes.php`'s comment ("the controller itself comes from the
+    container") was corrected in the same pass: it is built with `new`.
+
+54. **`bin/lava`'s autoloader discovery is cwd-first, and that is not a heuristic
+    — it is the answer.** `Console::main($argv, ?string $appDir = null)` takes
+    the app directory from `getcwd()` and from nowhere else, so `<cwd>` IS the
+    app; the two can never legitimately disagree. The four candidates are
+    `<cwd>/vendor/autoload.php`, then `$GLOBALS['_composer_autoload_path']` (set
+    by composer's own bin proxy — the only candidate that survives
+    `vendor/lava/core` being a SYMLINK, because `__DIR__` resolves through the
+    link to the package's real home), then the two `__DIR__`-relative forms. The
+    old order was `__DIR__`-first, which is how `packages/app` — a path-repo
+    install with `vendor/lava/core` symlinked to `../core` — loaded the
+    MONOREPO's autoloader while booting the app, and reported `bad_handler: the
+    class does not exist` for a class sitting right there in the app's own
+    `app/`. Found by running the real acceptance path, not by reading code.
+
+55. **`app/Commands.php` was missing from `ProjectMap::configFiles()`,** so the
+    generated map's Files section — "the framework reads a fixed set of paths" —
+    omitted a path the framework does read. A small real gap, found while
+    reading the skeleton requirements. Added, which is also why the committed map
+    lists `app/Commands.php` even though the skeleton ships no such file: every
+    path in that table is optional, and the table is a list of what you MAY
+    write.
+
+56. **The skeleton ships `config/.env.example`, not `config/.env`,** so the
+    generated map's Environment section reads 0 on a fresh install. That is
+    accurate rather than a bug: the app as installed reads no environment
+    variables. It goes stale the moment you `cp config/.env.example config/.env`
+    — which is the first thing the README tells you to do, and a clean
+    demonstration of what the staleness hash is for. Committing a real `.env` was
+    not an option: `.env` is gitignored repo-wide, and a template whose whole
+    point is that the real environment beats the file should not ship one.
+
+57. **The skeleton ships a pre-generated `AGENTS.md` (R2), and the claim was
+    verified by diffing two real installs rather than asserted.** A copy of
+    `packages/{core,app}` was installed in a temp directory with
+    `COMPOSER_MIRROR_PATH_REPOS=1` — which forces composer to COPY the path
+    repository instead of symlinking it, the closest available stand-in for a
+    packagist install — and `lava map` run there produced a file byte-identical
+    to the committed one, from a different app directory and a different vendor
+    layout. That is exactly what slice 1's portable-path work enables: the
+    document describes the app, not where the app lives. The full M7 acceptance
+    chain was then run in that same install: `lava check` green; edit a route →
+    `lava check` warns `stale_map` with exit 0, and exit 1 under `--strict`;
+    `lava map` → green again.
+
+58. **The app's `composer.lock` is gitignored, deliberately.** The repo's
+    convention is that only the root lock is tracked, but there is a stronger
+    reason here: a lock generated in this monorepo pins `lava/core` to the
+    `../core` PATH repository, and `composer create-project lava/app` has to
+    resolve `lava/core` from packagist — so the skeleton must ship no lock at
+    all. The rule is in `.gitignore` next to the reason, because the next person
+    to run `composer install` in `packages/app` will generate one.
+
+59. **The `../core` path repository stays in the skeleton's `composer.json`, and a
+    README records why.** A published `lava/app` must not carry it — verified:
+    with `../core` absent, composer hard-fails with "The `url` supplied for the
+    path (../core) repository does not exist" rather than falling back to
+    packagist. The plan anticipated this at its own line 317 ("create-project
+    from path repos is finicky pre-packagist — skeleton tested via copy+install;
+    create-project validated once published"), so the in-tree path repo is the
+    prescribed arrangement and the resolution belongs to M9. The README says so
+    where a reader will find it, rather than leaving it as folklore.
+
+60. **CI's `isolated-install` job was RED, and had been since M0 — a real
+    pre-existing bug, found by running the step.** `composer validate --strict`
+    fails on every pack: each requires `lava/core: @dev`, composer calls that an
+    unbound constraint and warns, and `--strict` promotes warnings to a non-zero
+    exit. Reproduced under `bash -e` exactly as Actions runs it — step exit 1,
+    for all four packs. Fixed by dropping `--strict`; plain `validate` still
+    fails on a real error in the file, which is what the step is for. The
+    constraint was NOT changed: `@dev` is what a path repository needs before the
+    packs are on packagist, so "fixing" the warning would have broken every
+    install. Worth recording that a CI job can be red for three milestones
+    without anyone noticing, because nothing local runs the workflow.
+
+61. **A `skeleton` CI job now enforces R2 on every push.** Fresh copy of
+    `packages/{core,app}` into a temp directory, `composer install`, then
+    `lava map --check` (R2 stated on its own line) and `lava check --strict`. The
+    LAYOUT is the point: `vendor/lava/core` is a symlink to the sibling `core`,
+    which is precisely the shape that triggered decision 54 — so this job fails
+    if that regression ever returns. Both jobs were verified green by running
+    them locally as written, not by reading them.
+
+62. **The autoloader fix has a regression test, and the test was proven to
+    discriminate.** `testTheAppsOwnAutoloaderWinsOverTheOneBesideTheBinary`
+    builds a temp app whose `Site\Handler` is reachable ONLY through the app's own
+    `vendor/autoload.php` — the harness's `auto_prepend_file` maps `App\` and
+    nothing else, so no fixture machinery can mask the result. I then patched
+    `bin/lava` back to the old two-candidate `__DIR__`-relative order and re-ran
+    it: the test FAILS (exit 1, not 0). Restored, it passes. A regression test
+    that has never been seen to fail is a guess.
+
+63. **A red test suite is not a framework problem — and I nearly "fixed" a
+    documented decision.** While probing the skeleton, `lava check` on an app with
+    a failing test reported `status: failed` with `problems: []`, which looked
+    like a wart: an agent reading only `problems` would conclude nothing was
+    wrong. It is deliberate, and `docs/conventions.md` says so in as many words —
+    "A red test suite is not a problem... the framework does not pronounce on code
+    it never read" — with PHPUnit's own message carried in `data.tests.cases[]`
+    (file, line, type, message) as the better fix hint. No change made. Logged
+    because the lesson is the one that repeats: read the conventions before
+    treating output as a defect.
+
+64. **The readable-path list IS hashed, and that is correct — but it means a
+    framework change can invalidate an app's committed map.** Adding
+    `app/Commands.php` to `configFiles()` moved `ok-app`'s fingerprint from
+    `1820933a07fe656c` to `27c9bf5f2fa35955`, which I checked rather than assumed.
+    At first glance that looks like it contradicts decision 42 ("a change to the
+    renderer must not make every app's map stale"), but it does not: the Files
+    table is part of what the document SAYS, so a document generated before the
+    change is genuinely no longer what `lava map` would write — and the hash
+    exists to answer exactly that question. If the path list were excluded, an
+    old document would report `--check` green while differing from a fresh
+    generation by a whole table row, which is the one thing the hash must never
+    do. The distinction decision 42 draws is between *formatting* (a column
+    order, different wording — not hashed) and *facts* (which paths are read —
+    hashed). Pack manifests contribute their `config_files` to the same list, so
+    enabling a pack moves the hash too, which is intended: the app really did
+    change.
+
+    The consequence to keep in view: the `AGENTS.md` the skeleton ships is
+    accurate for the framework version it ships WITH. A published app that
+    resolves a newer `lava/core` could therefore start life with a map that is
+    stale by one table row. The new `skeleton` CI job (decision 61) is what keeps
+    the in-tree claim honest across framework changes, and `lava check` reports
+    `stale_map` immediately — a warn, with `Run: lava map` as its fix — so a user
+    in that position is told what to do rather than left with a silently wrong
+    document. Not worth engineering around further; recorded so the next person
+    to change the readable-path set knows it invalidates every committed map and
+    that the skeleton's must be regenerated in the same commit.
+
+Verified this slice by running the real binary and the real CI steps, not by
+reading code: `lava check` in `packages/app` green (9 sections, 5 tests, 10
+assertions); the committed `AGENTS.md` byte-identical across a monorepo checkout
+and a copied install; the M7 acceptance chain green in that install; the new
+`testTheAppsOwnAutoloaderWinsOverTheOneBesideTheBinary` shown to fail against the
+old discovery order and pass against the new; both CI jobs green when run as
+written. Full suite: **705 tests, 3468 assertions, 26 skipped**. PHPStan level 8:
+no errors.
+
+The two open findings from slice 1 (decisions 18 and 22, and the restatement of
+22 at the end of the slice-1 section) remain unacted on and still need your call.
+Nothing in this slice changed their shape.

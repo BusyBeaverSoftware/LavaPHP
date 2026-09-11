@@ -10,13 +10,41 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-// Two homes: the monorepo (packages/core/bin/lava → <root>/vendor) and an
-// installed dependency (vendor/lava/core/bin/lava → vendor/autoload.php).
+// Which composer autoloader to load. Four homes, in the order the framework can
+// trust them:
+//
+//  1. `<cwd>/vendor/autoload.php` — the app you are standing in. The SAME
+//     principle the app directory follows (see Console::main), and the two have
+//     to agree: loading one install's autoloader while booting another
+//     directory's app is how you get `bad_handler` for a class that is sitting
+//     right there in the app's own `app/`.
+//  2. `_composer_autoload_path` — set by Composer's own bin proxy, which is what
+//     `vendor/bin/lava` is. It names the install the binary was launched from,
+//     and it is the only candidate here that survives `vendor/lava/core` being a
+//     SYMLINK (a path-repo install, or a monorepo app using path repos):
+//     `__DIR__` resolves through a symlink to the package's real home, so every
+//     `__DIR__`-relative candidate below would find the WRONG vendor directory.
+//  3. `__DIR__ . '/../../../autoload.php'` — installed as a dependency with no
+//     proxy in between: vendor/lava/core/bin → vendor/autoload.php.
+//  4. `__DIR__ . '/../../../vendor/autoload.php'` — the monorepo:
+//     packages/core/bin → <root>/vendor/autoload.php.
+$candidates = [];
+
+$cwd = getcwd();
+if (is_string($cwd)) {
+    $candidates[] = $cwd . '/vendor/autoload.php';
+}
+
+$fromProxy = $GLOBALS['_composer_autoload_path'] ?? null;
+if (is_string($fromProxy)) {
+    $candidates[] = $fromProxy;
+}
+
+$candidates[] = __DIR__ . '/../../../autoload.php';
+$candidates[] = __DIR__ . '/../../../vendor/autoload.php';
+
 $autoload = null;
-foreach ([
-    __DIR__ . '/../../../vendor/autoload.php',
-    __DIR__ . '/../../../autoload.php',
-] as $candidate) {
+foreach ($candidates as $candidate) {
     if (is_file($candidate)) {
         $autoload = $candidate;
         break;
