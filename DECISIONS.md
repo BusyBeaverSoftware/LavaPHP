@@ -436,3 +436,15 @@ the temporary real-SAPI gate.
     validates the framework's own output in tests and ships in no release. The
     schemas themselves are plain JSON files in `docs/schemas/`, readable by any
     validator an agent already has.
+
+14. **`lava check` has eight sections, not the plan's six-plus-`map`.** The plan
+    describes the section list as "boot + routes + wiring + features + tests +
+    map", and `map` arrives in M7 with `lava map` itself — there is nothing to
+    check yet, and a section that is always `ok` trains a reader to skip it. The
+    sections are also split finer than the plan's phrasing (boot, config, wiring,
+    routes, features, env, commands, tests), because "which part of the app is
+    broken" is the first question an agent asks and a merged `boot` section would
+    make it answer by reading problem codes. Consequence to plan for: `sections`
+    is an `enum` in `lava.check/1`, so M7 adding `map` is a payload change that
+    needs `lava.check/2` rather than an edit — the frozen-`/N` rule applies to
+    the section list like anything else.
