@@ -39,7 +39,13 @@ final class DemoPackModule implements Module, ProvidesRoutes
 {
     public function pack(): PackInfo
     {
-        return PackInfo::of('lava/demo-pack', 'demo_pack', envVars: ['DEMO_API_KEY']);
+        // Both halves of a pack manifest, because both are read by core rather
+        // than by the pack: `configFiles` by LoadPackConfig at boot, `envVars`
+        // by `lava env` and `lava check`. A config file name is a STEM —
+        // `'database'` means `config/database.php`, and the extension is added
+        // by whoever reads it. This fixture has that file, so the manifest and
+        // the filesystem describe the same thing and the map must say it once.
+        return PackInfo::of('lava/demo-pack', 'demo_pack', configFiles: ['database'], envVars: ['DEMO_API_KEY']);
     }
 
     public function register(Container $container, AppContext $ctx): void

@@ -417,7 +417,14 @@ final readonly class ProjectMap
 
         foreach ($app->packs as $manifest) {
             foreach ($manifest->configFiles as $name) {
-                $files[] = 'config/' . $name;
+                // A pack declares a config file as a STEM — `configFiles:
+                // ['database']` — and core's LoadPackConfig reads
+                // `config/{$name}.php`. Rendering the stem verbatim would put
+                // `config/database` in the table, a path that is not a file,
+                // next to the real `config/database.php` the glob above found:
+                // the same file listed twice, once under a name that cannot be
+                // opened. Spelling the extension here makes the two collapse.
+                $files[] = 'config/' . $name . '.php';
             }
         }
 

@@ -75,3 +75,43 @@ jobs:
           # `lava map`, so this passes on a fresh checkout with no map run.
           ./vendor/bin/lava map --check
           ./vendor/bin/lava check --strict
+
+  demo:
+    name: Prove apps/demo boots, migrates and passes green
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          # pdo_sqlite is the demo's default driver and IS in this image, so no
+          # extra step is needed — but it is the reason this job can run the
+          # migrations against a real file instead of only against memory.
+          coverage: none
+      - name: Fresh copy of the demo, beside the packs it loads, installed for real
+        # The demo is the canonical app, so it is the one place a change to core,
+        # db or validate has to survive contact with an app that actually uses
+        # them. Installed rather than run in-tree for the same reason as the
+        # skeleton: `vendor/lava/core` must be a symlink to the sibling checkout,
+        # which is what a real install looks like.
+        run: |
+          rm -rf /tmp/demo && mkdir -p /tmp/demo/packages /tmp/demo/apps
+          cp -r packages/core packages/db packages/validate /tmp/demo/packages/
+          cp -r apps/demo /tmp/demo/apps/demo
+          rm -rf /tmp/demo/apps/demo/vendor /tmp/demo/apps/demo/composer.lock
+          cd /tmp/demo/apps/demo
+          composer install --no-interaction --no-progress
+      - name: The quick start in the README, run for real
+        # A committed AGENTS.md is only trustworthy if something checks it on
+        # every change, and the migration path is only trustworthy if it runs
+        # against a file rather than only against sqlite::memory:.
+        working-directory: /tmp/demo/apps/demo
+        run: |
+          ./vendor/bin/lava db:migrate
+          ./vendor/bin/lava app:seed
+          ./vendor/bin/lava app:stats --json
+      - name: Verify the app the way its README says to
+        working-directory: /tmp/demo/apps/demo
+        run: |
+          ./vendor/bin/lava map --check
+          ./vendor/bin/lava check --strict

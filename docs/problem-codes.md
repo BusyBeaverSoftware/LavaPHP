@@ -215,3 +215,28 @@ health, and a documentation lag is a warning on it; `map --check` is asked one
 question and answers it, and a verification command that answers "no" with exit
 0 is useless to a build. `lava check --strict` is where the warning becomes a
 build failure, which is the same door `missing_env_var` uses.
+
+## App-owned codes are not in this registry
+
+Every code in the table above is one the *framework* raises, and this document is
+its catalogue. An app raises codes too — the demo's `task_not_found` is one — and
+they belong in the app's own `Lava\Core\Problem\LavaProblem` subclass, not here.
+
+The split is the same one that puts a pack's problems in `Lava\<Pack>\Problem\`
+rather than in core: whoever owns the knowledge writes the message and the fix.
+Core cannot write "Run: `lava app:stats --json`, or GET /tasks, to list the ids
+that exist" — that sentence is only true in one app. A registry entry here would
+be a framework document claiming to know something it does not.
+
+What an app-owned code does inherit is the *shape*, and that is the whole point:
+subclass `LavaProblem`, return a snake_case `code()`, pass a fix string, and the
+problem flows through the same `ProblemReport`, the same CLI envelope, and the
+same HTTP negotiation as `missing_pack` — with no registration step and nothing
+in core to change. `lava check` does not lint the code's spelling, because it
+cannot know what the app considers stable; the code becomes a contract the
+moment the app publishes it, and that is the app's call to make, not the
+framework's.
+
+So: absent from this table is not an oversight, and an app adding a row here
+would be a bug. If a code you are looking at is not listed, grep the app's
+`Problem/` directory — that is where it lives.

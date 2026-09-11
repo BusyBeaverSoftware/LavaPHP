@@ -66,6 +66,41 @@ final class ProjectMapTest extends TestCase
         self::assertSame(1, $map->counts()['middleware']);
     }
 
+    /**
+     * A config file a pack declares is the SAME file the filesystem shows, and
+     * the document has to say so once.
+     *
+     * The regression this guards was real and survived the whole milestone that
+     * built this command, because no fixture app loaded a pack that declared a
+     * config file: `PackInfo` names it as a stem (`'database'`) and the loader
+     * adds the extension, but the Files table rendered the stem verbatim — so
+     * `config/database` (a path that cannot be opened) sat in the table beside
+     * the real `config/database.php` that the glob had already found. Two rows,
+     * one file, and the reader left to work out which one they were allowed to
+     * edit.
+     */
+    public function testAPackConfigFileIsListedOnceUnderItsRealPath(): void
+    {
+        $app = self::boot('module-app');
+        $config = ProjectMap::of($app)->config;
+
+        self::assertContains('config/database.php', $config);
+        self::assertNotContains('config/database', $config, 'a config file is listed by its path, never by the stem a pack declares');
+        self::assertSame(
+            count($config),
+            count(array_unique($config)),
+            'every path in the Files table is distinct',
+        );
+
+        // The fixture's pack is the reason this file is known at all, so the
+        // manifest really is the source and not a coincidence of the glob.
+        $declared = [];
+        foreach ($app->packs as $manifest) {
+            $declared = [...$declared, ...$manifest->configFiles];
+        }
+        self::assertContains('database', $declared);
+    }
+
     public function testTheRoutesSectionDescribesWhatTheRouterHolds(): void
     {
         $app = self::okApp();

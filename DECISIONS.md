@@ -1266,3 +1266,158 @@ no errors.
 The two open findings from slice 1 (decisions 18 and 22, and the restatement of
 22 at the end of the slice-1 section) remain unacted on and still need your call.
 Nothing in this slice changed their shape.
+
+## 2026-09-11 — M7 slice 3 (`apps/demo` promoted to the canonical app)
+
+65. **Middleware must be registered in `app/Services.php`, and listing it in
+    `app/Middleware.php` is not enough.** The demo's first boot failed with
+    `service_not_registered` for `App\Http\RequestIdMiddleware` — I had declared
+    it as global middleware and never registered it. This is decision 53's shape
+    again, one layer out: a handler class is built with `new`, but a middleware
+    class is *resolved from the container* at request time, so a name that was
+    never registered is a boot problem rather than a 500 on the first request
+    that hits it. `BuildRouter`/`ValidateWiring` catch it, and the fix in the
+    message names the exact `$c->singleton(…)` line to add. Worth recording that
+    the framework was right and the app was wrong for the second time in two
+    slices, and that the `ok-app` fixture's own comment had said so all along:
+    "Middleware is resolved from the container at request time — register it like
+    any other service (validated at boot by BuildRouter)."
+
+66. **A real defect in `ProjectMap::configFiles()`, found only because the demo
+    finally loaded a pack that declares a config file.** `PackInfo` names a
+    config file as a STEM — `configFiles: ['database']` — and `LoadPackConfig`
+    reads `config/{$name}.php`; but the Files table rendered the stem verbatim.
+    The demo's generated map therefore listed BOTH `config/database` (a path that
+    cannot be opened) and the real `config/database.php` the glob had already
+    found: two rows, one file, and the reader left to work out which one they
+    were allowed to edit. Fixed by appending the extension where the manifest is
+    read. The defect survived the entire milestone that built `lava map` because
+    **no fixture app loaded a pack declaring a config file** — every fixture
+    either had no packs or a pack with an empty manifest. The regression test
+    `testAPackConfigFileIsListedOnceUnderItsRealPath` needed a fixture that did,
+    so `module-app`'s `DemoPackModule` gained `configFiles: ['database']` and the
+    fixture gained the matching `config/database.php`. The test was then proven
+    to discriminate, not assumed: reverting `$files[] = 'config/' . $name . '.php'`
+    to `$files[] = 'config/' . $name` makes it FAIL ("Failed asserting that an
+    array does not contain 'config/database'"), and restoring the fix makes it
+    pass. A regression test that has never been seen to fail is a guess.
+
+    The consequence, measured rather than reasoned: the demo's fingerprint moved
+    `dc2fb06f28a274bd` → `1aacbbf3666c1401`, and the committed `AGENTS.md` had to
+    be regenerated in this commit. `packages/app`'s map did NOT move — verified by
+    running `lava map --check` there, which reports `packs: 0`: the skeleton
+    declares no packs, so the pack-manifest loop never runs and its facts are
+    unchanged. That is decision 64's rule holding exactly as stated — a change to
+    what the document SAYS invalidates the maps that say it, and nothing else.
+
+67. **The demo's two app commands share an abstract base, `AppTaskCommand`,
+    mirroring the framework's own `DbCommand`.** Both need a typed
+    `TaskRepository` out of the container, and `Container::get()` returns `mixed`
+    — there is no typed accessor, deliberately. The framework's answer to that is
+    `InvalidConfig::wrongService($id, $expected, $got)`, so the demo uses the
+    framework's answer rather than an `instanceof` check with its own wording or
+    an `assert()`. The base class also sets `pack(): 'app'`, which is what makes
+    `lava list` group the app's own commands separately from core's and db's.
+    Chosen over a trait and over repeating the four lines in each command,
+    because the framework already demonstrates the base-class form and the demo's
+    job is to look like the framework.
+
+68. **`app:stats` counts in PHP, and that is the honest answer rather than a
+    shortcut.** The query builder has no aggregate verb, and `select('COUNT(*)')`
+    is actively broken: `Dialect::quote()` leaves `*` bare but quotes every other
+    segment, so it compiles to `"COUNT(*)"`. I first wrote the overdue count as
+    `scalar(select('id')->where(…))` — caught by reading `Connection::scalar()`,
+    which returns `(array_values($row)[0] ?? null)`, i.e. the FIRST COLUMN OF THE
+    FIRST ROW: an id, not a count. Counting four rows in PHP is correct at demo
+    scale and needs no new framework surface; `Connection::query()` is the
+    documented raw path when a real app outgrows it. The docblock says so where
+    the next reader will look, and the same reasoning is in the demo's README —
+    the alternative was a canonical example whose numbers were quietly wrong.
+
+69. **The CSV export test parses instead of string-matching, and the first
+    version of it failed for the wrong reason.** `fputcsv` encloses any field
+    containing a space, so the row is `7,"Ship it",0,2026-12-31,…`. That is
+    correct CSV. My assertion (`assertStringContainsString('Ship it,0,…')`) was
+    asserting PHP's quoting rules rather than the data, so the TEST was fixed and
+    the app was not: `str_getcsv($lines[1], escape: '')` and assert on parsed
+    values. Fighting `fputcsv` would have meant hand-rolling CSV in the canonical
+    app. The same file spells a boolean as `'1'`/`'0'` rather than casting,
+    because `fputcsv` writes `false` as `''` — a distinction the test now states
+    out loud ("a boolean has to be spelled out").
+
+70. **The skeleton's `app/Modules.php` docblock was wrong about the gate flag,
+    and correcting it produced a second finding.** It claimed a pack entry
+    "requires the matching `Feature::define('db', …)` in `config/features.php`
+    plus `composer require lava/db`." Both halves are wrong: `CollectFlagDefinitions`
+    auto-defines each module's gate as `Flag::on()` from `app/Modules.php`, and
+    `absorbDefine` explicitly REJECTS a `define` entry for a pack's flag ("Flag
+    'db' is the gate for pack lava/db and is defined by the pack itself"). So the
+    documented instruction was not merely unnecessary — following it is a boot
+    problem. The correction names the two things a pack really takes (the ref
+    line and `composer require`) and points at `'set'` for turning one off.
+
+    Then I verified the correction instead of shipping it on reading, by adding
+    `'db' => Flag::off()` to the demo's `set` section and booting. It does NOT
+    cleanly disable the pack: `app/Services.php` registers `TaskRepository`, which
+    type-hints `Lava\Db\Connection`, so with the pack off the app boots to
+    `service_not_registered` naming that file and line. That is the wiring
+    contract working as designed — with no auto-wiring there is nothing to fall
+    back to, so a dangling reference is a boot problem with the line to fix rather
+    than a 500 on request N+1 — but it means "turn the pack off with one config
+    line" is only true for an app that does not use it. The docblock now says
+    that too. Reverted the demo's `set` section immediately; `lava check --quick`
+    green again, `problems: []`.
+
+71. **`pkill -f "lava serve"` killed my own shell.** The pattern matched the
+    shell's own command line, so the shell exited 144 along with the server. Fixed
+    by reading pids from `ps aux` and issuing `kill -TERM <pids>`, then verifying
+    the port was dead with `curl --max-time 2`. Recorded because the reflex is
+    wrong in exactly the situation it feels most useful — cleaning up a dev
+    server at the end of a run — and the failure looks like the agent being
+    killed rather than like the command being wrong.
+
+72. **A `demo` CI job now runs the README's quick start for real.** Fresh copy of
+    `apps/demo` beside `packages/{core,db,validate}` (the three path repositories
+    its `composer.json` declares), `composer install`, then `lava db:migrate`,
+    `lava app:seed`, `lava app:stats --json`, then `lava map --check` and
+    `lava check --strict`. The migration step is the one that earns its place: the
+    suite runs against `sqlite::memory:`, so nothing else in CI exercises the
+    documented on-disk DSN or the `var/` directory. Verified by replicating the
+    whole job locally from a fresh copy — install, migrate (1 migration, batch 1),
+    seed (4 rows), stats (`{"total":4,"open":4,"done":0,"overdue":0}`),
+    `map --check` current, `check --strict` green with 11 tests / 47 assertions,
+    every step exit 0. `map --check` passing in a `/tmp` app directory is also a
+    live proof of slice 1's portability property: the committed map is accurate
+    from a path it was never generated in.
+
+73. **`docs/problem-codes.md` now states that app-owned codes are not in the
+    registry.** The registry catalogues the FRAMEWORK's codes, and the demo raises
+    `task_not_found`, which belongs to the app. The section explains why the split
+    exists (core cannot write "Run: `lava app:stats --json`…" — that sentence is
+    only true in one app), that what an app inherits is the shape rather than an
+    entry, and that an app adding a row to the table would be a bug. Added because
+    a reader who greps the table for a code they saw in a response and finds
+    nothing needs to know that absence is by design, not a gap in the docs.
+
+Verified this slice by running the real binary and the real CI steps, not by
+reading code: the demo boots, migrates, seeds, serves and passes its suite
+(11 tests, 47 assertions); a real-HTTP smoke test confirmed `X-Request-Id` on
+every response, both validation problems in one 422 with fix text, a real
+`task_not_found` 404, and correctly quoted CSV; the flag gate was proven over
+HTTP and over the CLI (`LAVA_FEATURE_TASKS_CSV_EXPORT=off` removes `tasks.export`
+from `lava routes`, and `lava features resolve` shows the full three-layer trace);
+the new regression test was shown to fail against the old rendering and pass
+against the fix; the new CI job was replicated end to end from a fresh copy; and
+`packages/app`'s committed map was confirmed still current (`packs: 0`) rather
+than assumed unaffected. Full suite: **706 tests, 3756 assertions**. PHPStan
+level 8: no errors. `lava check --quick` on the demo runs in 0.02–0.03s against a
+budget of under 2s.
+
+The two open findings from slice 1 (decisions 18 and 22) remain unacted on and
+still need your call. Nothing in this slice changed their shape.
+
+Environment note: no PDO driver is installed system-wide on this machine, so the
+demo's suite and the CI replication above were run with an extracted `sqlite3.so`
++ `pdo_sqlite.so` on `PHP_INI_SCAN_DIR` — no sudo, no system change. The plan's
+prerequisite is `sudo apt install php8.5-sqlite3`; CI needs nothing, since
+`ubuntu-latest` + `setup-php` ships `pdo_sqlite`.
