@@ -104,11 +104,15 @@ final class UpstreamServer
             usleep(50_000);
         }
 
+        // Read the log BEFORE stopping: `stop()` deletes it (it is a tempnam
+        // this harness made), and the log is the only thing that explains why
+        // the server never came up.
+        $why = is_file($log) ? (string) file_get_contents($log) : '(no log)';
+
         $server->stop();
 
         throw new \RuntimeException(
-            "the demo upstream server did not come up on port {$port}.\n"
-            . (string) file_get_contents($log),
+            "the demo upstream server did not come up on port {$port}.\n" . $why,
         );
     }
 

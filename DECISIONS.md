@@ -2668,3 +2668,71 @@ ignored, as documented. `composer validate` passes on all four packs and the roo
     that has to move is worse than a late one. The 0.1.0 tag created at the end of
     this milestone is therefore LOCAL and unpushed; pushing it is the publication
     act and is the user's call, gated on that first green run.
+
+178. **The pack's HTTP harness leaked its temp files; the demo's copy of the SAME
+    harness had already been fixed.** Decision 116 (M8 slice 3) fixed exactly this
+    in `apps/demo/tests/Support/UpstreamServer.php` — `stop()` unlinks the
+    `tempnam` log and the `/flaky-<id>` counter files, with the ids recorded at
+    hand-out time so the harness owns their lifetime. The pack's
+    `tests/Support/LocalServer.php` is the deliberate duplicate of that file
+    (decision 108: two copies, so each can prove its own claim) and it was never
+    given the fix. 179 files had accumulated in `/tmp` — 110 drop counters, 39
+    server logs, 30 not-an-app dirs — and the leak was live: a suite run added
+    about nine. Nothing failed, and nothing that passed said anything, which is
+    the whole reason this class of leak survives. Fixed by mirroring the demo's
+    shape rather than inventing a second one: `COUNTER_PREFIX` as a public const,
+    ids recorded in `flakyId()`, and `stop()` removing the log plus every counter
+    carrying a recorded id. The counter NAME is not known at hand-out time (an id
+    is handed out before a test picks a counter), so the cleanup globs by id; the
+    id is hex, so it cannot inject a wildcard. Verified by running: the pack suite
+    now leaves **0** files, was ~9.
+
+179. **`stop()` deleting the log exposed a second bug in the same method, in both
+    copies.** Both `LocalServer::shared()` and `UpstreamServer::shared()` read the
+    server's log INTO the "did not come up" exception — after calling `stop()`.
+    Once `stop()` unlinks the log, that read returns an empty string and a
+    warning, so the one diagnostic that explains a failed start would have gone
+    silent exactly when it was needed. Fixed by reading the log before stopping,
+    in both. This is a change to a rarely-taken path, and it is worth stating
+    plainly that it was found by reading the method I was editing rather than by
+    a failing test: nothing covers "the fixture server never came up", because
+    making it happen is not a thing a test can arrange.
+
+180. **The pack's `/flaky` fixture route modelled a rule the pack deliberately does
+    not have.** It failed `fail` times with a 500 and then succeeded — i.e. it
+    modelled retrying a 5xx. `HttpClient`'s docblock states the retry boundary is
+    "no response arrived", and that retrying a 5xx without honouring `Retry-After`
+    and without jitter is a request the caller's rate limiter pays for twice. So
+    the route was both unexercised (no test requested it) and wrong in the
+    direction that matters: a future test written against it would have pinned
+    the opposite of the pack's rule. Rewritten to the demo's semantics —
+    truncate on the first attempt, answer the second — which is the boundary the
+    pack retries on, and then actually exercised: decision 181.
+
+181. **`testARetryThatSucceedsReturnsTheGoodResponse` closes a real gap.** The
+    pack's retry rule was covered from both ends already — attempt COUNTS via
+    `FakeTransport` in-process, and two live tests asserting the count when every
+    attempt fails — but nothing asserted the positive path over a socket: that a
+    retry which succeeds returns the good response to the caller. The new test
+    asserts the status, the body AND the server-side counter, so the second
+    attempt is the server's fact and not the client's opinion. Also added:
+    `testTheFixtureRouterKeepsCountersWhereTheHarnessLooksForThem`, which asserts
+    the router file contains `LocalServer::COUNTER_PREFIX`. `LocalServer`'s
+    docblock had claimed a test kept the two duplicated prefixes honest; it did
+    not, so the claim was false. It is true now.
+
+182. **The 0.1.0 tag was re-cut, and that is only legitimate because it is local.**
+    The tag created earlier in this milestone pointed at `f4ede08`; these harness
+    fixes landed after it. A tag that has not been pushed and that nothing has
+    resolved against may be moved — and my own checklist says a tag CI has seen
+    may not be, which is the distinction that matters. The tag now points at the
+    final commit of M9, and it is still unpushed.
+
+### Verified by running
+
+`composer verify`: **960 tests, 4603 assertions** (from 958 / 4598 — the two new
+tests), level 8 and core-at-`max` both `[OK] No errors`. `composer coverage` exits
+**0**, every pack at or above its floor, unchanged (the changes are tests and
+fixtures, not `src`). The demo suite: 24 tests / 99 assertions, 0 files left in
+`/tmp`. The http-client suite: 100 tests / 261 assertions, **0 files left** — it
+was about nine per run. The 179 accumulated artifacts were removed.
