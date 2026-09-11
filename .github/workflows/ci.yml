@@ -29,6 +29,46 @@ jobs:
       - name: Verify (phpunit all suites + phpstan level 8 + core at max)
         run: composer verify
 
+  coverage:
+    name: Measure the packs, with the CLI subprocesses counted
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          # pcov, not xdebug: this suite spawns ~150 `bin/lava` children, and
+          # each one pays the driver's startup cost — which is the whole reason
+          # pcov exists. pdo_sqlite comes with the image, and the `db` pack's
+          # CLI tests need it in BOTH processes; the gate refuses to report a
+          # number it knows is short without it.
+          coverage: pcov
+      - name: Install (monorepo, all packs via path repositories)
+        run: composer install --no-interaction --no-progress
+      - name: Coverage gate (floors per pack, enforced)
+        # Two things have to be true for this number to mean anything, and
+        # neither is automatic:
+        #
+        #  - `pcov.directory` must cover the repository. The harness captures
+        #    the coverage of the `bin/lava` CHILDREN as well as the parent (see
+        #    packages/core/tests/Support/fixture-autoload.php), and a child runs
+        #    with its working directory set to a fixture app in /tmp — so pcov's
+        #    own auto-detection tracks the wrong tree and the children
+        #    contribute nothing.
+        #  - the ini has to reach them through PHP_INI_SCAN_DIR rather than
+        #    `php -d`, for the same reason: the harness forwards the ENVIRONMENT
+        #    to its children, not the command line.
+        #
+        # Without both, `db` reads 55% instead of 81% and the gate fails on a
+        # floor it cannot meet — which is the tripwire doing its job, not a
+        # flake. See tools/coverage-check.php.
+        run: |
+          ini_dir="$RUNNER_TEMP/lava-coverage-ini"
+          mkdir -p "$ini_dir"
+          printf 'pcov.enabled=1\npcov.directory=%s\n' "$GITHUB_WORKSPACE" > "$ini_dir/40-pcov.ini"
+          export PHP_INI_SCAN_DIR=":$ini_dir"
+          composer coverage
+
   isolated-install:
     name: Prove pack decoupling by standalone install
     runs-on: ubuntu-latest

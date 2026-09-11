@@ -2205,4 +2205,172 @@ Both changes in this section and the one above touch `TestRun.php` and
 them would have meant committing a version of those two files that is in neither
 state.
 
+## 2026-09-11 — M9 slice 3 (coverage, and the two numbers M9 owes)
+
+137. **`composer coverage` is its own script, and deliberately not part of
+    `verify`.** It needs a coverage driver (pcov) and `pdo_sqlite`, and a gate
+    that cannot run on a fresh checkout is a gate that gets skipped — so
+    `verify` stays runnable anywhere and coverage runs where the driver is. It
+    is a script rather than `phpunit --coverage-text` because a report nobody is
+    held to is a number nobody acts on, and because the number that report
+    prints is wrong (138).
+
+138. **The measurement was the defect, and that is why the child capture
+    exists.** The framework's end-to-end tests prove a command by RUNNING it:
+    the harness spawns `bin/lava` and reads its stdout, its stderr and its exit
+    code. Every line that only runs inside that child is invisible to the
+    parent's coverage report. Measured parent-only, `packages/db` reads
+    **55.52%**, and the four `db:*` commands — the most thoroughly tested
+    surface in the repository — read as the least covered code in it.
+    Rejected: accepting a 55% floor with a big "subprocess-driven" exclusion
+    list, because that names the symptom as if it were a reason and would have
+    hidden any REAL db gap inside the same bucket. Chose: capture the children,
+    then set the floor from what the suite actually reaches.
+
+139. **The capture lives in the harness's own prepend file, guarded by an
+    environment variable.** `packages/core/tests/Support/fixture-autoload.php`
+    is what every `bin/lava` child is prepended with; when `LAVA_COVERAGE_DIR`
+    names a directory it starts pcov and registers a shutdown writer for what
+    ran. No production code learns that coverage exists, `composer verify`
+    behaves exactly as it did before, and a child that is not part of a coverage
+    run pays nothing.
+
+140. **The variable is forwarded, not whitelisted.** `LavaCli::isLavaVar()`
+    strips `LAVA_ENV`, `LAVA_FEATURE_*` and the harness's own two — it exists so
+    that a CI environment cannot steer a fixture's FLAGS. `LAVA_COVERAGE_DIR` is
+    a measurement, and the harness forwards it by not stripping it. Said out
+    loud at the capture site, so the next reader does not "fix" the omission.
+
+141. **One file per child, named by pid AND a unique id.** Children run
+    concurrently in some tests, and a run spawns enough short-lived processes
+    that the operating system recycles pids inside it.
+
+142. **pcov's `collect()` filter argument is not usable here.** On pcov 1.0.12
+    `\pcov\collect(\pcov\inclusive, [$dir])` returned 0 files in every form
+    tried — the directory with and without a trailing slash, the exact file
+    path, two directories, and `\pcov\exclusive` — while unfiltered `collect()`
+    returned the files. So the child collects unfiltered and filters in PHP.
+    Recorded because it cost time once and would cost it again.
+
+143. **`pcov.directory` must be set, and must cover the repository.** A child
+    runs with its working directory set to a fixture app in `/tmp`, so pcov's
+    own auto-detection tracks the wrong tree and the children contribute
+    nothing. The gate refuses to start without it and prints the ini line that
+    fixes it; the alternative is a number that is quietly short.
+
+144. **The merge only counts lines the parent's report calls executable.** pcov
+    also counts lines clover does not — a brace, a `case`, a closing tag. That
+    is real execution, but it is outside the measured universe, so it cannot
+    move a percentage. Counting it would inflate coverage with lines no report
+    would ever have counted as missed.
+
+145. **Floors sit ~3 points below measurement, and the measured values are
+    written into the constant.** A floor that sits ON the measurement goes red
+    the next time someone moves a branch; a floor nobody can satisfy gets
+    deleted rather than fixed. Measured 2026-09-11: core 87.91%, db 81.14%,
+    http-client 96.69%, validate 98.29%, view 97.73%, all packs 88.05%.
+
+146. **`db`'s floor is above the parent-only ceiling on purpose.** Parent-only
+    db is 55.68%; the floor is 78.00%. If the child capture ever goes quiet,
+    this gate fails loudly instead of reporting a smaller number as if it were
+    the whole truth. The floor is the tripwire for the instrument as well as for
+    the code — and a `childHits === 0` check fails first, naming the three ways
+    the capture can go quiet.
+
+147. **Two shipped APIs had zero execution, and that is a different thing from a
+    branch tail.** `LineLogger::log()` — the container's default for
+    `Psr\Log\LoggerInterface` — had never run in a test; the only mention of the
+    class in the suite asserted that a container ALIAS points at it.
+    `SchemaSnapshot::equals()` and `json()` had no caller anywhere in the
+    repository, though the class docblock offers `equals()` as the way to answer
+    "did the migration do what it said". Both now have tests
+    (`LineLoggerTest`, `SchemaSnapshotTest`): hardening, for a milestone, means
+    closing shipped promises that have nothing behind them rather than moving a
+    percentage.
+
+148. **The deliberate exclusions, named, as decision 128 promised.**
+    (a) `SchemaSnapshot::fromMysql`/`fromPgsql` — MySQL and PostgreSQL
+    catalogue introspection; the gate has no server for either, and a test that
+    cannot run is not coverage. (b) The malformed-artifact diagnostics in
+    `CollectFlagDefinitions` — `config/features.php` with an unknown section or
+    a `define` that is not a list, `app/Modules.php` entries that are not
+    `ModuleRef`s. These are reachable by a user, and each is a fixture app's
+    worth of work; the shapes with fixtures already exist (the `bad-*` apps) and
+    these are the rarer shapes of the same failures. (c) The guards from
+    decision 128: `alias()`'s non-string target, a 405's `allowed` list,
+    `class_exists(\PDO::class)`. Named here so the number is argued about once,
+    in the open, rather than quietly excluded at threshold time.
+
+149. **`tools/` joined the phpstan paths.** The gate reads two formats, merges
+    them, and reports a number people act on: a type error in it does not crash,
+    it reports a plausible wrong percentage with confidence. It cost two real
+    fixes rather than suppressions — `$argv` may not exist at all
+    (`register_argc_argv`), so arguments are read from `$_SERVER['argv']` and
+    narrowed to strings; and `SimpleXMLElement::xpath()` returns `array|null`,
+    which the loop handles rather than assumes away.
+
+150. **Proved the gate fails, in both directions.** Probe A — `db`'s floor
+    raised to 99 — exits 1 with `packages/db is at 81.14%, below its floor of
+    99.00%`, and composer propagates the code. Probe B — the capture's filter
+    changed so children wrote empty files, with nothing else touched — exits 1
+    with `no child process contributed a line the parent had not already
+    covered`, and the report above it read `db 55.68%` and `core 85.09%` against
+    core's 85.00% floor. Probe B is the argument for the instrument check
+    existing: without it, core would have passed at 85.09% while the report was
+    three points short of the truth.
+
+151. **R4 measured: `lava check --quick` on the demo is 0.03 s** — three runs,
+    against a budget of under 2 s.
+
+152. **Eager boot measured: 17 services constructed per request in 0.39 ms mean,
+    0.37 ms median, 0.46 ms p95.** `Kernel::boot` on `apps/demo`, 200
+    iterations, no driver loaded. Boot is eager by construction —
+    `ValidateWiring` resolves every registered id, which is what turns a broken
+    factory into a boot problem instead of a 500 on request N+1 — so the
+    measurement is what makes "accepted v1" a claim rather than a hope: 0.4 ms
+    against a request that costs tens of milliseconds. Measured with pcov loaded
+    the same loop reads 0.58 ms, and that difference is the instrument's cost,
+    not the framework's. The escape hatch for a deployment where even 0.4 ms
+    matters is a compiled artifact (a pre-built container and map); it is
+    documented and not built, because nothing in this measurement justifies
+    building it.
+
+153. **Coverage measurement caveat.** No coverage driver and no `pdo_sqlite` are
+    installed system-wide on this machine, so pcov was built from source into
+    `/tmp` and every number above was produced with
+    `PHP_INI_SCAN_DIR=":/tmp/lava-php-conf"`. CI uses
+    `shivammathur/setup-php` with `coverage: pcov` and gets `pdo_sqlite` from
+    the image. **The CI job that runs this gate was written but could not be run
+    here**: the local proof covers the mechanism (a scan-dir ini, an absolute
+    `pcov.directory`, a leading-colon `PHP_INI_SCAN_DIR`), not GitHub's image.
+    That step needs one green run before it can be called verified.
+
+### Open finding, not acted on (needs your call)
+
+`SchemaSnapshot::equals()` is documented as "order-insensitive on every level
+because both sides sort", but the implementation is
+`$this->tables === $other->tables`, and `===` on arrays requires the same key
+ORDER. For a snapshot from `of()` the claim holds — both sides come from
+`ORDER BY` — so nothing is broken today. A caller building one by hand, however,
+gets order-sensitive equality, and there is no caller to break if you would
+rather it were canonicalised (a recursive sort). Not changed unattended: it is
+API semantics, and the obvious shortcut has a trap of its own — `==` on arrays
+ignores key order but compares loosely, and `null == false` is true while a
+column's `default` is `string|null`.
+
+Also still open from earlier: decision 18 (whether a pack's envelope contracts
+should be listed by name in the core schema test) and decision 22 (whether the
+problem-code registry should become a machine-checked contract).
+
+Verified by running. `composer verify` with the live database tests enabled is
+**897 tests, 4385 assertions** (from 881 / 4346 — the two new test classes, 16
+tests and 39 assertions), level 8 and core-at-`max` both `[OK] No errors`.
+`composer coverage` exits **0** with every pack at or above its floor:
+core 3048/3467 = 87.91%, db 985/1214 = 81.14%, http-client 263/272 = 96.69%,
+validate 461/469 = 98.29%, view 172/176 = 97.73%, all packs 4929/5598 = 88.05%,
+with **153 child processes captured contributing 407 lines the parent could not
+see**. Both failure probes were run and reverted (150). `lava check --quick` on
+the demo: 0.03 s, three runs. `Kernel::boot` on the demo: 0.39 ms mean over 200
+iterations with 17 services constructed.
+
 

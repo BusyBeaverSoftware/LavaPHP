@@ -28,8 +28,16 @@ docs/                — conventions, per-pack docs, stable JSON schemas for eve
 
 ```
 composer install     # installs all packs via path repositories
-composer verify      # phpunit (all package suites) + phpstan
+composer verify      # phpunit (all suites) + phpstan level 8 + lava/core at max
+composer coverage    # per-pack line coverage, floors enforced
 ```
+
+`composer coverage` is deliberately not part of `verify`: it needs a coverage
+driver (pcov) and `pdo_sqlite`, and a gate that cannot run on a fresh checkout
+is a gate that gets skipped. It measures the `packages/*/src` trees, counts the
+`bin/lava` subprocesses the end-to-end tests spawn, and fails below a floor per
+pack — see [`tools/coverage-check.php`](tools/coverage-check.php) for the
+numbers, the floors, and why `db` reads 81% rather than 55%.
 
 Status: pre-release (0.x under active development). PHP `^8.3`.
 

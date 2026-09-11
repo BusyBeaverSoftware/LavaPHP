@@ -43,7 +43,11 @@
         ],
         "phpunit": "phpunit --colors=never",
         "phpstan": "phpstan analyse --no-progress",
-        "phpstan:core": "phpstan analyse --no-progress -c phpstan-core-max.neon"
+        "phpstan:core": "phpstan analyse --no-progress -c phpstan-core-max.neon",
+        "coverage": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php tools/coverage-check.php"
+        ]
     },
     "config": {
         "sort-packages": true
