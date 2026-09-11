@@ -75,6 +75,11 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `template_failed` | `TemplateFailed` (view) | a template does not compile, or threw while rendering — most often a context variable the handler never passed, because `strict_variables` is on | the file and line Twig already computed; name the *handler* when the fault is a missing variable |
 | `view_dir_missing` | `ViewDirMissing` (view) | the `views` feature is on and `view.path` is not a directory — raised at **boot** | the path to create, or the config key to change |
 | `bad_view_call` | `BadViewCall` (view) | a template called `url()` or `feature()` with an argument those functions cannot use | the template's own fix — never the value that was passed |
+| `transport_failed` | `TransportFailed` (http-client) | no response arrived — the connection failed, the host did not resolve, the request timed out, or the response was cut short. The only failure the pack retries, and only for idempotent methods | check reachability from *where the app runs*, then the timeout; the URL's userinfo and any secret-shaped query parameter are redacted |
+| `bad_request_url` | `BadRequestUrl` (http-client) | the URL is not one an HTTP client can send — no scheme, no host, or a scheme that is not `http`/`https`. **Not retried** | build it as `https://host/path`; the scheme rule is a security rule, not a formality |
+| `unexpected_status` | `UnexpectedStatus` (http-client) | a JSON call got a non-2xx. Raised only by `getJson()`/`postJson()`/`json()`, never by `sendRequest()` | the fix is chosen by the status — 401/403, 404, 405, 429 and 5xx are five different mistakes in five different places |
+| `bad_json_response` | `BadJsonResponse` (http-client) | a 2xx arrived and the body is not JSON — usually a URL that hit something else (an HTML error page, a proxy, a redirect target) | show the beginning of what came back, then check the path |
+| `unencodable_json_body` | `UnencodableJsonBody` (http-client) | the body a JSON call was asked to send cannot be encoded — invalid UTF-8, `NAN`, a resource. **The payload is never printed** | find the value that will not encode, and convert it at the edge |
 
 `not_an_app` is the one code that exists because booting the wrong directory
 **succeeds**. Every user-authored artifact is optional (see
@@ -256,6 +261,42 @@ state of an app being built — `lava check`, `lava routes` and `lava serve` all
 have to work on it — so that one waits for the request. A missing template
 *directory* makes every render fail identically, so N request-time errors
 collapse into one boot message naming the path and the config key.
+
+M8 status: the http-client pack's five codes are live in
+`Lava\HttpClient\Problem\`, covered by `packages/http-client/tests/` — the shapes
+and the non-disclosure rules in `tests/Problem/HttpClientProblemsTest.php`, the
+branches against a scripted transport in `tests/Unit/HttpClientTest.php`, and the
+live ones over a real socket in `tests/Http/`.
+
+`transport_failed` and `bad_request_url` implement the two PSR-18 exception
+interfaces, and that is what makes the retry rule expressible: the client retries
+`NetworkExceptionInterface` and propagates `RequestExceptionInterface` on the
+first attempt, because sending a malformed request again produces the same
+malformed request. A pack that invented its own two exception types would be
+usable only by code that already knew about this pack.
+
+`unexpected_status` exists because "a non-2xx is a failure" is the *pack's*
+opinion and not PSR-18's. `sendRequest()` returns a 404 like any other response —
+that is what the interface promises, and a caller doing its own status handling
+needs it. The opinion lives in `getJson()`/`postJson()`/`json()`, which promise a
+decoded body and cannot return one from an error page.
+
+Three of these five are 502 and two are 500, and the split is an alerting rule
+rather than a detail: `transport_failed`, `unexpected_status` and
+`bad_json_response` all mean *the upstream misbehaved*, which is a 502 the caller
+can retry; `bad_request_url` and `unencodable_json_body` mean *our own code built
+something unusable*, which is a 500 that only a deploy fixes. Collapsing them
+would make one status unable to distinguish "their service is down" from "our
+code is wrong".
+
+Nothing in this pack's reports ever contains a request header or a request body.
+`transport_failed` keeps the request object — `NetworkExceptionInterface` requires
+`getRequest()` — and prints it nowhere, because an `Authorization` header must
+never reach a log line. `unencodable_json_body` does not accept the payload as a
+parameter at all, so there is no call site that could pass one by accident: a
+`postJson()` body is where a login sends a password. Response bodies *are*
+printed, bounded and elided, because the remote's own words about its own failure
+are what makes a 500 diagnosable.
 
 ## App-owned codes are not in this registry
 

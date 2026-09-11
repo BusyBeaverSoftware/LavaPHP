@@ -39,6 +39,34 @@ final class InvalidConfig extends LavaProblem
     }
 
     /**
+     * A config value has the right type but a value the reader cannot use.
+     *
+     * A negative timeout, a retry count below zero, a percentage above 100:
+     * `int()` and `bool()` cannot catch these, because `-5` is an int and `0` is
+     * a bool. Without this the value reaches the code that uses it and fails
+     * later and somewhere else — curl rejects a negative timeout on the first
+     * request, which names neither the key nor the file.
+     *
+     * It lives in core rather than in the pack that needed it first: the rule is
+     * about config values, which is core's subject, and the fix ("fix the value
+     * of 'timeout' in config/http_client.php") is text core can write without
+     * knowing anything about HTTP. A pack with a numeric key gets this for free
+     * instead of inventing a code of its own.
+     *
+     * @param string $key the full key, e.g. "http_client.timeout"
+     * @param string $expected what a usable value looks like, e.g. "a positive number of seconds"
+     */
+    public static function outOfRange(string $key, mixed $got, string $expected, string $file): self
+    {
+        [, $name] = self::splitKey($key);
+        return new self(
+            "Config key '{$key}' is {$got}, which is out of range — it must be {$expected}.",
+            "Fix the value of '{$name}' in {$file}.",
+            ['key' => $key, 'got' => $got, 'expected' => $expected],
+        );
+    }
+
+    /**
      * A config file did not return an array.
      *
      * @param string $file the path as the reader would type it, e.g. "config/database.php"

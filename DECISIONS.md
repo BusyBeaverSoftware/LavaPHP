@@ -1575,3 +1575,189 @@ is the layout a consumer gets, not the monorepo's.
 
 The two open findings from M7 slice 1 (decisions 18 and 22) remain unacted on and
 still need your call. Nothing in this slice changed their shape.
+
+## 2026-09-11 — M8 slice 2 (`lava/http-client`: a PSR-18 client with two rules)
+
+86. **The retry boundary is "no response arrived", and a 5xx is deliberately not
+    retried.** `sendRequest()` retries a `NetworkExceptionInterface` — connection
+    refused, DNS failure, timeout, truncated response — and never a response,
+    whatever its status. The alternative (retry 5xx and 429 too) is what most
+    clients do and I rejected it for three reasons that compound: PSR-18 already
+    promises a response is a result, so retrying one makes `sendRequest()`'s
+    behaviour depend on a status the caller may have wanted to see; retrying a
+    429 without honouring `Retry-After` is guessing; and retrying any 5xx without
+    jitter turns one slow service into a stampede from every client at once. The
+    line is also the one an agent can hold in its head — "retries are for when
+    nothing came back" — where "retries are for when nothing came back or the
+    status looked bad" is two rules that interact. `UnexpectedStatus` is where a
+    bad status becomes an error, and it is raised only by the JSON calls, which
+    promise a decoded body and cannot return one from an error page.
+
+87. **The idempotent-method rule is enforced by the pack, not by configuration.**
+    `retries` is a ceiling, not a promise: it applies to `GET`, `HEAD`, `PUT`,
+    `DELETE`, `OPTIONS` and `TRACE` (RFC 9110's idempotent set) and to nothing
+    else, whatever it is set to. The pack can see the method, so it makes the
+    distinction itself rather than leaving it to every call site to remember —
+    and the failure mode it prevents is a duplicate charge or a duplicate email,
+    which is not a thing a comment in a docblock prevents. Tested over a real
+    socket, not only against a fake: the fixture's `/drop` route promises a
+    `Content-Length` it does not deliver, curl reports errno 18, and the server's
+    own counter shows two attempts for a GET and one for a POST under the same
+    configuration.
+
+88. **The pack is five problem codes, not the four the design settled on.** The
+    fifth is `unencodable_json_body`, added when I looked at what `json_encode`
+    can actually fail on and found a raw `JsonException` escaping the pack: a
+    string with invalid UTF-8 (a latin-1 column straight out of a database), a
+    `NAN` float, a resource, a self-referencing structure. Those are real and
+    invisible at the call site, and the alternative — letting a non-`LavaProblem`
+    out of a pack — is the one thing this framework's error pillar forbids. The
+    factory does not accept the payload as a parameter at all, so there is no
+    call site that could pass one by accident: a `postJson()` body is where a
+    login sends a password, and it is the most credential-bearing value in the
+    whole pack.
+
+89. **`TransportFailed` and `BadRequestUrl` implement the PSR-18 exception
+    interfaces rather than a `Transport` interface of the pack's own.** An
+    earlier intent recorded in the plan was a private `Transport` interface so
+    tests could inject a fake. That is what PSR-18 already is — so the pack
+    depends on the standard instead of inventing a second one, and gains
+    something the private interface would not have given: an app can hand this
+    pack any PSR-18 client and the retry rule, the URL guard and the problem
+    types all still apply. `NetworkExceptionInterface` requires `getRequest()`,
+    which is why `TransportFailed` keeps the request object — and keeping is not
+    printing: it is not in `context`, and a test asserts that an `Authorization`
+    header never reaches the JSON.
+
+90. **Three codes are 502 and two are 500, and the split is an alerting rule.**
+    `transport_failed`, `unexpected_status` and `bad_json_response` all mean *the
+    upstream misbehaved* — a 502 the caller can retry, and not this app's bug.
+    `bad_request_url` and `unencodable_json_body` mean *our own code built
+    something unusable* — a 500 that only a deploy fixes. Collapsing them would
+    leave one status unable to distinguish "their service is down" from "our code
+    is wrong", which is exactly the distinction an alerting rule needs. This is
+    the first pack to override `httpStatus()` at all, and it is the reason the
+    method exists on `LavaProblem` rather than a `match` in core's HTTP layer.
+
+91. **The scheme rule refuses everything but `http`/`https`, and the check runs
+    before the transport.** curl will fetch `file:///etc/passwd` and speak
+    `gopher://`; a URL handed to this pack is the kind of value that arrives from
+    outside — a webhook target, a callback, a URL read out of a row — so a client
+    that fetches whatever scheme it is given is a file-disclosure and SSRF
+    primitive. The check lives in `HttpClient::sendRequest()`, not in
+    `CurlTransport`, so it holds for any transport an app injected, including a
+    fake in a test. Writing the test found a real defect in the first version: it
+    checked the host before the scheme, and `parse_url('file:///etc/passwd')` has
+    a scheme and no host — so a `file://` URL was reported as "not an absolute
+    URL", indistinguishable from a typo. The scheme is now checked first, and its
+    message names the scheme it refused.
+
+92. **The URL's userinfo and secret-shaped query parameters are masked, and the
+    request body and headers are not printed at all.** Two asymmetric mistakes:
+    masking a query parameter that turns out to be harmless costs a little
+    readability in one error message; failing to mask a real token costs a leaked
+    credential in a log, a CI transcript, and an issue someone pasted `--json`
+    output into. So the name list is generous — `token`, `api_key`, `key`,
+    `secret`, `signature`, and the rest — and the rule leans. The redaction lives
+    in `Url::redact()` and every place this pack prints a URL prints it through
+    that, so it cannot be bypassed by a new call site. curl's own error text is
+    redacted too, because curl echoes the URL back in several of its errors —
+    the same reason `lava/db` redacts PDO's message and not just the DSN.
+
+93. **The response body travels in `context`, never in the message.** The
+    framework's contract is that the message is one sentence, and a 400-character
+    HTML error page pasted into it makes every other line of a report unreadable.
+    `context` is a rendered field — both `ProblemCliRenderer` and the JSON
+    envelope print it — so nothing is hidden by the split. This was a real
+    inconsistency caught while writing the tests: `UnexpectedStatus` had put the
+    body in `context` and `BadJsonResponse` had put it in the message. The rule is
+    now uniform, and both problems' tests assert that the body is in `context`
+    and *not* in the message, so the next one cannot drift.
+
+94. **The module registers three ids and deliberately no `ClientInterface`
+    alias.** `ClientOptions`, `CurlTransport`, `HttpClient`. The alias would be
+    convenient — type-hint the PSR-18 interface, get the pack's client — but it
+    would also *occupy* the standard id, leaving an app that wants its own
+    PSR-18 client under that id with a `duplicate_service` at boot and no way
+    around it. An app with different needs constructs its own. `ClientOptions` is
+    registered even though it is a readonly value object, because it is what the
+    pack read from config and `lava services` should show it.
+
+95. **The options are read from config at register time, and captured by the
+    factories.** A factory that read config when it ran would make a service's
+    behaviour depend on when it was first resolved — the class of thing this
+    framework exists to remove — and would move a bad `timeout` from a boot
+    problem to whichever request happened to touch the client first. Reading at
+    register time means `register()` throws `InvalidConfig` and the boot step
+    that calls it (`WireModules`) turns the throw into a boot problem, so
+    `'timeout' => -1` is reported with the key and the file before any request.
+
+96. **Range checks got a new core factory, `InvalidConfig::outOfRange()`.** A
+    negative timeout is a perfectly good int, so `Config::int()` cannot refuse it
+    — and without a range check the value reaches curl, which rejects it on the
+    first request with a message naming neither the key nor the file. It went in
+    core rather than the pack because the rule is about config values, which is
+    core's subject, and the fix ("Fix the value of 'timeout' in
+    config/http_client.php") is text core can write without knowing anything
+    about HTTP. The next pack with a numeric key gets it for free instead of
+    inventing a sixth code.
+
+97. **PSR-17 capabilities are taken as an intersection type, not as two
+    parameters and not as a concrete class.** `CurlTransport` takes
+    `ResponseFactoryInterface&StreamFactoryInterface`; `HttpClient` takes
+    `RequestFactoryInterface&StreamFactoryInterface`. One parameter that
+    documents the real requirement, satisfied by the `Psr17Factory` core already
+    uses, and the pack never names `Nyholm\Psr7` in its own client code — the
+    module names it once, at the wiring site, where a library choice belongs.
+    The pack's `composer.json` now requires `nyholm/psr7`, `psr/http-factory` and
+    `psr/http-message` directly rather than leaning on `lava/core`'s transitive
+    ones.
+
+98. **The pack has its own `php -S` harness instead of using core's
+    `ServedApp`.** `ServedApp` runs `lava serve`, which boots a fixture through
+    the CLI — so a pack that depended on it would stop being installable on its
+    own, which is the claim every pack here has to keep. `tests/Support/LocalServer.php`
+    starts one server per test process on a free port and stops it from a
+    shutdown function, so a failed run leaves no orphan. `php -S` is
+    single-process, which is why `/slow` sleeps one second and the timeout test
+    waits 150ms — the bleed into the next request is bounded and short.
+
+99. **Three PHPStan level 8 errors were fixed at the cause, not suppressed.**
+    `curl_setopt_array`'s stub wants a `non-empty-string` for `CURLOPT_URL` and
+    `CURLOPT_CUSTOMREQUEST`, and a `non-empty-string` for `CURLOPT_USERAGENT`; so
+    the transport now refuses an empty URL or method with `TransportFailed`
+    (which is honest — it is a public class a caller may use directly, and curl
+    cannot express either), and an empty configured user agent is left to curl
+    rather than sent as a blank header, which some servers refuse outright.
+    `curl_exec`'s `string|true` narrowed with `is_string()`. `HttpClient::json()`'s
+    `$body` gained its `array<string, mixed>` docblock. No `@phpstan-ignore`, no
+    baseline, no cast.
+
+Verified this slice by running the pack, not by reading it. 98 tests / 256
+assertions in the http-client suite, and the same 98 / 256 when the pack is
+installed on its own (`cd packages/http-client && composer install &&
+vendor/bin/phpunit`) — that is the consumer's layout, and it is where the
+`Lava\Core\Testing\*` helpers matter, since core ships them in `src/` rather
+than in `autoload-dev` precisely so packs can use them standalone. The full gate
+is **874 tests, 4265 assertions** with SQLite enabled, and PHPStan level 8
+reports no errors with `packages/http-client/src` newly in its paths.
+
+Three defects were found by writing the tests rather than by reading the code,
+and each got an assertion that would catch it again:
+
+- the header collector reset its buffer on the terminating blank line of a
+  response, so every response arrived with **zero headers** — caught by the live
+  tests asserting `Content-Type` and `Location`, which a fake transport could
+  never have caught;
+- the URL guard checked the host before the scheme, so `file:///etc/passwd` was
+  reported as "not an absolute URL" (decision 91);
+- `UnexpectedStatus` and `BadJsonResponse` disagreed about where the body goes
+  (decision 93).
+
+The doc sample in `docs/packs/lava-http-client.md` was generated from the code
+and diffed against it rather than written by hand: `json_encode($problem->json())`
+for a URL with userinfo and a `?token=` parameter produces exactly the JSON in
+the page, redactions included.
+
+The two open findings from M7 slice 1 (decisions 18 and 22) remain unacted on and
+still need your call. Nothing in this slice changed their shape.
