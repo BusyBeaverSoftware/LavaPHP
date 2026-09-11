@@ -15,6 +15,7 @@ that" — zero-config apps are valid and boot green.
 | `app/Services.php` | optional | `function (Container $c, AppContext $ctx): void` | `invalid_config` |
 | `app/Routes.php` | optional | `function (Router $r): void` | `invalid_config` |
 | `app/Middleware.php` | optional | `list<class-string>` of PSR-15 middleware | `invalid_config` |
+| `app/Commands.php` | optional | `function (CommandRegistry $c): void` | `invalid_config` |
 | `config/app.php` | optional | `array` (string keys) | `invalid_config` |
 | `config/logging.php` | optional | `array` (string keys) | `invalid_config` |
 | `config/features.php` | optional | `array` with `define` / `set` sections | `invalid_config` |
@@ -116,6 +117,34 @@ Routes register in order: `app/Routes.php` first, then each enabled module's
 registration matches first, so an app can always override a pack route by
 registering the same path. A gated-off pack's routes are absent (real 404),
 not disabled-in-place.
+
+## The CLI contract
+
+Every command writes two views of one result: text for a human on a terminal,
+and — under `--json` — a single envelope on stdout, which suppresses the text.
+The envelope's `schema` field names the contract it obeys, and the contract is a
+file: `lava.check/1` means `docs/schemas/lava.check/1.json`. The `/N` is frozen.
+A breaking change to a payload means a new `/N`, never an edit — so an agent
+that pinned a version keeps working, and `packages/core/tests/Schema/` fails the
+build when a payload and its schema drift apart.
+
+- **Exit codes**: `0` ok, `1` a problem or a red result, `2` a malformed
+  invocation (a typo'd command name, a bad flag value). Only `2` is about how
+  the command was typed; `1` means it ran and the app is at fault.
+- **`data` keys are promised on every exit path**, including a failed boot. A
+  consumer never branches on a shape that is only sometimes there.
+- **`problems` is ordered to act on**: runnable fixes (`Run: …`) first.
+- **A red test suite is not a problem.** `lava test` and `lava check` report it
+  through `status` and the exit code and leave `problems[]` empty: the framework
+  does not pronounce on code it never read.
+- **`source.file` is an absolute path**, so a problem can be opened directly
+  without guessing the app root. Line numbers are 1-based.
+
+Test runners: `lava test` and `lava check` shell out to the app's OWN PHPUnit
+(`<app>/vendor/bin/phpunit`) — the one its composer.json installed — rather than
+to whatever the framework happens to carry. `LAVA_PHPUNIT` overrides the path
+(the same escape-hatch idiom as `DB_TEST_DSN`), which is how a CI image or a
+fixture app that has no `vendor/` still runs a real suite.
 
 ## Problems are the error model
 

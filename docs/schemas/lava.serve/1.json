@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.serve/1.json",
+  "title": "lava serve --json",
+  "description": "Starts the PHP built-in server on the app's public/ directory. The envelope is emitted BEFORE the server starts serving, so a caller can read the URL off stdout and then make requests — which is how the framework's own HTTP tests drive a real SAPI. `booted` is informational, not fatal: a broken app must still be servable, because public/index.php is what renders the diagnostics page explaining the breakage.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.serve/1" },
+        "command": { "const": "serve" },
+        "data": {
+          "type": "object",
+          "required": ["host", "port", "workers", "url", "doc_root", "entry_point", "booted"],
+          "properties": {
+            "host": { "type": "string" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "workers": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "PHP_CLI_SERVER_WORKERS for the child — the built-in server is single-request without it."
+            },
+            "url": { "type": "string", "description": "The URL to request, e.g. http://127.0.0.1:8080." },
+            "doc_root": { "type": "string", "description": "Relative to the app root; static files are served from here without booting the app." },
+            "entry_point": { "type": "string", "description": "Relative to the app root; every non-static request runs this file." },
+            "booted": {
+              "type": "boolean",
+              "description": "Whether the app booted cleanly at start. False means the first request will render a diagnostics page or a JSON problem, not the app's routes."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

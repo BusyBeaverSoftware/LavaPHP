@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.config/1.json",
+  "title": "lava config --json",
+  "description": "Every config key the app resolved, flattened to dot notation, with the file that set it. The provenance is the point: 'where does this value come from?' is the question a config bug actually asks, and a bag of values cannot answer it. A key declared secret reports its value only under --reveal.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.config/1" },
+        "command": { "const": "config" },
+        "data": {
+          "type": "object",
+          "required": ["config"],
+          "properties": {
+            "config": {
+              "type": "array",
+              "description": "In file order: config/app.php first, then the rest alphabetically, each key in declaration order.",
+              "items": {
+                "type": "object",
+                "required": ["key", "value", "from_file", "secret"],
+                "properties": {
+                  "key": { "type": "string", "description": "Dot path within the config bag, e.g. app.env." },
+                  "value": {
+                    "description": "The resolved value: any JSON, since a config file may hold an array. Null when this key was redacted — a redaction is reported by `secret`, never by an empty string that could be a real value."
+                  },
+                  "from_file": { "type": "string", "description": "The config file that set it, relative to the app root." },
+                  "secret": {
+                    "type": "boolean",
+                    "description": "True when this key's NAME looked secret and --reveal was not passed, so `value` is null here. Not a property of the key itself: the same key reports false under --reveal."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

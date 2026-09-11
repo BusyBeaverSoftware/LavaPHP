@@ -7,7 +7,6 @@ namespace Lava\Core\Console\Commands;
 use Lava\Core\Boot\App;
 use Lava\Core\Config\ProcessEnv;
 use Lava\Core\Console\Args;
-use Lava\Core\Console\CommandRegistry;
 use Lava\Core\Console\IO;
 use Lava\Core\Console\Table;
 use Lava\Core\Problem\BadUsage;
@@ -29,10 +28,6 @@ use Lava\Core\Problem\UnknownSelector;
  */
 final class DescribeCommand extends AppCommand
 {
-    public function __construct(private readonly CommandRegistry $registry)
-    {
-    }
-
     public function name(): string
     {
         return 'describe';
@@ -84,7 +79,7 @@ final class DescribeCommand extends AppCommand
                 'env' => self::envNames($app),
                 'commands' => array_map(
                     static fn (\Lava\Core\Console\Command $c): string => $c->name(),
-                    $this->registry->all(),
+                    $app->commands()->all(),
                 ),
             ]));
             return $io->emit($this->name(), $report);
@@ -138,7 +133,7 @@ final class DescribeCommand extends AppCommand
             return ['env', $env];
         }
 
-        $command = $this->commandRecord($selector);
+        $command = $this->commandRecord($app, $selector);
         return $command !== null ? ['command', $command] : null;
     }
 
@@ -183,9 +178,12 @@ final class DescribeCommand extends AppCommand
     }
 
     /** @return array<string, mixed>|null */
-    private function commandRecord(string $selector): ?array
+    private function commandRecord(App $app, string $selector): ?array
     {
-        $command = $this->registry->get($selector);
+        // The app's own registry, not the one this command was built with: a
+        // pack that contributes commands is only visible through the former,
+        // and `describe db:migrate` has to answer for it.
+        $command = $app->commands()->get($selector);
         if ($command === null) {
             return null;
         }
@@ -213,7 +211,7 @@ final class DescribeCommand extends AppCommand
             ...self::envNames($app),
             ...array_map(
                 static fn (\Lava\Core\Console\Command $c): string => $c->name(),
-                $this->registry->all(),
+                $app->commands()->all(),
             ),
         ];
 

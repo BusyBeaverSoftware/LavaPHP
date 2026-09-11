@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Lava\Core\Console\Commands;
 
 use Lava\Core\Boot\App;
+use Lava\Core\Config\EnvAudit;
 use Lava\Core\Config\ProcessEnv;
 use Lava\Core\Config\Secrets;
 use Lava\Core\Console\Args;
 use Lava\Core\Console\IO;
 use Lava\Core\Console\Table;
-use Lava\Core\Problem\MissingEnvVar;
 use Lava\Core\Problem\ProblemReport;
 
 /**
@@ -89,10 +89,6 @@ final class EnvCommand extends AppCommand
             $secret = $var !== null ? $var->secret : Secrets::looksSecret($name);
             $description = $var !== null ? $var->description : '';
 
-            if ($required && $value === null) {
-                $report->add(MissingEnvVar::of($name, $entry['by'] ?? 'the app'));
-            }
-
             $records[] = [
                 'name' => $name,
                 'required' => $required,
@@ -113,6 +109,13 @@ final class EnvCommand extends AppCommand
                 $value === null ? '-' : ($secret && !$reveal ? Secrets::redacted() : $value),
                 $description,
             ];
+        }
+
+        // The unset-required rule lives in one place, shared with `lava check`:
+        // a report that calls a variable missing while a build of the same app
+        // passes would be the framework disagreeing with itself.
+        foreach (EnvAudit::missing($app) as $problem) {
+            $report->add($problem);
         }
 
         $io->data('env', $records);

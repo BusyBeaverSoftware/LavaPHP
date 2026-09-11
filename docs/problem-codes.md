@@ -13,6 +13,9 @@ and every `--json` command):
  "context":{…failing input…},"source":{"file":"app/Modules.php","line":4},"severity":"fatal"}
 ```
 
+`source.file` is an absolute path on the wire — the shape above is elided for
+readability; see [conventions.md](conventions.md#the-cli-contract).
+
 ## Registry
 
 | Code | Class | Thrown when | Fix pattern |
@@ -39,6 +42,10 @@ and every `--json` command):
 | `method_not_allowed` | `MethodNotAllowed` | the path matched but the method didn't (also: HEAD to a GET-only route — HEAD is never auto-mapped) | list the accepted methods |
 | `unknown_route` | `UnknownRoute` | URL generation asked for a route name that isn't registered | suggest the nearest registered name |
 | `unknown_command` | `UnknownCommand` | `lava <name>` named a command this app doesn't have | suggest the nearest registered command, else `lava list` |
+| `duplicate_command` | `DuplicateCommand` | two commands claim the same name (core, a pack, or `app/Commands.php`) | rename or remove the second; when both claim one pack, override `pack()` |
+| `missing_entry_point` | `MissingEntryPoint` | `lava serve` found no `public/index.php` to run — checked before the server is announced | copy the canonical one from the `lava/app` skeleton |
+| `missing_test_runner` | `MissingTestRunner` | the app has no `vendor/bin/phpunit` to run its suite with | `Run: composer install --dev`, or set `LAVA_PHPUNIT` |
+| `bad_test_report` | `BadTestReport` | the runner ran but wrote no JUnit report, or wrote one that isn't well-formed XML | run the runner directly; its own output rides in `context` |
 | `not_an_app` | `NotAnApp` | the directory booted has no `app/`, no `config/`, and no `public/index.php` | name the directory and the layout to create |
 | `bad_usage` | `BadUsage` | a command was invoked with a missing or malformed argument (the command exists; the arguments don't) — exit 2 | quote the usage line |
 | `missing_env_var` | `MissingEnvVar` | a declared required env var has no value in the process environment or `config/.env` — **severity warn** | set it in `config/.env` or export it |
@@ -65,10 +72,25 @@ exercised by fixture/unit tests under `packages/core/tests/` (see
 collects five route problems in one boot; `module-app` exercises the module
 contract end to end).
 
-M4 status: `unknown_command` (`tests/Unit/ConsoleTest.php`), `bad_usage`,
-`missing_env_var`, `unknown_selector` (`tests/Unit/InspectionCommandsTest.php`),
-and `not_an_app` (`tests/Unit/KernelBootTest.php`) are all live and covered.
-Still to come with their milestones: pack-specific codes (M5+), and the codes
-`lava check` / `lava serve` introduce in M4 slice 3. The table is complete when
-0.1.0 is tagged. `lava check` renders problems fix-first (runnable commands
-first).
+M4 status: all of M4's codes are live and covered — `unknown_command`
+(`tests/Unit/ConsoleTest.php`, `tests/Unit/ConsoleDispatchTest.php`),
+`bad_usage` (`tests/Unit/InspectionCommandsTest.php`,
+`tests/Unit/ServeCommandTest.php`), `duplicate_command`
+(`tests/Unit/RegisterCommandsTest.php`), `missing_env_var` and
+`unknown_selector` (`tests/Unit/InspectionCommandsTest.php`),
+`missing_entry_point` (`tests/Unit/ServeCommandTest.php`),
+`missing_test_runner` and `bad_test_report` (`tests/Unit/TestCommandTest.php`,
+`tests/Unit/JunitTest.php`), and `not_an_app`
+(`tests/Unit/KernelBootTest.php`). `missing_env_var` is raised by one shared
+rule (`Config/EnvAudit`) used by both `lava env` and `lava check`, so the two
+commands cannot disagree about whether a variable is set. Still to come with
+their milestones: pack-specific codes (M5+). The table is complete when 0.1.0 is
+tagged. `lava check` renders problems fix-first (runnable commands first).
+
+`missing_test_runner` and `bad_test_report` are separated on purpose, because
+they need different fixes: no runner means the app was never installed, while a
+runner that wrote nothing means PHPUnit ran and stopped before testing — a
+broken `phpunit.xml`, a bootstrap that fatals. Neither is ever a *framework*
+problem, so a red suite contributes no problems at all: `lava test` and
+`lava check` let the exit code and `status` go red and leave `problems[]` empty.
+The framework has no business pronouncing on code it never read.

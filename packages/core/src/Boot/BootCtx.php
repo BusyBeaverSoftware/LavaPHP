@@ -53,6 +53,14 @@ final class BootCtx
     /** @var list<string> global middleware class-strings from app/Middleware.php */
     public array $globalMiddleware = [];
 
+    /**
+     * The app's command set as RegisterCommands assembled it: core commands +
+     * enabled modules' ({@see \Lava\Core\Modules\ProvidesCommands}) +
+     * app/Commands.php. Null only when an upstream fatal stopped the chain
+     * before that step ran.
+     */
+    public ?\Lava\Core\Console\CommandRegistry $commands = null;
+
     public function __construct(
         public readonly string $appDir,
         public readonly ProblemReport $problems,

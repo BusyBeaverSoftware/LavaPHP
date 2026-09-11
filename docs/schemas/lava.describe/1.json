@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.describe/1.json",
+  "title": "lava describe --json",
+  "description": "One name, looked up everywhere it could live, answered in full — the command that replaces 'read five files to find out what users.show is'. Resolution is a documented precedence: route, then service, then flag, then env var, then command, because a name can legitimately be two of those at once and a deterministic answer beats an error. A miss is never silent: the problem carries every candidate name by kind.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.describe/1" },
+        "command": { "const": "describe" },
+        "data": {
+          "type": "object",
+          "required": ["selector", "kind", "match"],
+          "properties": {
+            "selector": { "type": "string", "description": "The name as given on the command line." },
+            "kind": {
+              "enum": ["route", "service", "flag", "env", "command", null],
+              "description": "Which namespace answered. Null when nothing did — and then the envelope carries an `unknown_selector` problem instead."
+            },
+            "match": {
+              "description": "The record, whose keys depend on `kind` — the same fields the corresponding command's payload reports, plus that command's own extras. Null when nothing matched.",
+              "anyOf": [{ "type": "object" }, { "type": "null" }]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

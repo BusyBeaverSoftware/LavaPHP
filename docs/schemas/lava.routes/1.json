@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.routes/1.json",
+  "title": "lava routes --json",
+  "description": "Every route the app declares, with the injection plan the handler will be called with and whether a feature flag currently gates it. `injects` is the answer to 'what can this handler take?' — derived from its signature at boot, so it is what the framework will actually pass, not what the code appears to ask for.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.routes/1" },
+        "command": { "const": "routes" },
+        "data": {
+          "type": "object",
+          "required": ["routes"],
+          "properties": {
+            "routes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "methods", "path", "state", "feature", "middleware", "handler", "injects"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The mandatory route name — how the route is generated, described, and reported. A duplicate name is a fatal boot problem."
+                  },
+                  "methods": {
+                    "type": "array",
+                    "description": "Upper-case HTTP methods, in the order declared. HEAD is listed explicitly when the route serves it.",
+                    "items": { "type": "string" }
+                  },
+                  "path": { "type": "string", "description": "The pattern as declared, e.g. /users/{id:int}." },
+                  "state": {
+                    "enum": ["active", "disabled"],
+                    "description": "disabled when a feature flag gates this route and is off for the resolved environment. A gated-off route answers a real 404, never a 503."
+                  },
+                  "feature": {
+                    "description": "The gating flag's name, or null when the route is ungated.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "middleware": {
+                    "type": "array",
+                    "description": "Route-level middleware class-strings, in run order (global middleware is not repeated here).",
+                    "items": { "type": "string" }
+                  },
+                  "handler": {
+                    "type": "object",
+                    "required": ["kind", "class", "function", "file", "line"],
+                    "properties": {
+                      "kind": { "enum": ["function", "method"] },
+                      "class": {
+                        "description": "The controller class for a method handler, null for a plain function.",
+                        "anyOf": [{ "type": "string" }, { "type": "null" }]
+                      },
+                      "function": { "type": "string", "description": "The function or method name." },
+                      "file": { "type": "string" },
+                      "line": { "type": "integer", "minimum": 1 }
+                    },
+                    "additionalProperties": false
+                  },
+                  "injects": {
+                    "type": "array",
+                    "description": "What the handler's parameters will receive, in signature order.",
+                    "items": {
+                      "type": "object",
+                      "required": ["kind", "type", "name"],
+                      "properties": {
+                        "kind": {
+                          "enum": ["request", "args", "service"],
+                          "description": "request = the PSR-7 request; args = typed route parameters; service = resolved from the container by the declared type."
+                        },
+                        "type": { "type": "string" },
+                        "name": { "type": "string", "description": "The parameter name as written in the signature." }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

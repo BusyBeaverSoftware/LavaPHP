@@ -57,10 +57,25 @@ abstract class AppCommand extends Command
         $boot = AppBoot::boot($appDir, $args->value('env'));
 
         if ($boot instanceof BootFailure) {
-            return $io->emit($this->name(), $boot->problems);
+            return $this->inspectFailure($io, $args, $boot);
         }
 
         return $this->inspect($io, $args, $boot);
+    }
+
+    /**
+     * The app did not boot. For almost every command that IS the answer — the
+     * boot report explains why, which is exactly what the caller needed — so
+     * the default emits it and fails.
+     *
+     * `lava check` overrides this because its job survives a failed boot: the
+     * test suite is still runnable, and a red suite is often why the app could
+     * not boot. The hook exists so that difference stays visible in one place
+     * instead of being smuggled in as a special case.
+     */
+    protected function inspectFailure(IO $io, Args $args, BootFailure $failure): int
+    {
+        return $io->emit($this->name(), $failure->problems);
     }
 
     /**

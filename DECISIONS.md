@@ -312,3 +312,127 @@ can disagree with the app it is describing, and then the diagnostic lies.
     diagnostic that itself exits non-zero is an obstacle. `lava check
     --strict` (slice 3) is where an unset required var becomes a build
     failure.
+
+## 2026-09-10/11 — M4 slice 3 (check, test, serve, schemas, CLI golden tests)
+
+Slice 3 completes M4: `lava check`, `lava test`, `lava serve`, the eleven
+`docs/schemas/*/1.json` contracts, the CLI golden tests, and the deletion of
+the temporary real-SAPI gate.
+
+1. **A command name the core set doesn't know triggers a boot, lazily**
+   (`Console::main`). `lava demo:ping` reported `unknown_command` while
+   `lava list` showed it: dispatch ran against `CommandRegistry::core()`, and
+   pack/app commands only exist once `app/Modules.php` and `app/Commands.php`
+   have run. Eager booting in `main()` is not available — `bin/lava` cannot know
+   `--env` before `Args::parse` — so the miss is the only moment a boot is
+   justified: core commands keep reading no app files at all. The cost is
+   documented in the code: a pack command that is itself an `AppCommand` boots
+   twice. A failed boot's report is MERGED into the `unknown_command` envelope
+   (the unknown name stays `problems[0]`, exit stays 2), because "that command is
+   unreachable while your app is broken" and "you typed it wrong" need different
+   fixes.
+
+2. **`DuplicateCommand` distinguishes "same pack twice" from "two packs".** The
+   old message read "Command 'routes' is already provided by core; core provides
+   it too" when the incoming command never overrode `pack()` — a message that
+   reads as a bug in the framework. Both branches now name the packs, and the
+   same-pack fix points at the actual cause: override `pack()`. The fixture
+   (`dup-command-app`) got the missing override too, so the two-pack branch is
+   what it exercises.
+
+3. **`lava serve` propagates the parent's `auto_prepend_file` to the server
+   child as `-d`** (`ServeCommand::prependArgument`). Without it the `php -S`
+   child could not load `App\` classes in the test harness and every request
+   rendered a diagnostics page — `lava serve` served a *different app* than
+   `lava check` had just validated. Both processes are the same CLI SAPI reading
+   the same php.ini, so a `-d` override is the one thing that does not survive
+   the fork, and `auto_prepend_file` is the only override that changes which
+   code runs. A `PHP_INI_SCAN_DIR` trick would have been wider than the problem.
+
+4. **`lava serve`'s payload is seeded before any check can fail, and it carries
+   the EFFECTIVE values.** Two failure exits (a bad flag, no entry point) never
+   reach the code that computes them, and a `--json` consumer must not branch on
+   a shape that is only sometimes there. The schema test then caught the
+   consequence: seeding the *raw* port meant `data.port` went to the wire as
+   `99999`, violating `lava.serve/1`'s `maximum: 65535`. The payload is a port
+   number, so an unusable value now falls back to the default and the raw input
+   travels in `problems[0].context.value` — where this framework puts failing
+   inputs. Validation and defaulting are one method (`ServeCommand::number`) so
+   they cannot disagree.
+
+5. **`EnvAudit` is the single rule for "a declared required variable has no
+   value", shared by `lava env` and `lava check`.** `lava check`'s `env` section
+   was previously unreachable — `missing_env_var` was raised only by
+   `EnvCommand` — which contradicted `docs/problem-codes.md`. Two commands
+   independently deciding whether a variable is set is the same class of bug as
+   two implementations of any other rule, so the rule moved to one place.
+   `lava check --no-tests` still runs the env sweep (and the all-features
+   sweep); `--quick` skips both, with the tests.
+
+6. **A red test suite is data, not a problem.** `lava test` and `lava check`
+   leave `problems[]` empty for a failing suite and go red through `status` and
+   the exit code. `missing_test_runner` and `bad_test_report` are real problems
+   because they are about the *run* rather than about the code: no runner means
+   the app was never installed; a runner that wrote nothing means PHPUnit
+   stopped before testing, and its own output is the only diagnosis there is, so
+   it rides in `context.output` (bounded to 2000 chars).
+
+7. **The test harness lends `LAVA_PHPUNIT` only to a fixture that declares a
+   suite** (`LavaCli::environment`, `CommandTestCase::lendRunner`). A real app
+   gets its runner from its own `vendor/`, and the harness stands in for exactly
+   that — so `ok-app` (which has `phpunit.xml.dist`) runs a real suite, while
+   `module-app` keeps the honest `missing_test_runner`. Lending it to every
+   fixture would have made that path unreachable and turned a setup problem into
+   PHPUnit's confusing "nothing to run". `LAVA_PHPUNIT` is the documented escape
+   hatch (the `DB_TEST_DSN` idiom), not a test-only backdoor.
+
+8. **The schemas are validated by running commands, not by listing them**
+   (`tests/Schema/JsonSchemaTest.php`). Each invocation's own `schema` field
+   names the file to validate against, so adding a payload key without touching
+   its schema fails the build — the schemas set `additionalProperties: false`.
+   Failed runs are validated too: `data` keys are promised on every exit path.
+   Two implementation notes worth keeping: the `https://lavaphp.dev/schemas/`
+   prefix is registered to `docs/schemas/` so opis never reaches the network,
+   and envelopes are decoded with `json_decode`'s DEFAULT mode because opis
+   refuses a PHP associative array as a JSON object
+   (`Helper::getJsonType` returns null for it) — validating the array form would
+   fail every command for a reason unrelated to the payload. A `$id`-vs-path
+   test exists because the prefix resolver maps URLs to paths and would happily
+   load a file under a name its own `$id` denies.
+
+9. **`scripts/gate.php` and `scripts/fixture-autoload.php` are deleted.** The
+   gate's 36 real-SAPI checks were run one last time (36/36 green) and then
+   ported to `tests/Cli/ServeTest.php`, which starts four servers (ok-app,
+   module-app with the pack on and off, subject-app) and drives them over HTTP;
+   the `fixture-autoload.php` it needed already lives at
+   `packages/core/tests/Support/fixture-autoload.php` in a maintained form. A
+   shell script outside PHPUnit could not fail CI, could not share the harness,
+   and had to be remembered.
+
+10. **`lava check`'s `config` section carries `invalid_config` for a
+    wrong-shaped app artifact too** (e.g. `app/Commands.php` returning
+    non-callable), not only for `config/*.php`. The code→section map is static
+    and `invalid_config` is one code covering both; splitting the code or
+    guessing the section from the file path would be worse than a section label
+    that is occasionally broader than the reader expects. Recorded as a known
+    compromise rather than a design goal.
+
+11. **Orphan flags (defined and set but never queried) are NOT yet a `lava check`
+    warning**, though the plan (line 142) lists one. Deferred, not dropped:
+    "never queried" cannot be observed from a boot, because a flag may be read
+    by app code the framework never sees, and a gate naming an undefined flag is
+    already a boot failure — so the check as specified would fire mostly on
+    false positives. It becomes implementable when feature resolutions are
+    recorded during a request (`Features::resolve` is the single choke point),
+    which is a runtime-tracing feature, not a boot-time one.
+
+12. **Everything commits to `main`.** The repository has one branch and the work
+    is a sequence of milestones toward an untagged 0.1.0; a branch per slice
+    would add merges without adding review, since the plan and this log are the
+    review. This changes when 0.1.0 is tagged or when a second person starts
+    pushing.
+
+13. **`opis/json-schema` (^2.6) is a dev dependency**, not a runtime one: it
+    validates the framework's own output in tests and ships in no release. The
+    schemas themselves are plain JSON files in `docs/schemas/`, readable by any
+    validator an agent already has.

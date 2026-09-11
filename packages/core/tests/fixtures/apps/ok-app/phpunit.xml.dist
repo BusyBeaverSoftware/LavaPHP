@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ok-app's own test configuration — what `lava test` and `lava check` find when
+  they run this app's suite. No `bootstrap`: a real app's composer.json autoloads
+  App\ (and the runner's own vendor autoload is already loaded), while this
+  fixture has none — the test harness registers the fixture's autoloader.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.5/phpunit.xsd"
+         cacheDirectory=".phpunit.cache"
+         colors="false">
+  <testsuites>
+    <testsuite name="ok-app">
+      <directory>tests</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>

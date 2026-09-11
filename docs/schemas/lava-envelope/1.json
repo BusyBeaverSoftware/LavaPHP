@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava-envelope/1.json",
+  "title": "LavaPHP CLI envelope",
+  "description": "The vocabulary every `lava <command> --json` output shares: the envelope, the problem object, and a source location. Each command's schema references `$defs/envelope` and then constrains only `data` — which is why an agent can parse one shape for every command and read a problem from any of them, boot report, HTTP body, or check section alike.",
+  "$defs": {
+    "envelope": {
+      "type": "object",
+      "description": "One command invocation's complete result, on stdout, as a single JSON object.",
+      "required": ["schema", "command", "status", "data", "problems"],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "pattern": "^lava\\.[a-z][a-z0-9.]*/[0-9]+$",
+          "description": "The contract this output obeys. The file naming it is docs/schemas/<schema>.json, and the trailing /N is frozen: a breaking change to a payload means a new /N, never an edit."
+        },
+        "command": {
+          "type": "string",
+          "description": "The command that produced it, as typed (a subcommand reports its command, so `lava features resolve` reports `features`)."
+        },
+        "status": {
+          "enum": ["ok", "failed"],
+          "description": "ok exits 0. failed exits 1 for a problem or a red result, and 2 for a malformed invocation."
+        },
+        "data": {
+          "type": "object",
+          "description": "The command's payload. Its keys are promised for EVERY exit path — including a failed boot — so a consumer never branches on a shape it was told was stable."
+        },
+        "problems": {
+          "type": "array",
+          "description": "Every problem found, in the order to act on them (runnable fixes first). Empty on a clean run.",
+          "items": { "$ref": "#/$defs/problem" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "problem": {
+      "type": "object",
+      "description": "A diagnosis an agent can act on without a second round trip: what is wrong, where, with what input, and the imperative fix.",
+      "required": ["code", "problem", "fix", "context", "source", "severity"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Stable identifier, 1:1 with a Problem class and catalogued in docs/problem-codes.md. Branch on this, never on the message."
+        },
+        "problem": {
+          "type": "string",
+          "description": "What is wrong, naming the failing input."
+        },
+        "fix": {
+          "type": "string",
+          "description": "The imperative fix. A fix starting with 'Run: ' names a command that resolves it, which is why `lava check` sorts those first."
+        },
+        "context": {
+          "type": "object",
+          "description": "The exact values involved, so the diagnosis is checkable without re-deriving them."
+        },
+        "source": {
+          "description": "Where the offending declaration lives, when it is a file. Null for problems about the environment or a request.",
+          "anyOf": [{ "$ref": "#/$defs/source" }, { "type": "null" }]
+        },
+        "severity": {
+          "enum": ["fatal", "warn"],
+          "description": "fatal fails the run (exit 1); warn is reported and exits 0 unless --strict escalates it."
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "description": "A file and 1-based line, formatted as file:line everywhere it is rendered.",
+      "required": ["file", "line"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

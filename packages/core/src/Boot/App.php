@@ -6,6 +6,7 @@ namespace Lava\Core\Boot;
 
 use Lava\Core\Config\Config;
 use Lava\Core\Config\EnvVar;
+use Lava\Core\Console\CommandRegistry;
 use Lava\Core\Container\Container;
 use Lava\Core\Features\FlagSubjectResolver;
 use Lava\Core\Features\Features;
@@ -114,6 +115,26 @@ final class App implements RequestHandlerInterface
         }
 
         return array_values($entries);
+    }
+
+    /**
+     * The app's command set as RegisterCommands assembled it — the core
+     * commands plus whatever the enabled modules and app/Commands.php
+     * contributed.
+     *
+     * The fallback is not a convenience: `lava list` has to answer even for an
+     * app that cannot boot (that is when an agent most wants to know what it
+     * can still run), and the core set is exactly what is available then.
+     */
+    public function commands(): CommandRegistry
+    {
+        if ($this->container->has(CommandRegistry::class)) {
+            $registry = $this->container->get(CommandRegistry::class);
+            if ($registry instanceof CommandRegistry) {
+                return $registry;
+            }
+        }
+        return CommandRegistry::core();
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface

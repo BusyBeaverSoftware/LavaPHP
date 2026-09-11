@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.about/1.json",
+  "title": "lava about --json",
+  "description": "Runtime facts: the PHP it runs on, the app it found, and every pack the app's Modules.php names with whether it is switched on and installed. Answers 'why won't this app start' when nothing else can, so it reports the PHP facts even when the boot failed — `app` is then null and `packs` empty.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.about/1" },
+        "command": { "const": "about" },
+        "data": {
+          "type": "object",
+          "required": ["php", "app", "packs"],
+          "properties": {
+            "php": {
+              "type": "object",
+              "required": ["version", "sapi", "os", "extensions", "pdo_drivers"],
+              "properties": {
+                "version": { "type": "string" },
+                "sapi": { "type": "string" },
+                "os": { "type": "string" },
+                "extensions": {
+                  "type": "array",
+                  "description": "Lower-cased and sorted, so two machines' `about` output diffs cleanly.",
+                  "items": { "type": "string" }
+                },
+                "pdo_drivers": {
+                  "type": "array",
+                  "description": "Reported even when empty: 'PDO is present but has no drivers' is a diagnosis, and an absent key would hide it.",
+                  "items": { "type": "string" }
+                }
+              },
+              "additionalProperties": false
+            },
+            "app": {
+              "description": "The app this ran against, or null when it did not boot.",
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["dir", "env"],
+                  "properties": {
+                    "dir": { "type": "string" },
+                    "env": { "type": "string", "description": "The environment boot resolved to, after --env and config/app.php." }
+                  },
+                  "additionalProperties": false
+                },
+                { "type": "null" }
+              ]
+            },
+            "packs": {
+              "type": "array",
+              "description": "One entry per line of app/Modules.php, in that order. Empty when the app did not boot: the module list is a boot decision, and guessing it would be worse than saying nothing.",
+              "items": {
+                "type": "object",
+                "required": ["package", "feature", "module_class", "state", "installed", "config_files", "env_vars", "declared_at"],
+                "properties": {
+                  "package": { "type": "string" },
+                  "feature": { "type": "string" },
+                  "module_class": { "type": "string" },
+                  "state": {
+                    "enum": ["enabled", "disabled", "unknown"],
+                    "description": "unknown is the honest answer when the entry names a flag nothing defined — the missing flag is reported as a problem by boot, and about still has to render."
+                  },
+                  "installed": {
+                    "type": "boolean",
+                    "description": "Whether the pack's manifest was found. Independent of state: a pack can be switched on and absent, or off and installed."
+                  },
+                  "config_files": { "type": "array", "items": { "type": "string" } },
+                  "env_vars": { "type": "array", "items": { "type": "string" } },
+                  "declared_at": { "type": "string", "description": "file:line of the Modules.php entry." }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

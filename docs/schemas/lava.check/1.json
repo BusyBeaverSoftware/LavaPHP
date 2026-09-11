@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.check/1.json",
+  "title": "lava check --json",
+  "description": "The one-command verification: boot, wiring, routes, features, env, commands, and the app's own suite, merged into one problem list and one exit code. `sections` says WHICH part of the app is broken before any individual problem is read; the envelope's `problems` is ordered fix-first, because a problem whose fix is a runnable command needs no judgement. It survives a failed boot on purpose — a red suite is often the reason an app cannot boot, so the tests still run and the report carries both.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.check/1" },
+        "command": { "const": "check" },
+        "data": {
+          "type": "object",
+          "required": ["sections", "counts", "tests", "strict", "quick"],
+          "properties": {
+            "sections": {
+              "type": "array",
+              "description": "Always all eight, in the order an app is built, so a consumer can index them rather than search. A clean run has every section ok or skipped.",
+              "items": {
+                "type": "object",
+                "required": ["name", "status", "problems", "detail"],
+                "properties": {
+                  "name": {
+                    "enum": ["boot", "config", "wiring", "routes", "features", "env", "commands", "tests"]
+                  },
+                  "status": {
+                    "enum": ["ok", "failed", "skipped"],
+                    "description": "skipped only ever applies to `tests`. Under --strict a warn makes its section failed."
+                  },
+                  "problems": { "type": "integer", "minimum": 0 },
+                  "detail": {
+                    "type": "string",
+                    "description": "The problem codes found, then the test summary when there was a run. Empty for a clean section."
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "counts": {
+              "type": "object",
+              "description": "What boot found. All zero when the app did not boot — the counts come from the booted app, not from re-reading files.",
+              "required": ["routes", "services", "features", "commands", "middleware"],
+              "properties": {
+                "routes": { "type": "integer", "minimum": 0 },
+                "services": { "type": "integer", "minimum": 0 },
+                "features": { "type": "integer", "minimum": 0 },
+                "commands": { "type": "integer", "minimum": 0 },
+                "middleware": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            },
+            "tests": {
+              "description": "The suite's results, or null when no run happened — see the tests section's detail for which of --quick, --no-tests, or a missing runner it was.",
+              "anyOf": [
+                { "$ref": "https://lavaphp.dev/schemas/lava.test/1.json#/$defs/testRun" },
+                { "type": "null" }
+              ]
+            },
+            "strict": { "type": "boolean", "description": "Whether warnings were escalated to failures for this run." },
+            "quick": { "type": "boolean", "description": "Whether this run skipped the suite and the all-features sweep." }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

@@ -4,23 +4,17 @@ declare(strict_types=1);
 
 namespace Lava\Core\Tests\Unit;
 
-use Lava\Core\Console\CommandRegistry;
-use Lava\Core\Console\Console;
 use Lava\Core\Console\ExitCode;
-use Lava\Core\Console\IO;
-use Lava\Core\Testing\TestApp;
-use PHPUnit\Framework\TestCase;
+use Lava\Core\Tests\Support\CommandTestCase;
 
 /**
  * The inspection commands, exercised against the fixture apps the way an agent
  * would use them — through Console, in both views.
  *
- * These tests deliberately assert on the ENVELOPE for machine facts and on the
- * rendered text for the human ones. Asserting the same fact twice would let the
- * two views drift while the suite stayed green, which is the failure the dual
- * IO design exists to prevent.
+ * The in-process harness (console, IO capture, environment isolation) lives in
+ * {@see CommandTestCase}, shared with the other command tests.
  */
-final class InspectionCommandsTest extends TestCase
+final class InspectionCommandsTest extends CommandTestCase
 {
     public function testRoutesListsInjectionPlans(): void
     {
@@ -335,116 +329,5 @@ final class InspectionCommandsTest extends TestCase
             ['service_not_registered', 'unexpected_failure'],
             array_column($envelope['problems'], 'code'),
         );
-    }
-
-    /**
-     * @param list<string> $args
-     * @return array{int, array<string, mixed>}
-     */
-    private function json(string $fixture, array $args): array
-    {
-        [$io, $stdout] = $this->io(json: true);
-        $code = $this->isolated(fn (): int => $this->console($fixture)->run(['lava', ...$args, '--json'], $io));
-
-        $decoded = json_decode($this->contents($stdout), true, flags: JSON_THROW_ON_ERROR);
-        self::assertIsArray($decoded);
-
-        return [$code, $decoded];
-    }
-
-    /** @param list<string> $args */
-    private function text(string $fixture, array $args): string
-    {
-        [$io, $stdout] = $this->io(json: false);
-        $this->isolated(fn (): int => $this->console($fixture)->run(['lava', ...$args], $io));
-
-        return $this->contents($stdout);
-    }
-
-    /**
-     * Runs one invocation the way the real binary does: a fresh process whose
-     * environment is untouched by anything that ran before.
-     *
-     * This matters because boot PROMOTES config/.env values into the process
-     * environment and never takes them back — correct for `lava`, which boots
-     * once and exits, but wrong for a test process that boots twenty times. In
-     * here, a `.env` value a previous command promoted would look like a shell
-     * export to the next one, and `lava env`'s source column would be a lie.
-     */
-    private function isolated(callable $body): int
-    {
-        $envBefore = $_ENV;
-        $serverBefore = $_SERVER;
-        $realBefore = getenv();
-
-        try {
-            return $body();
-        } finally {
-            self::restoreEnv($envBefore, $serverBefore, $realBefore);
-        }
-    }
-
-    private function console(string $fixture): Console
-    {
-        return new Console(CommandRegistry::core(), TestApp::autoloadFixture($fixture));
-    }
-
-    /**
-     * Runs with the given variables in the real process environment, restored
-     * afterwards. A command reads the live environment (that is the whole point
-     * of `lava env`), so the test has to mutate it the way a shell would.
-     *
-     * @param array<string, string> $vars
-     */
-    private function withEnv(array $vars, callable $body): void
-    {
-        $envBefore = $_ENV;
-        $serverBefore = $_SERVER;
-        $realBefore = getenv();
-
-        foreach ($vars as $name => $value) {
-            $_ENV[$name] = $value;
-            $_SERVER[$name] = $value;
-            putenv("{$name}={$value}");
-        }
-
-        try {
-            $body();
-        } finally {
-            self::restoreEnv($envBefore, $serverBefore, $realBefore);
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $envBefore
-     * @param array<string, mixed> $serverBefore
-     * @param array<string, string> $realBefore
-     */
-    private static function restoreEnv(array $envBefore, array $serverBefore, array $realBefore): void
-    {
-        $_ENV = $envBefore;
-        $_SERVER = $serverBefore;
-        foreach (getenv() as $name => $value) {
-            if (!array_key_exists($name, $realBefore) || $realBefore[$name] !== $value) {
-                putenv(array_key_exists($name, $realBefore) ? "{$name}={$realBefore[$name]}" : $name);
-            }
-        }
-    }
-
-    /** @return array{IO, resource, resource} */
-    private function io(bool $json, bool $quiet = false): array
-    {
-        $stdout = fopen('php://memory', 'w+');
-        $stderr = fopen('php://memory', 'w+');
-        self::assertIsResource($stdout);
-        self::assertIsResource($stderr);
-        return [new IO($json, $quiet, $stdout, $stderr), $stdout, $stderr];
-    }
-
-    /** @param resource $stream */
-    private function contents($stream): string
-    {
-        rewind($stream);
-        return (string) stream_get_contents($stream);
     }
 }

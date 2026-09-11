@@ -6,7 +6,16 @@
          failOnRisky="true"
          failOnWarning="true">
   <testsuites>
-    <testsuite name="core"><directory>packages/core/tests</directory></testsuite>
+    <!--
+      fixtures/apps/* are whole apps, each with its OWN suite that `lava test`
+      runs as a subprocess (a real app's suite, run the way a real app runs it).
+      Collecting them here would run them twice, in one shared process where
+      two fixtures declaring the same App\ class is an uncatchable fatal.
+    -->
+    <testsuite name="core">
+      <directory>packages/core/tests</directory>
+      <exclude>packages/core/tests/fixtures</exclude>
+    </testsuite>
     <testsuite name="db"><directory>packages/db/tests</directory></testsuite>
     <testsuite name="validate"><directory>packages/validate/tests</directory></testsuite>
     <testsuite name="view"><directory>packages/view/tests</directory></testsuite>

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Lava\Core\Console\Commands;
 
+use Lava\Core\Boot\App;
+use Lava\Core\Boot\BootFailure;
+use Lava\Core\Console\AppBoot;
 use Lava\Core\Console\Args;
 use Lava\Core\Console\Command;
 use Lava\Core\Console\CommandRegistry;
@@ -14,6 +17,13 @@ use Lava\Core\Console\Table;
  * `lava list` — every command this app can run, grouped by the pack that
  * provides it. The first thing an agent runs in an unfamiliar app, so the
  * text view leads with the same fields the `--json` view carries.
+ *
+ * It boots the app opportunistically, because the command set IS a boot
+ * decision: a pack that is enabled contributes commands, and listing only the
+ * core set would hide them. But it never fails on a boot failure — "what can I
+ * still run?" is a question most worth answering when the app is broken, so the
+ * core set is shown and `booted: false` records why. Diagnosing the failure is
+ * `lava check`'s job, not this one's.
  */
 final class ListCommand extends Command
 {
@@ -31,8 +41,16 @@ final class ListCommand extends Command
         return 'List every available command, grouped by pack.';
     }
 
+    public function flags(): array
+    {
+        return ['json', 'env'];
+    }
+
     public function run(IO $io, Args $args, string $appDir): int
     {
+        $boot = AppBoot::boot($appDir, $args->value('env'));
+        $registry = $boot instanceof App ? $boot->commands() : $this->registry;
+
         $commands = array_map(
             static fn (Command $command): array => [
                 'name' => $command->name(),
@@ -40,14 +58,19 @@ final class ListCommand extends Command
                 'flags' => $command->flags(),
                 'pack' => $command->pack(),
             ],
-            $this->registry->all(),
+            $registry->all(),
         );
         $io->data('commands', $commands);
+        $io->data('booted', !$boot instanceof BootFailure);
 
         foreach ($this->grouped($commands) as $pack => $rows) {
             $io->line(sprintf('%s (%d):', $pack, count($rows)));
             $io->text((new Table(['command', 'flags', 'summary'], $rows))->render());
             $io->line();
+        }
+
+        if ($boot instanceof BootFailure) {
+            $io->text("note: this app does not boot — pack commands are unknown. Run: lava check\n");
         }
 
         return $io->emit($this->name());

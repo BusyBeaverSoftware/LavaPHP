@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.features/1.json",
+  "title": "lava features --json",
+  "description": "Feature flags. Bare, it lists every flag with the layer that decided it; with a name, it resolves that one and reports the full trace — code default, then each layer that overrode it, in order. The trace is the point: 'why is this on?' is answered by the layers, not by the final value, and a flag's answer can differ per subject, which is why the resolver is deterministic and stateless.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.features/1" },
+        "command": { "const": "features" },
+        "data": {
+          "description": "Two shapes: the list, and one flag's resolution. They are distinguishable by key, and each forbids the other's, so a consumer can branch on `features` vs `flag` alone.",
+          "oneOf": [
+            { "$ref": "#/$defs/list" },
+            { "$ref": "#/$defs/resolution" }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "setting": {
+      "type": "string",
+      "pattern": "^(on|off|rollout:[0-9]{1,3}|users:.+|env:[A-Za-z_][A-Za-z0-9_]*)$",
+      "description": "A flag setting as written: on, off, rollout:N (deterministic bucketing), users:id,id, or env:NAME (read from the environment at resolution time)."
+    },
+    "layer": {
+      "type": "object",
+      "description": "One layer of the resolution, in the order it was applied.",
+      "required": ["layer", "setting"],
+      "properties": {
+        "layer": {
+          "enum": ["code", "config", "env"],
+          "description": "code = the default in config/features.php's define block; config = that file's set block or an environment branch; env = LAVA_FEATURE_* in the real environment."
+        },
+        "setting": { "$ref": "#/$defs/setting" }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "required": ["features"],
+      "properties": {
+        "features": {
+          "type": "array",
+          "description": "Every defined flag, in declaration order.",
+          "items": {
+            "type": "object",
+            "required": ["name", "pack", "description", "default", "enabled", "decided_by", "setting"],
+            "properties": {
+              "name": { "type": "string" },
+              "pack": {
+                "description": "The pack that defined it, or null for an app-defined flag.",
+                "anyOf": [{ "type": "string" }, { "type": "null" }]
+              },
+              "description": { "type": "string" },
+              "default": { "$ref": "#/$defs/setting" },
+              "enabled": { "type": "boolean", "description": "The answer for the resolved environment with no subject — an audience flag is off for anonymous subjects." },
+              "decided_by": { "enum": ["code", "config", "env"], "description": "The outermost layer that decided it." },
+              "setting": { "$ref": "#/$defs/setting" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resolution": {
+      "type": "object",
+      "required": ["flag", "subject"],
+      "properties": {
+        "flag": {
+          "type": "object",
+          "required": ["name", "enabled", "source", "setting", "trace"],
+          "properties": {
+            "name": { "type": "string" },
+            "enabled": { "type": "boolean" },
+            "source": { "enum": ["code", "config", "env"] },
+            "setting": { "$ref": "#/$defs/setting" },
+            "trace": {
+              "type": "array",
+              "description": "Every layer that applied, innermost first — the whole answer to 'why is it on', not just the winner.",
+              "items": { "$ref": "#/$defs/layer" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "subject": {
+          "description": "The subject this was resolved for (--subject), or null for the anonymous default.",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

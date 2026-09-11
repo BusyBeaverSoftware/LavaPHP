@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Lava\Core\Console;
 
+use Lava\Core\Boot\App;
+use Lava\Core\Boot\BootFailure;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
 use Lava\Core\Problem\UnexpectedFailure;
@@ -52,9 +54,31 @@ final class Console
         $args = Args::parse($tokens);
         $io ??= IO::standard($args->bool('json'), $args->bool('quiet'));
 
-        $command = $this->registry->get($name);
+        // A pack or app command is a BOOT DECISION: it exists only once
+        // app/Modules.php and app/Commands.php have run. So a name the core
+        // set doesn't know is the one case worth paying a boot for — core
+        // commands stay on the fast path and read no app files at all.
+        //
+        // Booting here costs a second boot for a pack command that is itself
+        // an AppCommand (it boots again to inspect). That is the price of
+        // keeping `run(IO, Args, string $appDir)` the whole command contract;
+        // the alternative is a command that can be handed a half-built app.
+        $registry = $this->registry;
+        $failure = null;
+
+        $command = $registry->get($name);
         if ($command === null) {
-            return $this->unknownCommand($io, $name);
+            $boot = AppBoot::boot($this->appDir, $args->value('env'));
+            if ($boot instanceof App) {
+                $registry = $boot->commands();
+                $command = $registry->get($name);
+            } else {
+                $failure = $boot;
+            }
+        }
+
+        if ($command === null) {
+            return $this->unknownCommand($io, $name, $registry, $failure);
         }
 
         if ($args->bool('help')) {
@@ -82,10 +106,30 @@ final class Console
         }
     }
 
-    private function unknownCommand(IO $io, string $name): int
-    {
+    /**
+     * `nearest` is computed over the widest command set we managed to see —
+     * the booted app's when it booted, the core set when it did not — so the
+     * hint can name a pack command the caller never knew existed.
+     */
+    private function unknownCommand(
+        IO $io,
+        string $name,
+        CommandRegistry $registry,
+        ?BootFailure $failure = null,
+    ): int {
         $report = new ProblemReport();
-        $report->add(UnknownCommand::of($name, $this->registry->nearest($name)));
+        $report->add(UnknownCommand::of($name, $registry->nearest($name)));
+
+        // A name we could not resolve may still exist: pack commands only
+        // appear once the app boots, and an app that cannot boot contributes
+        // none. When the boot is what stopped us, its report rides along —
+        // "it is unreachable right now" and "you typed it wrong" need
+        // different fixes, and the first problem stays the unknown name so
+        // the usage contract is unchanged.
+        if ($failure !== null) {
+            $report->merge($failure->problems);
+        }
+
         $io->emit($name, $report);
 
         // A bad invocation is a usage error, distinct from a command that ran

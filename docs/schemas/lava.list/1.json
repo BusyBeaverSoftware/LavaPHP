@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.list/1.json",
+  "title": "lava list --json",
+  "description": "Every command this app can run, grouped by the pack that provides it. The command set is a boot decision — a pack that is enabled contributes commands — so the app is booted to answer it, but a failed boot is NOT an error here: 'what can I still run?' is the question most worth answering when the app is broken. `booted` records that the answer may be missing pack commands, and diagnosing why is `lava check`'s job.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.list/1" },
+        "command": { "const": "list" },
+        "data": {
+          "type": "object",
+          "required": ["commands", "booted"],
+          "properties": {
+            "commands": {
+              "type": "array",
+              "description": "In registration order: core first (orient, verify, the tables, the runner, the lookup), then each pack's.",
+              "items": {
+                "type": "object",
+                "required": ["name", "summary", "flags", "pack"],
+                "properties": {
+                  "name": { "type": "string", "description": "What to type. Names are unique across core, packs, and the app — a duplicate is a fatal boot problem, never a silent override." },
+                  "summary": { "type": "string" },
+                  "flags": {
+                    "type": "array",
+                    "description": "Flag names without their leading dashes; `json` is always among them.",
+                    "items": { "type": "string" }
+                  },
+                  "pack": { "type": "string", "description": "The pack providing it — `core`, or the pack's package name." }
+                },
+                "additionalProperties": false
+              }
+            },
+            "booted": {
+              "type": "boolean",
+              "description": "False when the app failed to boot: the list is then the core set only, and pack commands are unknown rather than absent."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

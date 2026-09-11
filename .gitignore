@@ -8,3 +8,5 @@
 # Fixture apps are test data — their .env files must be tracked, or CI boots different fixtures than local runs.
 !packages/core/tests/fixtures/**
 *.log
+# Fixture apps write their own cache when `lava test` runs their suite.
+.phpunit.cache/

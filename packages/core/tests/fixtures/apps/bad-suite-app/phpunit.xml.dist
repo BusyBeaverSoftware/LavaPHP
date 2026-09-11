@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  bad-suite-app's configuration points at a `tests` directory that does not
+  exist — the mistake you make after renaming or deleting it. PHPUnit exits 2
+  with "Test directory … not found" and writes an EMPTY JUnit report, which is
+  the case `lava test` has to report as `bad_test_report`: the runner ran, and
+  produced nothing usable, so PHPUnit's own output is the only diagnosis there
+  is.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.5/phpunit.xsd"
+         cacheDirectory=".phpunit.cache"
+         colors="false">
+  <testsuites>
+    <testsuite name="bad-suite-app">
+      <directory>tests</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>

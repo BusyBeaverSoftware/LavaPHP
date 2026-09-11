@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.env/1.json",
+  "title": "lava env --json",
+  "description": "Every environment variable this app reads, declared or not. The union is the point: app declarations, then packs', then names that exist only in config/.env — that last group is invisible to every other view of the app, and it is exactly what an agent needs when a value 'is definitely set' but never reaches the code. `source` separates a variable the real environment provided from one config/.env promoted, because those two disagree in production.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.env/1" },
+        "command": { "const": "env" },
+        "data": {
+          "type": "object",
+          "required": ["env", "resolved_env", "env_file"],
+          "properties": {
+            "env": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "required", "secret", "description", "declared_by", "set", "source", "value"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "required": {
+                    "type": "boolean",
+                    "description": "Declared required by the app or a pack. A missing required variable is a warn, so `lava check` reports it without failing until --strict."
+                  },
+                  "secret": {
+                    "type": "boolean",
+                    "description": "True when this name looked secret and --reveal was not passed, so `value` is null here."
+                  },
+                  "description": { "type": "string" },
+                  "declared_by": {
+                    "description": "Who declared it — app/Services.php, or the package name. Null for a bare config/.env entry nothing declares.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "set": { "type": "boolean", "description": "Whether a value was found at all, from either source." },
+                  "source": {
+                    "enum": ["env", "dotenv", null],
+                    "description": "env = the real process environment (which always wins); dotenv = config/.env supplied it; null = nothing set it."
+                  },
+                  "value": {
+                    "description": "The value, or null when it is unset or redacted.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "resolved_env": {
+              "description": "The environment boot resolved to — what `LAVA_ENV` and --env decided.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "env_file": {
+              "description": "The dotenv file that was read, relative to the app root, or null when there is none.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

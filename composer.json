@@ -16,9 +16,10 @@
     "require-dev": {
         "lava/core": "@dev",
         "lava/db": "@dev",
+        "lava/http-client": "@dev",
         "lava/validate": "@dev",
         "lava/view": "@dev",
-        "lava/http-client": "@dev",
+        "opis/json-schema": "^2.6",
         "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^12.5"
     },

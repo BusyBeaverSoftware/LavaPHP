@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  red-app's own test configuration. Same shape as ok-app's, and it exists for
+  the same reason: `lava test` runs the APP's suite, the way the app's own
+  composer script would, so a fixture that is verified by a runner has to carry
+  the config a runner reads.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.5/phpunit.xsd"
+         cacheDirectory=".phpunit.cache"
+         colors="false">
+  <testsuites>
+    <testsuite name="red-app">
+      <directory>tests</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>

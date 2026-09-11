@@ -11,6 +11,7 @@ use Lava\Core\Boot\Steps\CheckModules;
 use Lava\Core\Boot\Steps\CollectFlagDefinitions;
 use Lava\Core\Boot\Steps\LoadConfig;
 use Lava\Core\Boot\Steps\LoadDotEnv;
+use Lava\Core\Boot\Steps\RegisterCommands;
 use Lava\Core\Boot\Steps\RegisterCoreServices;
 use Lava\Core\Boot\Steps\ValidateWiring;
 use Lava\Core\Boot\Steps\WireAppServices;
@@ -35,6 +36,7 @@ final class Kernel
         WireModules::class,
         WireAppServices::class,
         BuildRouter::class,
+        RegisterCommands::class,
         ValidateWiring::class,
     ];
 

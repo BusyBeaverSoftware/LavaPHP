@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.test/1.json",
+  "title": "lava test --json",
+  "description": "The app's PHPUnit suite, as structured results rather than a summary line. The substrate is PHPUnit's `--log-junit` output — a documented format — so a reworded human summary can never silently break the framework. `cases` carries only the cases that did NOT pass: a green suite's payload stays small, and a reader sees the failures first.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.test/1" },
+        "command": { "const": "test" },
+        "data": { "$ref": "#/$defs/testRun" }
+      }
+    }
+  ],
+  "$defs": {
+    "testRun": {
+      "type": "object",
+      "description": "One run of the app's suite.",
+      "required": ["suite", "suites", "tests", "failures", "errors", "skipped", "assertions", "time", "cases"],
+      "properties": {
+        "suite": {
+          "description": "The configured suite's name when the app has exactly one, else null — with several there is no single answer, and `suites` carries them all rather than picking one.",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "suites": {
+          "type": "array",
+          "description": "Every suite the app configured, in order.",
+          "items": { "type": "string" }
+        },
+        "tests": { "type": "integer", "minimum": 0 },
+        "failures": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "assertions": { "type": "integer", "minimum": 0 },
+        "time": { "type": "number", "minimum": 0, "description": "Seconds, rounded to milliseconds." },
+        "cases": {
+          "type": "array",
+          "description": "Only the cases that failed, errored, or were skipped — a passing case carries nothing a reader needs.",
+          "items": {
+            "type": "object",
+            "required": ["name", "class", "file", "line", "status", "type", "message"],
+            "properties": {
+              "name": { "type": "string" },
+              "class": { "type": "string" },
+              "file": { "type": "string" },
+              "line": { "type": "integer", "minimum": 0 },
+              "status": { "enum": ["failed", "error", "skipped"] },
+              "type": { "type": "string", "description": "The throwable's class for a failure or error; empty for a skip." },
+              "message": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

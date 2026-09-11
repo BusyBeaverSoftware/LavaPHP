@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.services/1.json",
+  "title": "lava services --json",
+  "description": "Every container registration, with the file and line that declared it and the real resolution history: what each service actually pulled in, and who pulled it. Dependencies are recorded when a service is RESOLVED, so a service nothing has asked for yet reports none — an honest 'not known yet' rather than a guess from reading code.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.services/1" },
+        "command": { "const": "services" },
+        "data": {
+          "type": "object",
+          "required": ["services"],
+          "properties": {
+            "services": {
+              "type": "array",
+              "description": "In registration order: core services, then each enabled module's, then app/Services.php.",
+              "items": {
+                "type": "object",
+                "required": ["id", "kind", "target", "file", "line", "class", "dependencies", "dependents"],
+                "properties": {
+                  "id": { "type": "string", "description": "The container id — a class-string or a plain name." },
+                  "kind": { "enum": ["singleton", "factory", "value", "alias"] },
+                  "target": {
+                    "description": "For an alias, the id it resolves to; null otherwise.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "file": { "type": "string" },
+                  "line": { "type": "integer", "minimum": 1 },
+                  "class": {
+                    "description": "The concrete class resolved, once it has been; null before that, and for aliases and values.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "dependencies": {
+                    "type": "array",
+                    "description": "Ids this service resolved from the container, in resolution order.",
+                    "items": { "type": "string" }
+                  },
+                  "dependents": {
+                    "type": "array",
+                    "description": "Ids that resolved this one — the reverse edge, so 'what breaks if I change this' is answerable.",
+                    "items": { "type": "string" }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}
