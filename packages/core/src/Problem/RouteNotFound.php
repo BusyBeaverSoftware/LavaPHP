@@ -15,6 +15,12 @@ final class RouteNotFound extends LavaProblem
         return 'route_not_found';
     }
 
+    /** The path matched nothing, and that is the caller's problem, not ours. */
+    public function httpStatus(): int
+    {
+        return 404;
+    }
+
     public static function of(string $method, string $path): self
     {
         return new self(

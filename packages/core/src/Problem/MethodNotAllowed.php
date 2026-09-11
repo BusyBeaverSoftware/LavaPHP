@@ -15,6 +15,12 @@ final class MethodNotAllowed extends LavaProblem
         return 'method_not_allowed';
     }
 
+    /** RFC 9110 §15.5.5: the path exists, the method does not. */
+    public function httpStatus(): int
+    {
+        return 405;
+    }
+
     /** @param list<string> $allowed uppercase method names */
     public static function of(string $method, string $path, array $allowed): self
     {

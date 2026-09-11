@@ -40,6 +40,25 @@ abstract class LavaProblem extends \RuntimeException
     }
 
     /**
+     * The HTTP status this problem becomes when it reaches a response.
+     *
+     * A problem knows its own status, and that is the point: the alternative is
+     * a `match` on `code()` somewhere in the HTTP layer, which would make core
+     * enumerate the codes of packs it has never heard of. `validation_failed`
+     * is a 422 and lives in a pack — so a pack must be able to say so.
+     *
+     * 500 is the default because most problems ARE framework or wiring faults:
+     * something the developer got wrong, which is a server-side failure. The
+     * problems that are the *caller's* fault override this — a 404 for a path
+     * that matched nothing, a 405 for a method that did not, a 422 for input
+     * that arrived but was not usable.
+     */
+    public function httpStatus(): int
+    {
+        return 500;
+    }
+
+    /**
      * The stable problem object. Field order is fixed; never add fields here
      * without a major schema bump in the CLI envelopes that embed it.
      *

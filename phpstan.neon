@@ -3,5 +3,6 @@ parameters:
     paths:
         - packages/core/src
         - packages/db/src
+        - packages/validate/src
     excludePaths:
         - packages/*/tests

@@ -49,6 +49,7 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `route_not_found` | `RouteNotFound` | no route matched the method + path (also the real 404 for a gated route whose flag is off) | `Run: lava routes --json` |
 | `method_not_allowed` | `MethodNotAllowed` | the path matched but the method didn't (also: HEAD to a GET-only route — HEAD is never auto-mapped) | list the accepted methods |
 | `unknown_route` | `UnknownRoute` | URL generation asked for a route name that isn't registered | suggest the nearest registered name |
+| `malformed_body` | `MalformedBody` | a request declared a JSON content type and the body is not valid JSON, or is valid JSON that is not an object | send valid JSON, or send it as a form instead |
 | `unknown_command` | `UnknownCommand` | `lava <name>` named a command this app doesn't have | suggest the nearest registered command, else `lava list` |
 | `duplicate_command` | `DuplicateCommand` | two commands claim the same name (core, a pack, or `app/Commands.php`) | rename or remove the second; when both claim one pack, override `pack()` |
 | `missing_entry_point` | `MissingEntryPoint` | `lava serve` found no `public/index.php` to run — checked before the server is announced | copy the canonical one from the `lava/app` skeleton |
@@ -66,6 +67,9 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `query_failed` | `QueryFailed` (db) | the driver rejected a statement the builder produced — the DDL or SQL is well-formed but the database disagrees (a type it won't accept, a constraint it can't satisfy) | the statement, the bound values, and the driver's message |
 | `migration_failed` | `MigrationFailed` (db) | a migration's `up()`/`down()` threw, or a recorded migration's file is gone | point at the migration file and line, and say the batch was NOT rolled back |
 | `invalid_migration_file` | `InvalidMigrationFile` (db) | a file in `app/Database/Migrations/` is unusable — a name that isn't `<timestamp>_<snake>`, a `return` that isn't a `Migration`, a file that throws while loading, or a `db:new` target that exists or can't be written | quote the file and the naming rule |
+| `validation_failed` | `ValidationFailed` (validate) | a declared field's value fails a rule — **422**, the only problem that is the *caller's* fault | name the field, the rule, what it wanted, and redact the value if the field looks secret |
+| `invalid_rule` | `InvalidRule` (validate) | a rule cannot do its job: an unparsable or undelimited pattern, an empty allowed set, a negative length, a bound with no type rule to decide from, a bound on a boolean, or a `->custom()` predicate that threw | name the declaration to rewrite, at the line that declares it |
+| `unreadable_field` | `UnreadableField` (validate) | the handler read a field that has no readable value — absent (optional, so validation let it through missing) or not coercible to the type asked for | `->required()` on the field, a `->has()` check, or the type rule that matches how it is read |
 
 `not_an_app` is the one code that exists because booting the wrong directory
 **succeeds**. Every user-authored artifact is optional (see
@@ -151,3 +155,33 @@ broken `phpunit.xml`, a bootstrap that fatals. Neither is ever a *framework*
 problem, so a red suite contributes no problems at all: `lava test` and
 `lava check` let the exit code and `status` go red and leave `problems[]` empty.
 The framework has no business pronouncing on code it never read.
+
+M6 status: `malformed_body` and the validate pack's three codes are live.
+`malformed_body` is core because the parsing rule is core's — a request that
+declares a JSON body and is not one is refused in `RequestBody` before routing,
+and the alternative (leaving the parsed body null) would present a syntax error
+as every field being missing. The validate codes are in `Lava\Validate\Problem\`,
+covered by `packages/validate/tests/`, and the fixture app's three routes
+exercise all of them over real HTTP.
+
+`validation_failed` is the one code that made `LavaProblem::httpStatus()`
+necessary. A 422 has to be able to come from a pack — the knowledge that makes
+the fix text worth reading (which field, which rule, what it wanted) lives in the
+validate pack and nowhere else — and the alternative is a `match` on `code()`
+somewhere in the HTTP layer, which would make core enumerate the codes of packs
+it has never heard of. So a problem declares its own status, the default stays
+500 because most problems *are* developer faults, and the three caller-fault
+codes override it: `route_not_found` 404, `method_not_allowed` 405,
+`malformed_body` 400, `validation_failed` 422.
+
+The validate pack's three codes split on **who made the mistake**, which is also
+the split between 422 and 500. `validation_failed` is the caller's value and the
+caller's fix. `invalid_rule` is the app's declaration — a pattern that does not
+compile, a predicate that throws — so it is a 500 with a file and line in the
+app's own source, and it is raised at the declaration rather than on whichever
+request reaches the field first. `unreadable_field` is also a 500, but the
+mistake is in how the *handler* reads the result: it asked for a field that
+validation let through missing, or for a type the field never promised. Folding
+`unreadable_field` into `validation_failed` would be the worst of the three
+outcomes — it would tell a caller their request was bad when the request was
+fine and the accessor was wrong.

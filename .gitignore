@@ -1,4 +1,7 @@
 /vendor/
+# A pack installed on its own (`cd packages/<pack> && composer install`) gets its own vendor/.
+# That install is how a pack's standalone claim is verified, not an artifact to commit.
+/packages/*/vendor/
 /composer.phar
 /.phpunit.cache/
 .phpunit.result.cache
@@ -6,7 +9,8 @@
 .env
 !config/.env.example
 # Fixture apps are test data — their .env files must be tracked, or CI boots different fixtures than local runs.
-!packages/core/tests/fixtures/**
+# Every pack's fixtures, not just core's: a pack's fixture app is the same kind of artifact.
+!packages/*/tests/fixtures/**
 *.log
 # Fixture apps write their own cache when `lava test` runs their suite.
 .phpunit.cache/

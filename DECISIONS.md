@@ -716,3 +716,223 @@ commit or the suite goes red. That is probably what you want given the
 agent-first pillar, and it is a fifteen-minute test. But it is a decision about
 what the document *is*, so it is yours rather than mine. Say the word and it is
 in the next milestone's first commit.
+
+## 2026-09-11 — M6 (lava/validate)
+
+The plan's acceptance criteria for M6 are "demo form route validates; every rule
+failure carries field + fix hint; pack installs standalone". The second and third
+are met and verified for real: the fixture app's `POST /users` route was driven
+through a live `php -S` and curl (five bad fields → a 422 with five problems,
+each naming its field, rule, `expects`, and a redacted value where the field
+looks secret), and the pack was installed and tested standalone
+(`composer install` inside `packages/validate`, its own `vendor/`, **273 tests,
+858 assertions, all green**). The first is met in a fixture rather than in
+`apps/demo/` — see 30, which is the one deviation from the plan's wording and is
+flagged rather than buried. Both open findings from M5 (18, 22) are still open
+and unacted on.
+
+23. **The pack's API is static and dependency-free, and `register()` is
+    deliberately empty.** A `Validator` is built from a field map that only the
+    app knows, so the container cannot hold one: a singleton validator would have
+    to be for a specific set of fields, and choosing which fields belong together
+    is exactly the decision a handler makes. The module class exists anyway,
+    because `app/Modules.php` names the module that owns a feature — without it,
+    enabling the pack is a `MissingPack` and `--feature validate` has nothing to
+    gate. This is the first pack with no service, no config file and no env var,
+    so it is also the first proof that a pack *may* be nothing but an API.
+
+24. **A field's name is the array key in `Validator::of()`, not an argument to
+    `Field`.** A field cannot then be declared twice, because PHP array keys make
+    the duplicate unrepresentable — there is no check to write and no state to
+    get wrong. It also means a `Field` carries no identity, so the same
+    `Field::str()->email()` value can back two differently-named fields, and the
+    validator's field list and the request body have the same shape.
+
+25. **Fields are optional unless `->required()` says so.** The chain reads as a
+    condition on a value that exists — `->max(20)` on an absent nickname must not
+    fire, or "optional but short" is inexpressible. Requiring is therefore the
+    thing said out loud, which is also the safer default: a forgotten
+    `->required()` on a create form produces an empty column, while a forgotten
+    `->optional()` on a patch form rejects every request that omits the field.
+
+26. **`min`/`max` are one rule with two modes, and the mode is chosen by the type
+    rule at build time.** `min(2)` against the string `'5'` is either "two
+    characters" (false) or "the number two" (true), and no inspection of the value
+    can tell which the author meant. So `Field::str()->min(2)` builds
+    `MinRule::length(2)` and `Field::int()->min(2)` builds `MinRule::numeric(2)`,
+    and the `expects` in the problem context says which (`{"bound":2,
+    "of":"characters"}`). Three mis-declarations are **refused rather than
+    guessed**: a bound on an untyped chain (`untypedBound`), a bound on a boolean
+    (`boundOnBoolean`), and a fractional length (`fractionalLength`). Picking a
+    meaning would make a field's answer depend on the data — the same rule passing
+    or failing for reasons the author never wrote down.
+
+27. **`RuleSet::inspect()` returns a `RuleFailure`, not a bare `RuleViolation`.**
+    It is the last point that knows *which* rule stopped the pipeline, and the
+    `validation_failed` context has to report `rule` and `expects`. Carrying the
+    rule with its own text means no rule has to name itself in its message, and
+    the problem is a carrier rather than a second author of the same sentence.
+
+28. **`DeclarationSite` exists because PHP backtrace frames report the CALL site,
+    not the definition site.** A mis-declared rule is raised from a constructor or
+    a builder method while the app's chain is still on the stack, so the first
+    frame outside the pack is the `Field::…->regex(…)` line — the line to edit.
+    `predicateFailed()` is the exception: it is raised from `inspect()`, long after
+    the chain was built, so a stack walk there lands on the framework's own
+    `HandlerInvoker` and blames the wrong file. `CustomRule` therefore captures its
+    declaration site when it is constructed and passes it in. `SOURCE_ROOT` is
+    `src/`, **not the package root** — the first version used the package root and
+    silently skipped a fixture's own controller as "inside the pack", which is how
+    a problem came to report `HandlerInvoker.php` even after the capture was
+    added. The fix is one path segment and a docblock saying why.
+
+29. **`RegexRule` parses the pattern before anchoring it, and refuses a pattern
+    with no delimiters separately.** Two bugs, one shape. (a) Slicing the body as
+    "everything between the first and last character" turned `'/abc/i'` into
+    `/^abc/$/` and refused a pattern that was fine — and because the rewrite
+    happened *before* PCRE saw it, the complaint named a `$` the author never
+    typed. The parser now scans backward for the last closer that leaves only
+    modifiers after it, and pairs `(`, `[`, `{`, `<` with their own closers.
+    (b) `preg_last_error_msg()` reports every PCRE *compile* failure as "Internal
+    error"; the real message is only in the emitted warning, so it is captured
+    with a scoped `set_error_handler` and restored in a `finally`. A pattern with
+    no delimiters is refused by `undelimited()` rather than handed to PCRE, which
+    would accept `[` as a delimiter and complain about a modifier instead of
+    about the missing delimiter.
+
+30. **The form route lives in the pack's own fixture, not in `apps/demo/` — a
+    deviation from the plan's wording, flagged rather than buried.** M6's verify
+    line says "demo form route validates", and `apps/demo/` is currently an empty
+    directory that M7 explicitly owns ("apps/demo promoted to canonical fixture").
+    Building the route there now would mean M7 promoting a directory M6 had
+    already half-built, and it would put a pack-specific route in the app that is
+    meant to demonstrate the framework. So the route is
+    `packages/validate/tests/fixtures/apps/validate-app/`, it is a real form route
+    (`POST /users`, exercised over a live `php -S` with both a JSON and a
+    form-encoded body), and the pack installs and tests standalone. **If you want
+    the demo route in `apps/demo/` instead, say so and it moves in M7** — the
+    fixture is written so its controllers could be lifted wholesale.
+
+31. **`LavaProblem::httpStatus()` was added so a pack can declare its own status.**
+    `validation_failed` is a 422 and lives in a pack; the alternative is a `match`
+    on `code()` somewhere in the HTTP layer, which would make core enumerate the
+    codes of packs it has never heard of. The default stays 500, because most
+    problems *are* developer faults. The three caller-fault codes override it:
+    `route_not_found` 404, `method_not_allowed` 405, `malformed_body` 400,
+    `validation_failed` 422. Core's `HttpErrors::forReport()` takes the status
+    from the first problem, which is safe because problems that disagree about
+    their status agree about being the caller's fault.
+
+32. **`malformed_body` is core, and an EMPTY body is not malformed.** The parsing
+    rule is core's (`RequestBody`), and a request that declares a JSON body and is
+    not one is refused before routing — the alternative, leaving the parsed body
+    null, would present a syntax error as every field being missing, which is a
+    confidently actionable answer to a question nobody asked. But an empty body is
+    *no body at all*, so it is not a parse error: it reaches validation and gets a
+    422 naming every required field. Verified over curl: `-d ''` → 422 with five
+    problems; `-d '"just a string"'` → 400 `malformed_body`.
+
+33. **`->email()` and `->uuid()` are instance refinements, not static
+    constructors — and this was a real silent-wrong-answer bug, found by a test
+    and fixed in the source.** PHP lets a static method be called through an
+    instance, so `Field::str()->required()->email()` returned a brand-new field
+    and discarded the `required()`: a field declared required that accepted a
+    missing value. Demonstrated before fixing (`Field::str()->required()->email()
+    ->max(254)` → `[EmailRule, MaxRule]`, `isRequired: false`, empty body
+    *valid*). The refinements are now instance methods that replace the type rule
+    in place — so `[RequiredRule, EmailRule, MaxRule]`, `isRequired: true`, empty
+    body refused — a text refinement on a non-text chain is refused
+    (`incompatibleFormat`), and both the unit tests and the fixture's HTTP test pin
+    it. Nothing in the repo had called `Field::email()` as an entry point, so the
+    change cost two docblocks and one test file.
+
+34. **The cross-field idiom is "pass when the field you depend on is unreadable",
+    and the fixture proved it by getting it wrong first.** A rule has two
+    outcomes, pass or refuse, and "the field I depend on is not there" is not a
+    reason to refuse `ends_at`. The fixture's predicate originally guarded the read
+    (`is_string($ends) && is_string($body['starts_at'] ?? null) && …`) and
+    returned **false** when `starts_at` was missing — which produced a second
+    complaint, `after_starts_at`, about a comparison that never happened, on a
+    request whose only mistake was the missing `starts_at`. Caught by the HTTP
+    test, fixed in the fixture (`!is_string(...) || …`), and documented as the
+    pattern: guarding the read is not enough on its own — the guard has to decide
+    what to do about the missing value. There is deliberately no third "not
+    applicable" outcome on `Rule`; from the caller's perspective "abstain" and
+    "pass" are the same thing.
+
+35. **`UnreadableField`'s fix names the builder method, not the accessor's word
+    for the type.** A handler reads `->string('name')` and declares it
+    `Field::str()`; the first version interpolated the accessor's word and told the
+    reader to write `Field::string()`, which does not exist. A fix that names a
+    method that does not exist is worse than no fix at all, because an agent
+    follows it and gets a fatal. There is now a small explicit map and a test that
+    regexes every `Field::X()` out of the fix text and asserts
+    `method_exists(Field::class, 'X')` — the same invariant is asserted over every
+    `InvalidRule` factory's fix.
+
+36. **The value in a problem context is redacted on the FIELD NAME, and the one
+    implementation is shared.** A 422 body is logged, echoed into terminals and
+    pasted into bug reports, so `password` never appears in one — the decision is
+    about the field, not the value, because "does this look secret" is not a
+    question a validator can answer. `ValidationFailed::reportable()` is public and
+    `UnreadableField` uses it, so a redaction policy that lived in two places
+    cannot hide a password in one report and print it in the other. Arrays become
+    their JSON text and non-encodable values become their type name, so the context
+    is always JSON-safe. Verified live: `password` → `"<redacted>"`, and the
+    offending request body never reaches `context` for `malformed_body`.
+
+37. **A fixture app needs the harness's autoloader to run under a real SAPI.** The
+    first live `php -S` run returned 500 `bad_handler` for all three routes: the
+    fixture has no `composer.json`, so nothing maps `App\` to its `app/` directory.
+    That is not a defect — it is why `packages/core/tests/Support/fixture-autoload.php`
+    exists and why `lava serve` prepends it — but it is worth recording because the
+    in-process `TestApp::boot()` hides it by registering the same autoloader by
+    hand. The correct live invocation is documented in
+    `docs/packs/lava-validate.md`. `TestApp::bootFixture()`/`fixturePath()` are
+    hardcoded to core's fixtures directory, so a pack's fixture must use
+    `TestApp::boot()` with an explicit path; the fixture's `App\` class names are
+    also distinct from core's, since two fixtures declaring the same class is an
+    uncatchable redeclare fatal for the whole process.
+
+38. **The test helper `Inspect::refuses()` takes a documented `$mayQuote` escape.**
+    Its assertion is that a refusal's text never quotes the value it refused — the
+    property that keeps a rule's message about the shape of what was wanted rather
+    than a quotation of what arrived. One legitimate exception: a message that
+    prints a bound (`9223372036854775807`) can coincide with the value being
+    tested, and the check is sound but not complete (it only fires for strings
+    longer than three characters). Rather than weaken the assertion, the opt-out is
+    explicit at the one call site that needs it.
+
+39. **The M6 additions raise the stakes on open finding 22 (the unguarded
+    problem-code registry).** The table in `docs/problem-codes.md` gained four rows
+    (`malformed_body`, `validation_failed`, `invalid_rule`, `unreadable_field`) and
+    still nothing reads the file, so four more codes can now drift from their
+    classes in silence — in the one document an agent is told to trust. The
+    proposed fix (a test reflecting over `LavaProblem` subclasses and asserting the
+    code set equals the table's first column, both directions) is unchanged and
+    still a fifteen-minute test. It remains unacted on because it changes what the
+    table *is*, which is your call rather than mine.
+
+40. **A pack's standalone install is a verification, not an artifact: its
+    `vendor/` is ignored and its `composer.lock` is not tracked.** M6's third
+    criterion is "pack installs standalone", and the only honest way to check it
+    is to actually do it — `cd packages/validate && composer install` creates a
+    real `vendor/` with real `nyholm/psr7`. Committing it would put a second,
+    independently-versioned copy of the framework's dependencies in the tree;
+    committing the lock it generates would pin a *library's* dependencies, which
+    is the opposite of what a library wants (its CI should test the range it
+    claims to support, and the root `composer.lock` already pins the monorepo's
+    dev environment). So `.gitignore` gained `/packages/*/vendor/` and the
+    generated lock was deleted — `packages/db` already had neither, and this
+    makes the two packs agree. The install is reproducible from the documented
+    command in `docs/packs/lava-validate.md`.
+
+41. **The fixture `.env` negation was generalized to every pack, not just core.**
+    The rule exists because a fixture app's `.env` is *test data*: ignore it and
+    CI boots a different fixture than a local run. It was written as
+    `!packages/core/tests/fixtures/**`, which was correct while core was the only
+    pack with fixtures and quietly wrong the moment a second one had any — the
+    validate fixture has no `.env` today, so nothing was broken, but the next
+    pack to add one would have lost it in silence. It is now
+    `!packages/*/tests/fixtures/**`, and the behaviour was checked by creating
+    the file, watching `git status -uall` list it, and deleting it again.

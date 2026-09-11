@@ -11,9 +11,11 @@ use Lava\Core\Container\Container;
 use Lava\Core\Features\FlagSubjectResolver;
 use Lava\Core\Features\Features;
 use Lava\Core\Http\HttpErrors;
+use Lava\Core\Http\RequestBody;
 use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Modules\PackInfo;
 use Lava\Core\Problem\InvalidConfig;
+use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
 use Lava\Core\Routing\HandlerInvoker;
 use Lava\Core\Routing\Matched;
@@ -139,6 +141,16 @@ final class App implements RequestHandlerInterface
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
+        // The body first, before routing: whether the client sent something
+        // readable is a fact about the request, not about any route, and a
+        // body that declares itself JSON and is not gets a 400 here rather
+        // than reaching a handler as `null`.
+        try {
+            $request = RequestBody::parsed($request);
+        } catch (LavaProblem $problem) {
+            return HttpErrors::toResponse($problem, $request, $this->env);
+        }
+
         // Audience flags decide per request: when the app registered a
         // subject resolver, bind the features to this request's subject
         // BEFORE matching, so gated routes stay real 404s, never 503s.
