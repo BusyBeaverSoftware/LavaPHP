@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\Core\Tests\Schema;
 
+use Lava\Core\Console\Envelope;
 use Lava\Core\Tests\Support\EnvelopeSchemas;
 use Lava\Core\Tests\Support\LavaCli;
 use Lava\Core\Tests\Support\LavaResult;
@@ -69,6 +70,10 @@ final class JsonSchemaTest extends TestCase
             // `lava.features/1` does not learn a second shape for `resolve`.
             'features resolve' => [['features', 'resolve', 'beta_greeting', '--json'], self::APP],
             'list' => [['list', '--json'], self::APP],
+            // `--check`, not the write: the default mode writes AGENTS.md into
+            // the fixture, and a test run must not mutate a tracked fixture. The
+            // write path is covered by MapCommandTest, in a temp-dir copy.
+            'map' => [['map', '--check', '--json'], self::APP],
             'routes' => [['routes', '--json'], self::APP],
             'services' => [['services', '--json'], self::APP],
             // `serve` blocks by design, so its success path cannot be run here;
@@ -188,7 +193,12 @@ final class JsonSchemaTest extends TestCase
             $documented[] = basename(dirname($file)) . '/' . basename($file, '.json');
         }
 
-        $expected = array_map(static fn (string $name): string => "lava.{$name}/1", $core);
+        // The version is read off Envelope rather than hardcoded to /1, because
+        // the version is a PER-COMMAND fact now: `lava check` moved to /2 when
+        // M7 added a section to its enum. Deriving the expectation means a bump
+        // that forgot its schema file fails here, and a bump that forgot its
+        // Envelope entry fails here too — the two cannot drift apart silently.
+        $expected = array_map(static fn (string $name): string => Envelope::schema($name), $core);
         $expected[] = 'lava-envelope/1'; // the shared vocabulary, not a command
 
         // Pack commands are named `pack:command`, so they are absent from an

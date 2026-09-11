@@ -16,7 +16,7 @@ use Lava\Core\Tests\Support\CommandTestCase;
  * is a claim about WHERE the app is broken. These tests pin the claim: a
  * problem must land in the section that owns its code, the tests section must
  * merge "the suite is red" with "there is no runner", and a boot failure must
- * still produce all eight sections rather than a shorter list.
+ * still produce all nine sections rather than a shorter list.
  */
 final class CheckCommandTest extends CommandTestCase
 {
@@ -28,7 +28,7 @@ final class CheckCommandTest extends CommandTestCase
         self::assertSame('ok', $envelope['status']);
         self::assertSame([], $envelope['problems']);
         self::assertSame(
-            ['boot', 'config', 'wiring', 'routes', 'features', 'env', 'commands', 'tests'],
+            ['boot', 'config', 'wiring', 'routes', 'features', 'env', 'commands', 'map', 'tests'],
             array_column($envelope['data']['sections'], 'name'),
         );
         // A skipped run says so, and says why — 'skipped' alone would leave an
@@ -43,7 +43,7 @@ final class CheckCommandTest extends CommandTestCase
         [, $envelope] = $this->json('ok-app', ['check', '--no-tests']);
 
         self::assertSame(
-            ['routes' => 4, 'services' => 10, 'features' => 1, 'commands' => 11, 'middleware' => 1],
+            ['routes' => 4, 'services' => 10, 'features' => 1, 'commands' => 12, 'middleware' => 1],
             $envelope['data']['counts'],
         );
     }
@@ -191,7 +191,7 @@ final class CheckCommandTest extends CommandTestCase
 
         self::assertStringContainsString('routes', $text);
         self::assertStringContainsString('tests', $text);
-        self::assertStringContainsString('routes: 4  services: 10  features: 1  commands: 11', $text);
+        self::assertStringContainsString('routes: 4  services: 10  features: 1  commands: 12', $text);
     }
 
     /**

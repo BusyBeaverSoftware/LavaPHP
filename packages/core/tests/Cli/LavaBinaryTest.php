@@ -71,7 +71,7 @@ final class LavaBinaryTest extends TestCase
         $result = LavaCli::run(['check', '--json'], $this->fixture('ok-app'));
 
         self::assertSame(ExitCode::Ok, $result->exit, $result->stderr);
-        self::assertSame('lava.check/1', $result->schema());
+        self::assertSame('lava.check/2', $result->schema());
         self::assertSame('ok', $result->status());
 
         $tests = $result->data()['tests'];
@@ -86,7 +86,7 @@ final class LavaBinaryTest extends TestCase
         $result = LavaCli::run(['check', '--no-tests', '--json'], $this->fixture('broken-wiring-app'));
 
         self::assertSame(ExitCode::Failure, $result->exit);
-        self::assertSame('lava.check/1', $result->schema());
+        self::assertSame('lava.check/2', $result->schema());
         self::assertContains('service_not_registered', $result->codes());
         self::assertSame(
             'never.registered',

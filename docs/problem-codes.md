@@ -59,6 +59,7 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `bad_usage` | `BadUsage` | a command was invoked with a missing or malformed argument (the command exists; the arguments don't) — exit 2 | quote the usage line |
 | `missing_env_var` | `MissingEnvVar` | a declared required env var has no value in the process environment or `config/.env` — **severity warn** | set it in `config/.env` or export it |
 | `unknown_selector` | `UnknownSelector` | `lava describe <selector>` matched no route, service, flag, env var, or command | suggest the nearest name and list every candidate namespace |
+| `stale_map` | `StaleMap` | the committed `AGENTS.md` is not an accurate map of the app — absent (`why: missing`), generated from an older app (`why: stale`), or unwritable when `lava map` tried to write it (`why: unwritable`) — **severity warn** | `Run: lava map` |
 | `unsupported_dialect` | `UnsupportedDialect` (db) | `DATABASE_DSN` names a scheme no driver handles (`pgsql`, `mysql`, `sqlite` are supported) | list the supported schemes and show a working DSN |
 | `db_not_configured` | `DbNotConfigured` (db) | a `db:*` command ran with no `DATABASE_DSN` in the environment or `config/database.php` | show the exact line to add |
 | `db_connection_failed` | `DbConnectionFailed` (db) | the DSN is well-formed but the driver refused it — bad credentials, missing database, server down. The password in the DSN is redacted | report the driver's own message; name the server and database |
@@ -185,3 +186,32 @@ validation let through missing, or for a type the field never promised. Folding
 `unreadable_field` into `validation_failed` would be the worst of the three
 outcomes — it would tell a caller their request was bad when the request was
 fine and the accessor was wrong.
+
+M7 status: `stale_map` is live, raised by `Lava\Core\Problem\StaleMap` and
+covered by `packages/core/tests/Cli/MapCommandTest.php` and
+`packages/core/tests/Unit/ProjectMapTest.php`.
+
+One code carries three `why` values rather than three codes carrying one each,
+and the reason is the same one that keeps `missing_test_runner` and
+`bad_test_report` apart: whether a consumer would act differently. It would not.
+"Your map is not accurate" is the whole message, the fix is `Run: lava map` in
+all three cases, and a caller branching on `why` would be branching on a
+diagnostic detail. `unwritable` rides here rather than on a code of its own
+because the registry is a public contract: it is not worth growing by one for an
+environment condition — a read-only checkout — that means exactly what the code
+already says.
+
+`stale_map` is Warn, not Fatal, and that is what made `lava check`'s ordering
+rule wrong the first time. The rule was "problems whose fix is a runnable
+command come first", on the theory that such a fix needs no judgement; but
+`stale_map`'s fix IS a runnable command, so a stale comment would have been
+hoisted above "your route does not compile". Severity is now the major key and
+runnable-ness the minor one — fatal-runnable, fatal, warn-runnable, warn — which
+keeps the original intuition inside a severity instead of across one.
+
+The same code is a *warning* in `lava check` and a *failure* in
+`lava map --check`. That is not an inconsistency: `check` reports the app's
+health, and a documentation lag is a warning on it; `map --check` is asked one
+question and answers it, and a verification command that answers "no" with exit
+0 is useless to a build. `lava check --strict` is where the warning becomes a
+build failure, which is the same door `missing_env_var` uses.

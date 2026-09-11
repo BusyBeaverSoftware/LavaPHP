@@ -28,7 +28,7 @@
         },
         "problems": {
           "type": "array",
-          "description": "Every problem found, in the order to act on them (runnable fixes first). Empty on a clean run.",
+          "description": "Every problem found, in the order to act on them: fatals before warnings, and within each severity a fix that starts with 'Run: ' before one that needs judgement. Empty on a clean run.",
           "items": { "$ref": "#/$defs/problem" }
         }
       },
@@ -50,7 +50,7 @@
         },
         "fix": {
           "type": "string",
-          "description": "The imperative fix. A fix starting with 'Run: ' names a command that resolves it, which is why `lava check` sorts those first."
+          "description": "The imperative fix. A fix starting with 'Run: ' names a command that resolves it, which is why `lava check` sorts those first within a severity."
         },
         "context": {
           "type": "object",

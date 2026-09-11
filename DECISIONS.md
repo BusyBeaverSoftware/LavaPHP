@@ -936,3 +936,172 @@ and unacted on.
     pack to add one would have lost it in silence. It is now
     `!packages/*/tests/fixtures/**`, and the behaviour was checked by creating
     the file, watching `git status -uall` list it, and deleting it again.
+
+## 2026-09-11 — M7 slice 1 (`lava map`, AGENTS.md, `lava check` integration)
+
+42. **The map is a list of DECLARATIONS, and the fingerprint covers the facts, not
+    the rendered file.** A flag's *value* depends on the environment; a flag's
+    *existence* does not. So the document records route paths, service ids, flag
+    names, and env var names, and never a resolved state — which is what makes
+    `lava map` write identical bytes under `--env=dev` and `--env=prod`. Hashing
+    the facts rather than the Markdown is the same idea one level down: a change
+    to the renderer (a new column, different wording) must not make every app's
+    map stale, because nothing about those apps changed. Only a change to what the
+    app declares does, and then the file really is out of date. Both properties
+    are pinned by `tests/Unit/ProjectMapTest.php`, including the negative one: two
+    boots in different environments must produce the same fingerprint, asserted
+    alongside `assertNotSame` on the two `App::$env` values so the test cannot
+    pass by booting the same environment twice.
+
+43. **`ProjectMap::relative()` decides the app root FIRST, and this was a real bug
+    found by a test, not by reading.** The original rule was "dependency code
+    first" — a regex looking for a `vendor/<vendor>/<pkg>/` or `packages/<pkg>/`
+    marker anywhere in the path — on the reasoning that an installed app holds
+    core under its OWN `vendor/`, so the marker has to win over "inside the app
+    root". The flaw is that this repo's fixtures live at
+    `packages/core/tests/fixtures/apps/ok-app/`, so the app's own
+    `app/Services.php` rendered as `core:tests/fixtures/apps/ok-app/app/Services.php`
+    — and then the same app, booted from a temp copy, hashed differently. The
+    fingerprint mismatch is how it surfaced. The rule is now: inside the app root
+    is the app's own, UNLESS the remainder's *first* segment is `vendor` or
+    `packages`, which is composer's layout at an app root and the only place it
+    can turn the app's own tree into a dependency's. A deeper directory the app
+    happened to name `packages` stays the app's. Two things worth recording from
+    fixing it: (a) the earlier docblock's example for "the last marker wins" was
+    badly chosen — `vendor/acme/thing/vendor/other/src/X.php` is structurally
+    `vendor/other/src/…` at the inner marker, i.e. package `src`, so the code was
+    right and my test expectation was wrong; a case that really exercises the rule
+    needs a package segment at the inner marker
+    (`vendor/acme/thing/vendor/other/pkg/src/X.php` → `pkg:src/X.php`); (b) greedy
+    `.*` does give "the last marker that fits", because a longer prefix is a later
+    match, which is worth stating precisely rather than as a slogan.
+
+44. **The hash marker is line 1, matched with `\A`, and nothing else.** The
+    alternative considered was scanning a window of the first N lines, which would
+    make the verdict depend on where a reader put a blank line, and would have to
+    reason about whether a hash inside a fenced example counts. `MapDocument`
+    matches the first line exactly, so "where is the marker?" has one answer.
+    `staleness()` reports a file that exists with no marker as `stale` with the
+    placeholder `(no marker)`, not as `missing` — it is there and it is wrong, and
+    telling the reader to create a file that is in front of them would be a worse
+    lie than the placeholder.
+
+45. **The file list comes from the filesystem and the pack manifests, not from what
+    loaded.** Reading it off `Config`'s provenance would be wrong: a pack's config
+    file is only loaded when the pack's flag is on, so the list — and therefore
+    the fingerprint — would move with the environment, breaking decision 42 on a
+    deploy that changed nothing. A file that EXISTS is a fact; a file that was
+    read is a resolution.
+
+46. **`lava.check` went to `/2`, `lava.check/1` was DELETED, and per-command
+    contract versions moved into `Envelope::VERSIONS`.** Decision 14 pre-committed
+    to the bump when M7 added `map` to the `sections` enum, so this is that
+    promise kept rather than a judgement call. Deleting `/1` rather than keeping
+    it is a judgement call, and the reasoning is that nothing can emit it and
+    nothing pinned it — 0.1.0 is not tagged — so a schema file no code can produce
+    is a document that lies about what exists, and it would also fail
+    `testEveryCoreCommandHasASchema` (which derives the expected names from the
+    command registry). The version map exists so the `/N` has exactly one home:
+    `Envelope::schema()` is the only place a schema name is built, and
+    `JsonSchemaTest` derives its expectations from that same method, so a bump
+    cannot be half-applied. The shared vocabulary (`lava-envelope/1`) was NOT
+    bumped: its shape did not change, only two prose descriptions, and it is one
+    file every command's schema references — bumping it would have been a
+    different contract's change wearing this one's clothes.
+
+47. **`stale_map` is one code with three `why` values, and it is Warn.** Three
+    codes would force a consumer to branch on a diagnostic detail when the message
+    ("your map is not accurate") and the fix (`Run: lava map`) are identical in all
+    three cases — the same test that keeps `missing_test_runner` and
+    `bad_test_report` apart, applied and reaching the opposite conclusion.
+    `why: unwritable` rides on this code rather than getting its own because a
+    failed write leaves "the map is not accurate" exactly true, and the registry
+    is a public contract that is not worth growing by one for an environment
+    condition — a read-only checkout — that no consumer would branch on
+    differently. It is Warn, not Fatal, because a documentation lag is not a
+    broken app; `--strict` is where it becomes a build failure, the same door
+    `missing_env_var` uses.
+
+48. **`lava check` verifies a map you HAVE; `lava map --check` answers whether one
+    exists.** The guard is `if ($document->exists())` around the map sweep. An app
+    that chose not to ship `AGENTS.md` has no drift to catch, and a warning nobody
+    can act on is noise in the one list an agent is supposed to read top-down. The
+    two commands therefore legitimately disagree on an app with no map, and both
+    are right — the disagreement is the design, not a bug, and it is pinned by
+    `testCheckDoesNotDemandADocumentTheAppNeverHad`. The comparison itself lives in
+    ONE place (`ProjectMap::staleness()`) precisely so the two doors cannot start
+    disagreeing about the freshness verdict.
+
+49. **`lava check`'s ordering rule became severity-major: fatal-runnable, fatal,
+    warn-runnable, warn.** The old rule was runnable-only ("fixes that are a
+    command need no judgement, so they come first"), and `stale_map` broke it: its
+    fix IS a runnable command, but it is a warning, so a stale comment would have
+    been hoisted above "your route does not compile". The original intuition was
+    right and survives as the *minor* key, inside a severity rather than across
+    one. `usort` is stable from PHP 8.0, so discovery order is preserved within
+    each of the four groups. Verified live on `env-app`, where a fatal
+    (`missing_test_runner`) sorts above two warns and `stale_map` (runnable) ahead
+    of `missing_env_var` (not) — so all four groups are reachable, not just the
+    two the fixtures happened to produce before.
+
+50. **`lava map --check` exits 1 on a stale map — a real bug in my own new code,
+    found by running the binary.** `IO::emit()` fails only on fatals, and
+    `stale_map` is a Warn, so a verification command answered "no" with exit 0,
+    which is useless to a build. The fix passes `failed: true` explicitly on the
+    stale path, with the comment saying why. The same applies to a failed write:
+    exit 0 there would tell a caller its `AGENTS.md` was written when it was not.
+    The related contract, now stated in the schema: **`found` and `fresh` describe
+    the file the command FOUND, read before it acts; `written` reports what it then
+    did.** So a first `lava map` reads `found: null, fresh: false, written: true` —
+    "nothing current was here; there is now". This bit me as a test failure before
+    it bit anyone else, which is the argument for documenting it in the schema an
+    agent reads rather than only in the code.
+
+51. **The framework reference's snippets are constants in core, and the test that
+    covers them checks TRUTH, not bootability.** If the reference were a
+    hand-maintained Markdown page it would be exactly the kind of parallel doc the
+    framework bans everywhere else, and it would drift silently because nothing
+    would ever read it. Held in `Lava\Core\Map\FrameworkReference`, every PHP
+    snippet is parsed with `token_get_all(…, TOKEN_PARSE)`, every class it names is
+    checked to exist, and a curated `TAUGHT` list of class/method pairs is asserted
+    in BOTH directions — the method must exist AND its name must appear in a
+    snippet — so the list cannot rot into a record of an API the reference stopped
+    mentioning. The honest limit, recorded in the test's docblock: core's suite must
+    run with only core installed (`cd packages/core && composer install`), so the
+    existence check is scoped to `Lava\Core\` names, and the `modules` snippet's
+    `Lava\Db\DbModule` is checked by the db pack, which owns that class. Also
+    unproven by design: that a snippet is a *complete working file* — they are
+    minimal on purpose. The working-app proof is the `lava/app` skeleton (slice 2)
+    and `lava check` is what verifies it.
+
+52. **`ProjectMapTest` and `MapCommandTest` work in temp directories, and the CLI
+    test is the sharpest available proof of portability.** `lava map`'s default
+    mode writes `AGENTS.md` into the app directory, so an in-process test against
+    `ok-app` would mutate a tracked fixture — the same reason the schema test
+    invokes `map --check` and not `map`. Working on a copy also makes the
+    portability assertions real rather than notional: the generated file must not
+    mention the directory it was generated in, and a machine-specific path leaking
+    in shows up as the temp directory's own name. The strongest assertion available
+    is in `testTheSameAppHashesTheSameFromAnyDirectory` — the app booted in-process
+    from the fixture and the app booted by the real binary from a temp copy produce
+    the same fingerprint, which is decisions 42 and 43 stated as one string
+    comparison.
+
+Verified this slice by running the real binary, not by reading code: `lava map`
+writes a 322-line `AGENTS.md` with a leading marker; `--check` fresh → exit 0;
+drift a route path → exit 1, `why: stale`, both hashes in `context`,
+`source: {file: AGENTS.md, line: 1}`; regenerate → fresh; absent file →
+`lava check` reports nothing while `lava map --check` reports `why: missing` with
+exit 1; `lava check` on a stale map → `status: ok`, one `stale_map` warn, exit 0,
+and exit 1 under `--strict`. Full suite: **704 tests, 3444 assertions, 26
+skipped**. PHPStan level 8: no errors.
+
+### Open finding, not acted on (needs your call)
+
+The M7 addition sharpens finding 22 (the unguarded problem-code registry) again,
+for the same reason decision 39 gave: `docs/problem-codes.md` gained a
+`stale_map` row and still nothing reads the file, so the document an agent is
+told to trust can drift from the classes in silence. The proposed fix is
+unchanged and still small — a test reflecting over `LavaProblem` subclasses and
+asserting the code set equals the table's first column, in both directions. It
+remains unacted on because it changes what the table *is*, which is your call.

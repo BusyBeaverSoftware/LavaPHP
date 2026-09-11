@@ -11,6 +11,7 @@ use Lava\Core\Console\Commands\DescribeCommand;
 use Lava\Core\Console\Commands\EnvCommand;
 use Lava\Core\Console\Commands\FeaturesCommand;
 use Lava\Core\Console\Commands\ListCommand;
+use Lava\Core\Console\Commands\MapCommand;
 use Lava\Core\Console\Commands\RoutesCommand;
 use Lava\Core\Console\Commands\ServeCommand;
 use Lava\Core\Console\Commands\ServicesCommand;
@@ -101,6 +102,7 @@ final class CommandRegistry
         $registry->add(new FeaturesCommand());
         $registry->add(new ConfigCommand());
         $registry->add(new EnvCommand());
+        $registry->add(new MapCommand());
         $registry->add(new TestCommand());
         $registry->add(new ServeCommand());
         $registry->add(new DescribeCommand());

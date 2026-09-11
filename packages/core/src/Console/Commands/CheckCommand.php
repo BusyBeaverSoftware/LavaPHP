@@ -12,6 +12,8 @@ use Lava\Core\Console\IO;
 use Lava\Core\Console\PhpUnitRunner;
 use Lava\Core\Console\Table;
 use Lava\Core\Console\TestRun;
+use Lava\Core\Map\MapDocument;
+use Lava\Core\Map\ProjectMap;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
 use Lava\Core\Problem\Severity;
@@ -56,11 +58,12 @@ final class CheckCommand extends AppCommand
         'config' => ['invalid_config', 'invalid_env_file'],
         'env' => ['missing_env_var'],
         'commands' => ['duplicate_command'],
+        'map' => ['stale_map'],
         'tests' => ['missing_test_runner', 'bad_test_report'],
     ];
 
     /** The order sections are reported in — the order an app is built in. */
-    private const ORDER = ['boot', 'config', 'wiring', 'routes', 'features', 'env', 'commands', 'tests'];
+    private const ORDER = ['boot', 'config', 'wiring', 'routes', 'features', 'env', 'commands', 'map', 'tests'];
 
     public function name(): string
     {
@@ -128,6 +131,21 @@ final class CheckCommand extends AppCommand
 
             foreach (EnvAudit::missing($app) as $problem) {
                 self::add($report, $problem);
+            }
+
+            // The map, last of the sweeps: is the committed AGENTS.md still an
+            // accurate description of this app? Only a map that EXISTS can be
+            // stale — `check` does not demand the artifact, because an app that
+            // chose not to ship one has no drift to catch, and a warning nobody
+            // can act on is noise. `lava map --check` answers the other question
+            // ("is it there and current?") and does report it as missing.
+            // A warn, so a red map never fails `check` unless --strict says so.
+            $document = MapDocument::at($app->appDir);
+            if ($document->exists()) {
+                $staleness = ProjectMap::of($app)->staleness($document);
+                if ($staleness !== null) {
+                    self::add($report, $staleness);
+                }
             }
         }
 
@@ -213,22 +231,34 @@ final class CheckCommand extends AppCommand
     }
 
     /**
-     * Problems in the order an agent can act on them: a fix that is a runnable
-     * command needs no judgement, so those come first and the rest follow in
-     * discovery order. `usort` is stable from PHP 8.0, so within each group the
-     * boot order is preserved exactly.
+     * Problems in the order an agent can act on them.
+     *
+     * Severity is the MAJOR key: a warning must never be hoisted above a fatal.
+     * Within one severity, a fix that is a runnable command comes first, because
+     * those need no judgement — the original rule, and the reason it is now the
+     * minor key rather than the only one. `stale_map` is what exposed the flaw:
+     * its fix IS a runnable command, but it is a warning, and sorting it above
+     * "your route does not compile" would hand an agent the cheapest task first
+     * and call it the most urgent. `usort` is stable from PHP 8.0, so discovery
+     * order is preserved inside each of the four groups.
      */
     private static function fixFirst(ProblemReport $report): ProblemReport
     {
         $problems = $report->problems();
-        usort($problems, static fn (LavaProblem $a, LavaProblem $b): int =>
-            (int) str_starts_with((string) $b->fix, 'Run:') <=> (int) str_starts_with((string) $a->fix, 'Run:'));
+        usort($problems, static fn (LavaProblem $a, LavaProblem $b): int => self::rank($a) <=> self::rank($b));
 
         $ordered = new ProblemReport();
         foreach ($problems as $problem) {
             $ordered->add($problem);
         }
         return $ordered;
+    }
+
+    /** Fatal-and-runnable, fatal, warn-and-runnable, warn — in that order. */
+    private static function rank(LavaProblem $problem): int
+    {
+        return ($problem->severity() === Severity::Fatal ? 0 : 2)
+            + (str_starts_with($problem->fix, 'Run:') ? 0 : 1);
     }
 
     private static function dedupe(ProblemReport $report): ProblemReport

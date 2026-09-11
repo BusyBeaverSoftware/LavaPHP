@@ -48,6 +48,44 @@ directory that is not an app otherwise succeeds with an empty app, and
 composer.json; fixture apps get it from the test harness). Function handlers
 are **not** autoloadable — require their file at the top of `app/Routes.php`.
 
+## The map: `AGENTS.md`
+
+The table above says what the framework reads. This says what it writes.
+
+`lava map` compiles `AGENTS.md` at the app root from the app's own registries —
+the Router's routes, the Container's ids, the Features registry, the Command
+Registry — plus a framework reference and the fixed file list. There is no second
+copy of those facts to keep in sync, which is why the document cannot disagree
+with `lava routes` or `lava features`. `lava map --check` writes nothing and
+answers whether the committed file is still accurate; `lava check` reports the
+same verdict as a `stale_map` warning when the file exists.
+
+Three properties make the file safe to commit, and each is a rule an agent can
+rely on:
+
+- **Environment-independent.** The document lists *declarations* — route paths,
+  service ids, flag names, env var names — and never a resolved state. A flag's
+  value depends on the environment; its existence does not. So `lava map` writes
+  the same bytes under `--env=dev` and `--env=prod`.
+- **No absolute paths.** Everything is relative to the app root, or `<pkg>:<rest>`
+  for dependency code (`core:src/Boot/Kernel.php`), so the same app renders —
+  and therefore hashes — identically whether core sits at `vendor/lava/core/` or
+  at `packages/core/`. An absolute path here would make the fingerprint
+  machine-dependent, and a committed map stale on every other machine.
+- **Fingerprint over facts.** The hash in the marker line covers the facts, not
+  the rendered Markdown, so improving the renderer does not make every app's map
+  stale. It is the first line, `<!-- lava:map hash=… -->`, and it is the whole
+  comparison `--check` makes — no git, no timestamp, no diff.
+
+The framework reference section teaches the canonical minimal form of every
+artifact, held as constants in `Lava\Core\Map\FrameworkReference` and covered by
+`tests/Unit/FrameworkReferenceTest.php`, which parses each PHP snippet and checks
+that every class and method it names exists. A snippet that teaches a method the
+framework does not have fails the build.
+
+`AGENTS.md` is the one generated artifact in the framework. It is never
+hand-edited: change the app and run `lava map`.
+
 ## Naming rules
 
 - Route names: `[a-z][a-z0-9_.]*`, globally unique, registered in
@@ -149,7 +187,11 @@ build when a payload and its schema drift apart.
   the command was typed; `1` means it ran and the app is at fault.
 - **`data` keys are promised on every exit path**, including a failed boot. A
   consumer never branches on a shape that is only sometimes there.
-- **`problems` is ordered to act on**: runnable fixes (`Run: …`) first.
+- **`problems` is ordered to act on**: severity is the major key — fatals
+  before warnings — and within one severity, runnable fixes (`Run: …`) first.
+  Severity has to win: `stale_map`'s fix is a runnable command, but it is a
+  warning, and sorting it above "your route does not compile" would hand an
+  agent the cheapest task first and call it the most urgent.
 - **A red test suite is not a problem.** `lava test` and `lava check` report it
   through `status` and the exit code and leave `problems[]` empty: the framework
   does not pronounce on code it never read.

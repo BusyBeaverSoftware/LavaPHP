@@ -21,6 +21,26 @@ final class Envelope
     public const VERSION = '1';
 
     /**
+     * Commands whose contract has moved past {@see VERSION}, and the version
+     * they are on now.
+     *
+     * The frozen-`/N` rule (docs/conventions.md) says a breaking payload change
+     * means a NEW `/N`, never an edit to the existing one — so the version is a
+     * per-command fact, and this is the one place it lives. `lava.check/1`
+     * promised that `sections[].name` was one of eight names; M7 added `map`,
+     * which a consumer switching exhaustively on that enum would not have
+     * handled, so `check` is `/2` and every other command is untouched.
+     *
+     * Nothing emits a superseded version — pre-0.1.0 there is no release to
+     * keep compatible — so a bump here also means deleting the old schema file,
+     * and `JsonSchemaTest` derives the expected file list from this method. That
+     * is what makes a forgotten entry fail the build instead of going unnoticed.
+     *
+     * @var array<string, string>
+     */
+    private const VERSIONS = ['check' => '2'];
+
+    /**
      * The contract name for a command: `routes` → `lava.routes/1`,
      * `db:status` → `lava.db.status/1`.
      *
@@ -38,7 +58,7 @@ final class Envelope
      */
     public static function schema(string $command): string
     {
-        return 'lava.' . str_replace(':', '.', $command) . '/' . self::VERSION;
+        return 'lava.' . str_replace(':', '.', $command) . '/' . (self::VERSIONS[$command] ?? self::VERSION);
     }
 
     /**
