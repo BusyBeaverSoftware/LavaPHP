@@ -38,11 +38,14 @@ and every `--json` command):
 | `route_not_found` | `RouteNotFound` | no route matched the method + path (also the real 404 for a gated route whose flag is off) | `Run: lava routes --json` |
 | `method_not_allowed` | `MethodNotAllowed` | the path matched but the method didn't (also: HEAD to a GET-only route — HEAD is never auto-mapped) | list the accepted methods |
 | `unknown_route` | `UnknownRoute` | URL generation asked for a route name that isn't registered | suggest the nearest registered name |
+| `unknown_command` | `UnknownCommand` | `lava <name>` named a command this app doesn't have | suggest the nearest registered command, else `lava list` |
 
 M1/M2/M3 status: every code above has its class; all except `unexpected_failure` are
 exercised by fixture/unit tests under `packages/core/tests/` (see
 `tests/Unit/KernelBootTest.php` for the fixture-level ones — `bad-routes-app`
 collects five route problems in one boot; `module-app` exercises the module
-contract end to end). Still to come with their milestones: pack-specific
-codes (M5+). The table is complete when 0.1.0 is tagged. `lava check` renders
-problems fix-first (runnable commands first).
+contract end to end). `unknown_command` arrives with M4's console kernel
+(`tests/Unit/ConsoleTest.php`, `tests/Cli/LavaBinaryTest.php`). Still to come
+with their milestones: pack-specific codes (M5+). The table is complete when
+0.1.0 is tagged. `lava check` renders problems fix-first (runnable commands
+first).

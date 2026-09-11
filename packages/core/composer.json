@@ -17,6 +17,7 @@
     "require-dev": {
         "phpunit/phpunit": "^12.5"
     },
+    "bin": ["bin/lava"],
     "autoload": {
         "psr-4": { "Lava\\Core\\": "src/" }
     },

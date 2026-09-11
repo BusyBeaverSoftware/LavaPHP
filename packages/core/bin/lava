@@ -1,0 +1,34 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Lava\Core\Console\Console;
+
+if (PHP_SAPI !== 'cli') {
+    fwrite(STDERR, "lava: must be run from the command line.\n");
+    exit(1);
+}
+
+// Two homes: the monorepo (packages/core/bin/lava → <root>/vendor) and an
+// installed dependency (vendor/lava/core/bin/lava → vendor/autoload.php).
+$autoload = null;
+foreach ([
+    __DIR__ . '/../../../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+] as $candidate) {
+    if (is_file($candidate)) {
+        $autoload = $candidate;
+        break;
+    }
+}
+
+if ($autoload === null) {
+    fwrite(STDERR, "lava: cannot find composer's autoload.php. Run: composer install\n");
+    exit(1);
+}
+
+require $autoload;
+
+/** @var list<string> $argv */
+exit(Console::main($argv));
