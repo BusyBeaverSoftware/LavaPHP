@@ -1,83 +1,119 @@
 # LavaPHP conventions
 
-The framework's laws. Every rule here exists for one of two reasons: it makes an
-app predictable to an agent that reads it, or it makes a failure self-correcting.
-If a change violates a law, the change is wrong.
-
-## The laws
-
-1. **Gating rule** — boot-lifetime resources (module services, CLI commands) gate
-   at *boot*: a feature off means the thing is absent, and referencing the absent
-   thing is a boot failure with an exact fix. Per-request resources (routes, route
-   middleware) gate *per request*: off means a real 404.
-2. **Reflection boundary** — reflection is allowed only at boot, read-only, in two
-   places: reading a handler signature to build its injection plan, and reading a
-   factory closure's file:line for introspection. Never at runtime. Never to
-   construct objects. There is no container auto-wiring, period.
-3. **One source of truth per fact** — routes live in the `Router`, services in the
-   `Container`, flags in `Features`, commands in the `CommandRegistry`. CLI output
-   and the generated `AGENTS.md` *compile* from these registries; there are no
-   parallel hand-maintained docs to drift.
-4. **No magic** — no facades, no global helper functions, no `functions.php`, no
-   generated proxy classes, no wiring attributes, no service-locator statics.
-   The only entry points are `public/index.php`, `bin/lava`, and the test harness.
-5. **Boring PHP** — plain classes with constructors, explicit calls, `declare(strict_types=1)`
-   everywhere. Anything a PHP-reading agent hasn't seen a thousand times needs
-   a justification in this file.
+The rules an agent can rely on everywhere. Every rule here is enforced by the
+framework at boot — a violation is a problem with a fix, not a silent failure.
+Problem codes live in [problem-codes.md](problem-codes.md).
 
 ## Fixed user-authored artifacts
 
-An agent never has to search for where something is wired — the framework fixes
-the locations:
+An agent always knows where to look. Missing optional files mean "none of
+that" — zero-config apps are valid and boot green.
 
-| File | Contains |
-|---|---|
-| `app/Modules.php` | the list of pack modules to load (`ModuleRef` list) |
-| `app/Services.php` | one function wiring every application service into the `Container` |
-| `app/Routes.php` | one function registering every route on the `Router` |
-| `app/Middleware.php` | the global middleware list, outermost first |
-| `app/Database/Migrations/` | migration classes (with `lava/db`) |
-| `config/app.php` | app config, keys addressed as `app.<key>` |
-| `config/logging.php` | logging config, keys addressed as `logging.<key>` |
-| `config/features.php` | feature-flag definitions (`define`) and overrides (`set`) |
-| `config/.env` | environment values; never overrides real environment variables |
+| File | Required | Returns | Wrong shape is |
+|---|---|---|---|
+| `app/Modules.php` | optional | `list<ModuleRef>` | `invalid_config` |
+| `app/Services.php` | optional | `function (Container $c, AppContext $ctx): void` | `invalid_config` |
+| `app/Routes.php` | optional | `function (Router $r): void` | `invalid_config` |
+| `app/Middleware.php` | optional | `list<class-string>` of PSR-15 middleware | `invalid_config` |
+| `config/app.php` | optional | `array` (string keys) | `invalid_config` |
+| `config/logging.php` | optional | `array` (string keys) | `invalid_config` |
+| `config/features.php` | optional | `array` with `define` / `set` sections | `invalid_config` |
+| `config/.env` | optional | `KEY=VALUE` lines | `invalid_env_file` |
+| `public/index.php` | entry point | — (the canonical one is in lava/app) | — |
 
-Missing optional files simply mean "none of that": no `app/Modules.php` means no
-packs, no `app/Routes.php` means no routes. The framework boots zero-config.
+`app/Classes/` autoload `App\` → `app/…` (real apps get this from their
+composer.json; fixture apps get it from the test harness). Function handlers
+are **not** autoloadable — require their file at the top of `app/Routes.php`.
 
-## Deterministic orders (never guess, never rely on order you can't see)
+## Naming rules
 
-- **Boot**: `Kernel::STEPS` — a public constant; the entire boot is one readable list.
-- **Service registration**: core services (`Kernel::CORE_SERVICES`) → enabled
-  modules in `app/Modules.php` order → `app/Services.php`. Re-registering an id
-  is fatal (code `duplicate_service`).
-- **Feature resolution**: definition (code default) → `config/features.php` `set`
-  override → `LAVA_FEATURE_<UPPER_SNAKE>` env override → evaluation for
-  (env, subject). Undefined names are fatal, never silently false. The full trace
-  is returned in every `Resolution` and printed by `lava features resolve`.
-- **Environment**: `LAVA_ENV` env var wins over `config/app.php` `'env'`, which
-  wins over the default `'dev'`. Conventional values: `dev`, `test`, `prod`.
+- Route names: `[a-z][a-z0-9_.]*`, globally unique, registered in
+  `app/Routes.php` order (`users.show`, `beta.dashboard`).
+- Feature names: `[a-z][a-z0-9_]*` (`beta_ui`).
+- Param type names (custom `$r->pattern()` types): `[a-z][a-z0-9_]*`, distinct
+  from the builtins `int`, `str`, `uuid`, `path`.
+- Container ids: class-strings for objects, `dot.separated` for values.
+- Config keys are addressed as `<file>.<key>` (`app.env`, `logging.level`).
 
-## Names
+## Resolution orders (deterministic, documented, no fallbacks)
 
-- Route names: `users.show` (dot-separated, mandatory, globally unique).
-- Feature names: `snake_case`, `[a-z][a-z0-9_]*`.
-- Config keys: `<file>.<key>` — `app.base_url` comes from `config/app.php`.
-- Env overrides for features: `LAVA_FEATURE_<UPPER_SNAKE>` — `LAVA_FEATURE_BETA_UI`.
-- CLI pack commands are prefixed (`db:status`); core commands are not.
+- **Environment value**: real environment variable → `config/.env` → absent.
+  `.env` never overrides a real variable. `LAVA_ENV` decides env, then
+  `config/app.php`'s `env` key, then `dev`.
+- **Feature flag setting**: code default (`Feature::define`) → `config/features.php`
+  `set` → `LAVA_FEATURE_<UPPER_SNAKE>` env var → evaluation for (env, subject).
+  Undefined names are fatal with a nearest-name hint — never a silent false.
+- **Service registration order**: `Kernel::CORE_SERVICES` (a public const,
+  drift-guarded by a test) → enabled modules in `app/Modules.php` order →
+  `app/Services.php`. Re-registering an id is fatal.
 
-## Deliberate redundancy
+## The gating rule
 
-`app/Modules.php` (`ModuleRef`) repeats the `package` and `feature` that each
-pack's `PackInfo` also declares. This is not an accident: when a pack is *missing*
-its code cannot load, so the duplicate metadata is the only thing that lets the
-boot report say exactly `composer require lava/db`. Boot cross-checks both
-sources; any mismatch is fatal (code `module_mismatch`).
+- **Boot-lifetime resources** (module services, CLI commands): gated at boot —
+  off means absent. Referencing the absent thing is a boot failure with an
+  exact fix. Gating these to an audience flag (rollout/users) is `invalid_gating`.
+- **Per-request resources** (routes, route middleware): gated per request —
+  off means a real 404, never a 503. Audience flags are at home here.
+  With no `Features` available, gated routes are off (fail-closed).
+- A `->when()` gate naming an undefined flag is a **boot** failure (the classic
+  silent-404 typo), even though the gate is evaluated per request.
+- Audience flags (rollout/users) need a **subject**: register a
+  `FlagSubjectResolver` in `app/Services.php` under `FlagSubjectResolver::class`
+  — the container id is the interface itself. Not registering one is valid;
+  every audience flag then resolves off for every request (fail-closed).
+  Anonymous requests (resolver returns null) always resolve audience flags
+  OFF — no anonymous bucketing, by documented policy.
 
-## What LavaPHP owns vs. delegates
+## The reflection boundary
 
-Owns (agent-facing, pure logic): router, container, config, dotenv, validation,
-console, errors, feature flags, migrations, query builder, middleware pipeline.
-Delegates (CVE surface, value in internals): PSR-7 messages (nyholm), HTML
-escaping (Twig, optional), DB drivers (PDO), crypto (PHP core). PSR-3/4/7/11/15
-interfaces at every edge — any compliant library plugs in.
+Reflection happens only at boot, read-only, in exactly two places:
+
+1. handler signatures → injection plans (`HandlerInvoker::plan`, frozen onto
+   the router; dispatch is pure lookup + call);
+2. factory closures → file:line for introspection.
+
+Never at runtime, never to construct objects, never for auto-wiring. The
+container is explicit registrations only.
+
+## The handler contract
+
+`[ClassName::class, 'method']` or `'function_name'`, validated at boot:
+
+- the class is concrete and its constructor has **no required parameters** —
+  dependencies arrive as typed method parameters, which is what makes the full
+  dependency story of a route visible in `lava routes --json`;
+- every parameter is typed exactly `ServerRequestInterface` (or
+  `RequestInterface`), `RouteArgs`, or a registered container id;
+- untyped / built-in / union / variadic / defaulted parameters: `bad_handler`;
+- the return type is declared `\Psr\Http\Message\ResponseInterface` (not
+  nullable, not a subclass of something else) — build responses with
+  `Responses::json() / text() / html() / redirect() / noContent()`.
+
+Middleware: PSR-15 class-strings, resolved from the container at request time
+(register them in `app/Services.php`, validated at boot). Lists are
+outermost-first: `app/Middleware.php` (global) wraps route middleware.
+
+## Route paths
+
+`/users/{id:int}` — every param has an explicit type. Builtins: `int`
+(`\d+`), `str` (one segment), `uuid`, `path` (spans slashes). Custom types via
+`$r->pattern('word', '[a-z]+')` before first use. HEAD is never auto-mapped to
+GET — declare `Method::Head` if a route should answer HEAD. URL generation
+(`UrlGenerator::url()`) validates every value against its param type: a
+generated URL can never point at a path the router wouldn't match.
+
+Routes register in order: `app/Routes.php` first, then each enabled module's
+`routes()` in `app/Modules.php` order — on any path overlap the app's
+registration matches first, so an app can always override a pack route by
+registering the same path. A gated-off pack's routes are absent (real 404),
+not disabled-in-place.
+
+## Problems are the error model
+
+Every failure — boot or runtime, HTTP or CLI — is a `LavaProblem`: one-sentence
+what, imperative fix, JSON-safe context, the user artifact at fault (not the
+framework's throw site), and a stable snake_case `code`. Problem reports
+collect **all** problems in one pass; nothing fails fast and hides the rest.
+Runtime 404/405 are problems too. Media: JSON for machines (the default when
+no useful Accept header is present), the hand-escaped diagnostics page for
+browsers; prod hides context, dev shows everything.

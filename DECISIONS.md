@@ -1,0 +1,108 @@
+# DECISIONS.md
+
+Autonomous decisions made while implementing the approved plan
+(`/home/five/.claude/plans/greedy-painting-twilight.md`), each with rationale.
+Nothing here overrides a user decision — flag anything you disagree with and
+it gets reverted or reworked.
+
+## 2026-09-10 — pre-vendor verification phase
+
+**Context**: `composer install` is persistently blocked by the Bash safety
+classifier being unavailable ("glm-5.3:cloud is temporarily unavailable"), so
+`vendor/` does not exist and the plan's normal gates (PHPUnit, `php -S` +
+curl) cannot run. `php <script>` passes the classifier, so real
+execution-verification is possible without vendor — `scripts/smoke.php`
+(empty PSR interface stubs + a source autoloader) is that harness and is
+**35/35 green**. It is deleted once vendor exists.
+
+1. **Caller attribution walks past the class's own backtrace frames instead
+   of using a fixed frame index** (`Container::callerLocation`,
+   `Router::caller`). An empirical PHP 8.5.4 probe showed a closure frame
+   reports the *invoker's* file:line (the defining location only survives
+   inside the `function` string as `{closure:file:line}`). A fixed index
+   broke twice: `frames[2]` named `WireAppServices.php` for wiring closures,
+   and `frames[1]` broke for routes registered through the `get()`/`post()`
+   wrappers (one extra frame). The walk — first frame whose file is not this
+   class's file — is correct for every call shape and names the user's exact
+   registration line. Locked in by two smoke checks (duplicate_service sites,
+   duplicate route names through a loader closure).
+
+2. **`BadHandler::routeHasNone()` for handler-less routes.** A route without
+   `->handler()` was reported as "Route handler 'no.handler' is invalid" —
+   mislabeling the *route* as the handler. Now: "Route 'no.handler' (/nope)
+   has no handler." Same `bad_handler` code, `route`/`path` context.
+
+3. **`Matched` carries `(route, args)` only; the injection plan is fetched
+   from the Router by name at dispatch** (`App::handle` →
+   `router->plan($route->name)`). `Router::match()` hard-requiring attached
+   plans made the pure router unusable without a full boot (LogicException on
+   any plan-less router — URL generation, unit tests). Matching is a pure
+   pattern operation; `Router::plan()` keeps its invariant guard, which is
+   unreachable post-boot because BuildRouter attaches a plan for every
+   compiled route and any failure there is fatal.
+
+4. **`scripts/smoke.php` gained concrete `Nyholm\Psr7` stand-ins**
+   (`ServerRequest`, `Response`, `Uri`, `Stream`, `Psr17Factory` — immutable
+   `with*`, case-insensitive headers, exactly the surface dispatch touches).
+   M2's central deliverable — `App::handle` through middleware to a response —
+   was otherwise 0% verified until vendor lands. The stubs exercise the real
+   fixtures end-to-end: 200 JSON with typed params, middleware ordering
+   global→auth, args+service injection, 404/405 problem bodies with `Allow`,
+   Accept negotiation to the HTML diagnostics page, gated route 404 while its
+   flag is off. Real nyholm re-confirms via `php -S` + curl once vendor exists.
+
+## 2026-09-10 — vendor landed: first real PHPUnit run + real-SAPI gate
+
+**Context**: the user ran `composer install` through their own `!` shell
+(the classifier stayed down), so vendor/ now exists: real nyholm/psr7 1.8.2,
+PHPUnit 12.5.35. First-ever PHPUnit run: 97 tests → 3 errors + 2 warnings →
+all fixed → green, then extended (ModuleTest, SubjectGatingTest) → 105 tests.
+The temporary smoke harness (which reached 46 checks before vendor) is
+retired once its unique checks live in phpunit + the gate below.
+
+1. **Two real framework bugs surfaced only under PHPUnit warnings.**
+   `Container::describe()` read `$this->traces[$id]?->resolvedClass()` —
+   the nullsafe `?->` guards the method call, not the array fetch, so
+   describe-before-first-resolve (legal: `lava services` does it) emitted an
+   "Undefined array key" warning. Fixed with `($this->traces[$id] ?? null)?`.
+   `Router::pattern()`'s regex-validity probe passed deliberately-bad
+   fragments to `preg_match` to detect them — but PHP emitted the raw
+   compile warning before returning false. The thrown `BadRoutePattern` is
+   the report we want; `@preg_match` silences the probe's own diagnostic.
+
+2. **The gate (`scripts/gate.php`) exists because TestClient can't prove the
+   SAPI path.** RequestFactory::fromGlobals, the Emitter writing real
+   headers, and config/.env loading in a fresh process only happen under a
+   real `php -S`. First run failed 25/29: fixture apps have no composer.json,
+   so a bare `php -S` child has no `App\` autoloader (real apps get it from
+   composer.json, PHPUnit gets it from TestApp). Harness fix:
+   `scripts/fixture-autoload.php` via `-d auto_prepend_file` +
+   `LAVA_FIXTURE_APP_DIR` — the sanctioned "fixture apps get it from the
+   test harness" mechanism from conventions.md.
+
+3. **Gate port hygiene: `proc_terminate` on a `PHP_CLI_SERVER_WORKERS=2`
+   master leaves orphan workers holding the port and serving STALE code.**
+   Caught by evidence (ps showed the run-1 trio still alive at run-2, and
+   run-2's responses were run-1's boot failures). The gate now kills
+   by port (`pkill -f 'php -S <host>:<port>'`) before every start and at
+   the end, and waits for the port to actually free.
+
+4. **FlagSubjectResolver (M3 slice 2): the container id is the interface's
+   own FQCN.** Both the app's `app/Services.php` and the core's
+   `App::handle` look it up as `FlagSubjectResolver::class` — fits the
+   class-string id rule, no new magic id. `App::handle` binds
+   `Features::forSubject()` BEFORE matching so gated routes stay real 404s.
+   A service registered under the id that doesn't implement the interface
+   renders an `invalid_config` problem at request time (defense in depth);
+   the boot-time eager check lands with WiringValidator (slice 3), which
+   resolves every registration anyway. Anonymous (resolver → null) resolves
+   audience flags OFF — the documented FlagSubject policy, now exercised by
+   the subject-app fixture + SubjectGatingTest (users targeting AND rollout,
+   plus the no-resolver fail-closed state via a stripped container).
+
+5. **Compact JSON on the wire.** The real-SAPI gate compared raw wire bytes
+   for the first time and exposed `Responses::json` as `JSON_PRETTY_PRINT`-
+   formatted — invisible to every PHPUnit assertion (they all decode),
+   visible to any curl. Agents parse JSON; humans get the HTML diagnostics
+   page; pretty-printing belongs to M4's CLI text renderer, not HTTP bodies.
+   The plan's own `--json` examples are single-line.

@@ -1,0 +1,63 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Lava\Core\Log;
+
+use Psr\Log\AbstractLogger;
+
+/**
+ * The built-in PSR-3 logger: one line per entry to stderr (or a given
+ * stream), timestamped, with context JSON-appended when present. Deliberately
+ * minimal — any PSR-3 implementation can be swapped in at the container edge.
+ */
+final class LineLogger extends AbstractLogger
+{
+    /** Level name => weight. Public so boot can validate config/logging.php's 'level' eagerly. */
+    public const LEVELS = [
+        'debug' => 0, 'info' => 1, 'notice' => 2, 'warning' => 3,
+        'error' => 4, 'critical' => 5, 'alert' => 6, 'emergency' => 7,
+    ];
+
+    /** @var resource */
+    private $stream;
+
+    public function __construct(
+        private readonly string $minimumLevel = 'debug',
+        mixed $stream = null,
+    ) {
+        if (!isset(self::LEVELS[$this->minimumLevel])) {
+            throw new \InvalidArgumentException(
+                "Unknown log level '{$this->minimumLevel}'. Use one of: " . implode(', ', array_keys(self::LEVELS)) . '.',
+            );
+        }
+        if ($stream === null) {
+            $stream = fopen('php://stderr', 'w');
+        }
+        if (!is_resource($stream)) {
+            throw new \InvalidArgumentException('LineLogger needs an open stream resource.');
+        }
+        $this->stream = $stream;
+    }
+
+    public function log(mixed $level, string|\Stringable $message, array $context = []): void
+    {
+        if (!is_string($level) || !isset(self::LEVELS[$level])) {
+            throw new \InvalidArgumentException(
+                'Unknown log level ' . (is_string($level) ? "'{$level}'" : get_debug_type($level))
+                . '. Use one of: ' . implode(', ', array_keys(self::LEVELS)) . '.',
+            );
+        }
+        if (self::LEVELS[$level] < self::LEVELS[$this->minimumLevel]) {
+            return;
+        }
+        $line = sprintf('[%s] %s: %s', date('c'), $level, (string) $message);
+        if ($context !== []) {
+            $encoded = json_encode($context, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+            if ($encoded !== false) {
+                $line .= ' ' . $encoded;
+            }
+        }
+        fwrite($this->stream, $line . "\n");
+    }
+}
