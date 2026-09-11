@@ -47,6 +47,30 @@ declare(strict_types=1);
  *    in a build without PDO — and they are named in DECISIONS.md rather than
  *    quietly excluded here. Writing a test that constructs one would be testing
  *    a state no caller can reach, which is coverage theatre, not coverage.
+ *
+ * ── A known artifact: fixtures built in a data provider ──────────────────────
+ *
+ * This report UNDERSTATES. PHPUnit's pcov driver calls `pcov\start()` when a
+ * test begins and `pcov\clear()` when it ends, so anything executed during test
+ * ENUMERATION — a `Query` constructed in a data provider, say — is never inside
+ * a measured window and reads as uncovered however thoroughly it is asserted.
+ * Measured on 2026-09-11 the effect was 10 lines across three files, and it is
+ * why `packages/db/src/Query/Join.php` read 0.0% while `CompilerTest` asserted
+ * the exact INNER and LEFT JOIN SQL: the compiler was well tested, the builder
+ * that feeds it was not, and the report could not tell the two apart.
+ *
+ * The fix is in the tests, not here: a fixture a provider builds should be
+ * built by a closure the test calls, which is what `QueryBuilderTest`,
+ * `QueryBuilderChainTest` and `InvalidMigrationFileTest` do. That also closed
+ * the real gap underneath — the query builder's `or*` family, both joins,
+ * `whereIn`, `whereNotIn`, `whereBetween` and the success path of
+ * `limit`/`offset` had no execution at all.
+ *
+ * A second suite run would measure this honestly (the parent can be captured
+ * cumulatively when no coverage report is requested, so no driver clears it),
+ * and it was not added: it doubles the gate's runtime to recover ten lines, and
+ * a reader who sees a 0.0% here should suspect a provider-built fixture before
+ * they suspect the code. See DECISIONS.md, "the second instrument artifact".
  */
 
 $lavaRoot = realpath(__DIR__ . '/..');
@@ -108,27 +132,33 @@ foreach ($arguments as $argument) {
 /**
  * The line-coverage floor per pack, as a percentage.
  *
- * Each sits about three points below the value measured on 2026-09-11 (881
+ * Each sits about three points below the value measured on 2026-09-11 (958
  * tests), which is the headroom an ordinary refactor needs: a floor that sits
  * ON the measurement goes red the next time someone moves a branch, and a floor
  * nobody can satisfy is a floor that gets deleted rather than fixed. The
  * measurements, for whoever comes to re-set these:
  *
  *   packages/core         87.91%  ->  85.00
- *   packages/db           81.14%  ->  78.00
+ *   packages/db           88.64%  ->  85.00
  *   packages/http-client  96.69%  ->  94.00
  *   packages/validate     98.29%  ->  96.00
  *   packages/view         97.73%  ->  95.00
  *
- * `db` is the one to read twice: measured without the child capture it is 55%,
- * so this floor is the tripwire for the instrument as well as for the code.
+ * `db` is the one to read twice, in both directions. Measured without the child
+ * capture it is 55%, so this floor is the tripwire for the instrument as well
+ * as for the code. It was 78.00 until the query-builder chain tests landed and
+ * took the pack from 81.14% to 88.64% — a floor 10.6 points below its pack is a
+ * floor nobody reads, and the rule above says three. Raising it also WIDENS the
+ * instrument tripwire: parent-only `db` is 55%, so the gap between a working
+ * instrument and a broken one grew rather than shrank.
+ *
  * See the note at the top of this file.
  *
  * @var array<string, float>
  */
 const FLOORS = [
     'packages/core' => 85.0,
-    'packages/db' => 78.0,
+    'packages/db' => 85.0,
     'packages/http-client' => 94.0,
     'packages/validate' => 96.0,
     'packages/view' => 95.0,

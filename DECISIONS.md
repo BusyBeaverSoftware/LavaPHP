@@ -2374,3 +2374,179 @@ the demo: 0.03 s, three runs. `Kernel::boot` on the demo: 0.39 ms mean over 200
 iterations with 17 services constructed.
 
 
+
+## 2026-09-11 — M9 slice 4 (the R3 gap, and the instrument's second blind spot)
+
+The audit that ended slice 3 left one confirmed hole and one suspicion. The hole
+was `db_connection_failed`, exercised by nothing. The suspicion was that a
+coverage number is only as good as its instrument — which slice 3 had already
+proved once. Both turned out to be real, and the second one was the bigger of
+the two.
+
+154. **The R3 audit was 53/53 complete, and only one of its two hits was real.**
+    `docs/problem-codes.md` matches the source exactly: 53 codes declared, 53
+    registered, zero mismatches in either direction, zero class-name
+    mismatches. The audit's own "no literal in any test tree" list named
+    `unknown_route` and `db_connection_failed`; checking by CLASS rather than by
+    string showed `unknown_route` **is** exercised
+    (`packages/core/tests/Unit/RoutingTest.php:295` catches `UnknownRoute` for
+    the typo'd name `users.shwo`), so that hit was a limitation of my grep, not
+    of the docs. `db_connection_failed` returned nothing from every test tree —
+    a real gap. The lesson recorded: a code audit has to search for the class
+    name as well as the code string, because a test may assert on the type
+    without ever writing the snake_case literal.
+
+155. **`DbConnectionFailed::redact()` leaked a URL-shaped credential.** Found by
+    PROBING the function rather than reading it — one of the two things I did in
+    slice 3 that paid off. `mysql://user:hunter2@db/app` came back untouched,
+    because the only pattern was `/(password|passwd|pwd)\s*=\s*[^;\s]*/i` and a
+    URL has no `password=` key to match. That is the `DATABASE_URL=…` shape a
+    `.env` carried over from another framework tends to have, and it is exactly
+    the shape PDO cannot open at all — so the one report that carries it is a
+    report nobody has ever seen succeed. Fixed with a second pattern that masks
+    the userinfo up to the `@` (`#(://[^:/@\s]*:)[^@\s]*(?=@)#`), leaving host
+    and database legible. Mutation-checked: neutering the second pattern fails
+    four of the twelve cases, and the pattern was restored byte-identically.
+
+156. **A docblock claim was checked and found false, so it was rewritten rather
+    than shipped.** The class docblock said "some drivers echo the connection
+    string back inside their error text", and the draft I was writing went
+    further — that `could not find driver` quotes the DSN verbatim. Running
+    `new \PDO(...)` against both shapes showed neither installed driver quotes
+    anything: pdo_sqlite says `unable to open database file` and an unusable
+    scheme says `could not find driver`. So the leak path is not the driver's
+    message at all — it is `context.dsn`, a field this problem populates itself.
+    Both docblocks now say that: the DSN half is a response to a real leak, the
+    message half is a POSTURE ("we cannot know what a given driver will print,
+    and the cost of being wrong is a password in a build log") and is labelled
+    as one. The synthetic test case that covers the message field says so in its
+    own docblock, so nobody later reads it as a reproduction of a real driver.
+
+157. **The end-to-end redaction test asserts on the WHOLE envelope.** The unit
+    test covers the two shapes the redaction knows; only a real invocation can
+    show that nothing downstream puts the unredacted DSN back. So
+    `testAConnectionFailureNeverPrintsTheCredentialItWasGiven` asserts
+    `assertStringNotContainsString('hunter2', $result->stdout)` and the same on
+    stderr, not `context.dsn` alone — because the field that leaks next time is
+    the field that does not exist yet.
+
+158. **The second instrument artifact: a fixture built in a data provider is
+    invisible.** PHPUnit's pcov driver calls `pcov\start()` when a test begins
+    and `pcov\clear()` when it ends (`PcovDriver::stop()` collects then clears),
+    so anything executed during test ENUMERATION is never inside a measured
+    window. Measured by capturing the parent cumulatively — running the suite
+    with no `--coverage-clover` at all, so no driver ever clears, and collecting
+    at shutdown: **10 lines across three files** read as uncovered while
+    genuinely executing. The visible symptom was `packages/db/src/Query/Join.php`
+    at 0.0% while `CompilerTest` asserted the exact INNER and LEFT JOIN SQL.
+
+159. **Not fixed in the instrument — fixed in the tests.** The honest repair was
+    a second suite run (a cumulative parent capture merged like the children
+    already are), and it was rejected: it doubles the gate's runtime to recover
+    ten lines. The alternative was to notice what the artifact was pointing at,
+    and it was pointing at something real: `CompilerTest` builds its `Condition`,
+    `Join` and `OrderBy` values DIRECTLY and never goes through `QueryBuilder`.
+    So the compiler was thoroughly tested and the app-facing API that feeds it
+    was not. The fix is `QueryBuilderChainTest` (17 compiled cases plus three
+    behaviour tests) and `QueryBuilderLiveTest` (9 cases run against real
+    SQLite), whose fixtures are closures the test calls — which keeps the
+    construction inside the measured window as a side effect of testing the
+    right thing. Recorded in `tools/coverage-check.php` so a future reader who
+    sees a 0.0% suspects a provider-built fixture before suspecting the code.
+
+160. **What the builder gap actually was.** 31/61 executable lines in
+    `QueryBuilder`, with no execution at all for: `table()`, the entire `or*`
+    family (`orWhere`, `orWhereNull`, `orWhereNotNull`, `orWhereIn`,
+    `orWhereNotIn`, `orWhereBetween`, `orWhereRaw`), `whereNull`, `whereNotNull`,
+    `whereIn`, `whereNotIn`, `whereBetween`, `innerJoin`, `leftJoin`, and the
+    SUCCESS path of `limit` and `offset` — the refusal tests only ever reached
+    the throw. Now 61/61. This is the app-facing surface: it is what the demo and
+    every user app call.
+
+161. **The live test is not decoration.** Four of its cases exist because
+    compiling a string cannot settle them: `LIMIT -1 OFFSET n` is SQLite's
+    spelling and a syntax error in MySQL; `LEFT JOIN` against a row with no
+    match is the only way to find the users with no posts; `NOT IN` with a NULL
+    in the list matches NOTHING (three-valued logic), which is now pinned as
+    behaviour rather than left as folklore; and the OR/AND precedence case below.
+
+162. **The OR/AND precedence surprise is documented, not fixed.**
+    `where('role','admin')->orWhereIn('plan',['pro'])->whereNotNull('verified')`
+    compiles to `role = 'admin' OR (plan IN ('pro') AND verified IS NOT NULL)`,
+    because SQL's AND binds tighter. A caller reading that chain as a sentence
+    almost always means `(role = 'admin' OR plan IN ('pro')) AND verified IS NOT
+    NULL`, and gets the smaller-or-larger set accordingly. The builder has no
+    grouping, so the intended reading is not expressible — the live test asserts
+    BOTH result sets and asserts they differ, and spells the intended one with
+    `whereRaw`. Adding a grouping API is a product decision and is left as an
+    open finding below rather than made here.
+
+163. **`Compiled::json()` had no caller, and is now tested rather than deleted.**
+    No command in the repository emits a `Compiled`. It is a convention rather
+    than dead code — every value object in this pack knows its own JSON shape,
+    and `SchemaSnapshot::json()` is in the same position and was tested for the
+    same reason in slice 3. Deleting it is an API decision; testing it fixes the
+    contract now, so that when a `db:explain` or a `--verbose` path prints one,
+    the shape is already pinned instead of invented at the call site.
+
+164. **`InvalidMigrationFile` went from 15.8% to covered as a contract.** Five
+    factories, one CLI test touching one of them. `InvalidMigrationFileTest`
+    now pins all five (message, fix, context keys, source-or-null, and that the
+    unexpected return is reported as a TYPE and never a value), and
+    `DbCommandsTest` gains a reachability test for the half the old test missed:
+    a correctly-named file that returns the wrong thing, through the real
+    binary. `alreadyExists` and `unwritable` are contract-tested but NOT
+    reachability-tested, and that is stated rather than papered over:
+    `alreadyExists` needs two `db:new` runs inside one wall-clock second (a
+    flake, not a test) and `unwritable` needs a directory the test process
+    cannot write, which as root it always can.
+
+165. **The db floor was raised from 78.00 to 85.00.** The floors' own docblock
+    states the rule — about three points below measurement — and this slice took
+    db from 81.14% to 88.64%, which left the floor 10.6 points low. A floor that
+    far below its pack is a floor nobody reads, which is the failure mode the
+    rule exists to prevent. Raising it also WIDENS the instrument tripwire:
+    parent-only db is 55%, so the gap between a working instrument and a broken
+    one grew from 23 points to 30. This is a policy change to the gate and is
+    flagged as reversible — the reasoning is in `tools/coverage-check.php` next
+    to the constant.
+
+### Open finding, not acted on (needs your call)
+
+**`QueryBuilder` has no condition grouping, so `(A OR B) AND C` is not
+expressible.** Decision 162 documents the behaviour and the live test asserts
+it, but the API gap is the finding: a chain with an `or*` method in the middle
+reads like a grouped boolean expression and compiles as an ungrouped one, and
+the only way to get grouping is `whereRaw` — which means the safe, binding-based
+API cannot express a query shape that is entirely ordinary. The options are a
+`whereGroup(Closure)` / `orWhereGroup(Closure)` pair (nested `Condition` lists,
+which the compiler would have to render with parentheses — a change to
+`Compiler::where()` and to the `Condition` shape), or documenting `whereRaw` as
+the answer. Not chosen here because it changes both the query API and the
+compiled SQL of anything that adopts it, and it is a product decision about how
+much query builder this framework wants.
+
+Also still open from earlier: decision 18 (whether a pack's envelope contracts
+should be listed by name in the core schema test), decision 22 (whether the
+problem-code registry should become a machine-checked contract), and
+`SchemaSnapshot::equals()`'s order-sensitivity from slice 3.
+
+### Verified by running
+
+`composer verify` with the live database tests enabled is **958 tests, 4598
+assertions** (from 897 / 4385 — 61 tests and 213 assertions added here), level 8
+and core-at-`max` both `[OK] No errors`. `composer coverage` exits **0** with
+every pack at or above its floor: core 3048/3467 = 87.91%, db 1077/1215 =
+**88.64%** (from 81.14%, and 55% measured parent-only), http-client 263/272 =
+96.69%, validate 461/469 = 98.29%, view 172/176 = 97.73%, all packs 5021/5599 =
+89.68%, with 155 child processes captured contributing 408 lines the parent
+could not see. The four files this slice touched read: `QueryBuilder` 61/61,
+`Query/Condition` 22/22, `Query/Join` 1/1, `Problem/DbConnectionFailed` 13/13,
+`Problem/InvalidMigrationFile` from 15.8% to covered.
+
+The redaction fix was mutation-checked (decision 155). The provider artifact was
+measured, not inferred: a cumulative parent capture of the same suite named the
+exact 10 lines (decision 158). The `NOT IN` NULL trap, the LEFT JOIN difference
+and the OR/AND precedence surprise are all asserted against real SQLite
+(decisions 161-162). The db floor change was confirmed to still exit 0
+(decision 165).
