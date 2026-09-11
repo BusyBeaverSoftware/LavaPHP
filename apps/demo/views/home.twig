@@ -1,0 +1,53 @@
+{% extends 'layout.twig' %}
+
+{% block title %}Tasks{% endblock %}
+
+{% block content %}
+  <h1>Tasks</h1>
+
+  <p class="muted">
+    {% if tasks is empty %}
+      No tasks yet.
+    {% else %}
+      {{ tasks|length }} task{{ tasks|length == 1 ? '' : 's' }}, newest first.
+    {% endif %}
+    The same data as JSON is at <a href="{{ url('tasks.index') }}">/tasks</a>.
+  </p>
+
+  {% if tasks is empty %}
+    <p>
+      Add one:
+      <code>curl -s localhost:8080/tasks -H 'content-type: application/json'
+      -d '{"title":"Ship it"}'</code>
+    </p>
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Title</th>
+          <th>Due</th>
+          <th>State</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in tasks %}
+          <tr>
+            <td>{{ task.id }}</td>
+            {# `task.title` is whatever the client sent. It is escaped here, and
+               this line is the demo's proof of that: POST a title of
+               `<script>alert(1)</script>` and this cell shows the text. #}
+            <td class="{{ task.done ? 'done' : '' }}">{{ task.title }}</td>
+            <td>{{ task.dueOn ?? '—' }}</td>
+            <td>{{ task.done ? 'done' : 'open' }}</td>
+            <td>
+              <a href="{{ url('tasks.page', {id: task.id}) }}">page</a>
+              <a href="{{ url('tasks.show', {id: task.id}) }}">JSON</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

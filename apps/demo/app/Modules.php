@@ -26,4 +26,6 @@ use Lava\Core\Modules\ModuleRef;
 return [
     ModuleRef::of(\Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
     ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lava/validate', feature: 'validate'),
+    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lava/view', feature: 'views'),
+    ModuleRef::of(\Lava\HttpClient\HttpClientModule::class, package: 'lava/http-client', feature: 'http_client'),
 ];

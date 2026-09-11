@@ -1761,3 +1761,181 @@ the page, redactions included.
 
 The two open findings from M7 slice 1 (decisions 18 and 22) remain unacted on and
 still need your call. Nothing in this slice changed their shape.
+
+## 2026-09-11 — M8 slice 3 (`apps/demo`: the HTML surface and the outbound call)
+
+The demo now exercises all four packs. `lava/view` gives it a board at `/` and a
+task page at `/tasks/{id}/view`; `lava/http-client` gives it `GET
+/upstream/health`, the one route that leaves the process. Both arrived with a
+config file, a service, tests, README, and a regenerated map — and writing the CI
+step for the outbound route turned up a defect in `lava serve` that had nothing to
+do with either pack (decisions 109–113).
+
+100. **The upstream is this app's own `/health`, so the demo runs with no
+    network.** `app.upstream` defaults to `http://127.0.0.1:8080` and
+    `App\Upstream\Upstream` appends `/health`. Pointing the demo at a real
+    third-party API would have made its suite fail offline and flake online —
+    the two worst properties a canonical app can have — so the demo exercises
+    `lava/http-client` against something genuinely running that it also owns.
+    `lava serve` in one terminal is the whole setup, and CI asserts exactly that
+    by starting one server and having it fetch itself.
+
+101. **The upstream URL is config, never a request parameter.** A route that
+    fetches a caller-supplied URL is an SSRF primitive; the demo does not ship
+    one, and `lava/http-client` refuses `file://` and `gopher://` for the same
+    reason. The path is fixed at `/health` and the base comes from
+    `config/app.php`, so there is no input from the request in the URL at all.
+
+102. **`app.upstream` lives in `config/app.php`, because that is the only
+    app-owned config file core loads.** `LoadConfig::FILES` is `['app',
+    'logging']`; every other config file is reached through a pack's declared
+    `configFiles`. A `config/upstream.php` would have been listed in the map's
+    Files table and read by nobody — a trap whose only symptom is a config key
+    that is silently always its default. The value sits beside `app.base_url`
+    with a comment saying why it is there rather than in a file of its own.
+
+103. **The config file reads `UPSTREAM_URL` itself, through `ProcessEnv::real()`.**
+    Not a module, not a service factory: one place, so the precedence rule is
+    visible in one file instead of split between a reader and a builder. This is
+    the idiom `DbModule::setting()` already uses — real environment wins over the
+    config file, and an empty string counts as unset, because `UPSTREAM_URL=` is
+    how a deploy template spells "leave this blank" and treating it as a URL
+    would produce a `bad_request_url` about a scheme nobody typed. It is also
+    what lets the demo's suite point the fetch at a server it starts.
+
+104. **`App\Upstream\Upstream` exists because a handler parameter cannot be a
+    scalar.** `HandlerInvoker` accepts `ServerRequestInterface`, `RouteArgs`, or a
+    registered container id that is a class — a `string` config value has no way
+    in. So the base URL travels as a constructor argument of a registered
+    service, the same shape `TaskRepository` receives its `Connection` in. The
+    constraint produced a better demo than the alternative would have: the pack's
+    client is composed into an app service rather than called from a controller,
+    which is what a real app does with a dependency it does not own.
+
+105. **The route is not flag-gated, though the pack is.** `http_client` gates the
+    pack at boot, and that is the flag that matters: turn it off and the route
+    404s because the module is absent, which is the framework's own mechanism. A
+    second flag on the route would be two ways to remove one route, and
+    `lava features resolve` would have to be asked twice to learn one thing.
+
+106. **`UPSTREAM_URL` is declared `optional`, with a description.** It has a
+    working default, so declaring it `required` would make `lava check --strict`
+    fail on a fresh clone of a demo that runs perfectly well without it. Declaring
+    it at all is what puts it in `lava env`, in the `env` section of `lava check`,
+    and in AGENTS.md — a variable an app reads and does not declare is invisible
+    to every one of those.
+
+107. **The HTML surface is a second controller, not content negotiation.** There
+    is no content negotiation in this framework: a route answers one media, and a
+    caller who wants the other asks for a different route. So
+    `TasksPageController` is the page and `TasksController` is the API, and
+    neither has to ask what the caller would have preferred. It also keeps
+    `/tasks` answering JSON for everyone who asks for it — including the `curl`
+    a person copies out of the README — which is the "agents first" pillar
+    surviving contact with a browser UI.
+
+108. **The demo duplicates the pack's `php -S` harness instead of sharing it.**
+    `tests/Support/UpstreamServer.php` and `tests/fixtures/upstream/router.php`
+    mirror `lava/http-client`'s own `LocalServer`. The pack's copy exists so the
+    pack can prove its standalone claim; this one exists so the demo can prove
+    the pack composes in a real app. Sharing either would make one claim depend
+    on the other's `autoload-dev`, and a pack that could not be tested without the
+    demo would be a pack that is not really decoupled. The behaviour lives in the
+    path prefix (`/ok`, `/broken`, `/drop`, `/flaky-<id>`) because
+    `App\Upstream\Upstream` appends `/health` to whatever base it is given — so a
+    query string would have landed in the middle of the path.
+
+109. **`lava serve` now stops the server it started.** The `proc_open` command is
+    an **array**, not a shell string. PHP runs an array through `execve` directly
+    and hands a string to `/bin/sh -c` — and that shell is why a stopped `lava
+    serve` used to leave the server running: the signal reached the shell, and
+    `php -S` never heard it. The array form also removes `escapeshellarg` and with
+    it every quoting rule the shell would otherwise apply to `--host`, whatever a
+    caller passes. `stopServerOnSignal()` then terminates the child from a
+    SIGINT/SIGTERM handler, guarded by `function_exists` because `lava serve` has
+    to work on a PHP built without process control. In a terminal this was always
+    invisible — Ctrl-C signals the whole foreground process group — but every
+    programmatic stop reaches only `lava serve`: a script's `kill`, an agent
+    stopping a server it started in the background, a CI cleanup trap.
+
+110. **The wait polls instead of using `proc_close`, and that is load-bearing.**
+    PHP's `waitpid` wrapper retries on `EINTR`, so a signal arriving mid-wait is
+    remembered but never dispatched: dispatching needs the VM to reach a safe
+    point, and the VM is parked inside a syscall that keeps restarting. With
+    `proc_close` the handler above is dead code and the server outlives the
+    process exactly as before — which is what the first version of this fix did,
+    and what the empirical check caught. `waitForServer()` naps 20ms at a time,
+    which puts opcodes back between waits and gives the signal somewhere to run.
+    The exit code comes from `proc_get_status` for the same reason: once a status
+    poll has reaped the child, `proc_close` reports -1 whatever happened. Ctrl-C
+    now exits 130 and SIGTERM 143 — 128 + the signal, which is what a shell
+    reports for a process killed by that signal, so Ctrl-C still looks like
+    Ctrl-C to whatever is waiting.
+
+111. **`ServedApp::stop()`'s `pkill` is gone, and `ServeShutdownTest` is what
+    replaces it.** The framework's own HTTP harness carried
+    `pkill -f 'php -S 127.0.0.1:<port>'` after its `proc_terminate`, with a
+    comment saying a surviving worker would hold the port and serve stale code to
+    the next run — the workaround is the evidence that this hurt in practice. A
+    pattern kill with no remaining reason to exist is only a way to kill
+    something else by accident, so the sweep is deleted and the guarantee is
+    asserted instead: `testStoppingTheCommandStopsTheServerItStarted` starts a
+    server, stops it, and fails if anything still accepts a connection on the
+    port. It is the one test in the suite that asserts the ABSENCE of a process,
+    and so the one the harness could not paper over. Reverting `ServeCommand`
+    alone makes it fail — checked, not assumed — and it skips where pcntl is
+    absent, because that is exactly where the guarded behaviour is absent too.
+
+112. **The severity was worse than a leaked port: an orphaned server holds the
+    test runner's stdout.** The failing-without-the-fix run did not print a
+    failure — it hung until the harness timed out at 120s. The orphan had
+    inherited fd 4 of PHPUnit's own stdout pipe (a `proc_open` child inherits fds
+    it was not given a replacement for), so the write end stayed open after
+    PHPUnit exited and `phpunit | tail` never saw EOF. That is the shape of the
+    bug in CI: not a job that fails, a job that hangs until the runner's timeout.
+    It is also why the CI step's cleanup trap is not sufficient on its own — it
+    kills `lava serve`, and before this fix that left the server, the pipe, and
+    the job.
+
+113. **`--flag value` is not a spelling this CLI accepts, and the first version of
+    the CI serve step used it.** `Args` takes values with `=` only
+    (`--port=8080`), deliberately: `--flag value` is ambiguous with a positional
+    argument and guessing would make `lava describe --json users.show` swallow the
+    selector. So `--port 8080` parsed as a bare flag plus a positional, and the
+    port silently stayed at the default — the step passed for the wrong reason and
+    would have broken confusingly the moment the default changed. The corrected
+    step passes no port at all, because the claim under test is the DEFAULT one:
+    pinning the port would make it pass while the default was broken. Recorded
+    because the failure mode is silent, and I hit it while writing the thing that
+    was supposed to catch silent failures.
+
+114. **The CI `demo` job now copies five packs and proves the serve claim over a
+    socket.** The copy list is `packages/core packages/db packages/validate
+    packages/view packages/http-client` — it and `apps/demo/composer.json` move
+    together, and the job fails on a path repository that is not on disk. The new
+    step starts `lava serve` on its default port and asserts the two claims no
+    in-process test can reach: that `/` is HTML with `url()`-built links, and that
+    `/upstream/health` fetches the app's own `/health`, which fails if
+    `app.upstream`'s default and `lava serve`'s default ever drift apart. The
+    `test` job now asks setup-php for `extensions: pcntl`, because otherwise the
+    guarantee is real but untested — `ServeShutdownTest` would skip on every
+    matrix leg, and a skip is honest and invisible at the same time.
+
+Verified by running, not by reading. The demo suite is 24 tests / 99 assertions;
+`lava check --strict` reports all nine sections `ok` and `lava map --check`
+confirms the regenerated map (10 routes / 17 services / 5 features / 4 packs /
+4 env vars, hash `d6b2a2d7e8377ce8`); the root gate is **875 tests, 4270
+assertions** with the live database tests enabled and PHPStan level 8 reports no
+errors. Over real HTTP through `lava serve`: the board renders, the task page
+renders, a hostile title is escaped to `&lt;script&gt;`, `/tasks/export` is 200
+`text/csv` with the flag on and a 404 with the nav link gone when
+`LAVA_FEATURE_TASKS_CSV_EXPORT=off`, a missing task answers `task_not_found` in
+the framework's envelope, and the self-fetch returns `{"status":"ok"}` in 10ms.
+The CI serve step was rehearsed end to end and leaves zero orphans on port 8080.
+The serve fix was checked in both directions: `SIGTERM` → exit 143 and `SIGINT` →
+exit 130, each with no survivors and the port released; and with `ServeCommand`
+stashed back to its previous version, `ServeShutdownTest` fails and the orphan
+survives on the test's own port.
+
+The two open findings from M7 slice 1 (decisions 18 and 22) remain unacted on and
+still need your call. Nothing in this slice changed their shape.

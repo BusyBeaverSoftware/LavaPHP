@@ -7,7 +7,9 @@
         "php": "^8.3",
         "lava/core": "@dev",
         "lava/db": "@dev",
-        "lava/validate": "@dev"
+        "lava/http-client": "@dev",
+        "lava/validate": "@dev",
+        "lava/view": "@dev"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.5"
@@ -15,7 +17,9 @@
     "repositories": {
         "lava/core": { "type": "path", "url": "../../packages/core" },
         "lava/db": { "type": "path", "url": "../../packages/db" },
-        "lava/validate": { "type": "path", "url": "../../packages/validate" }
+        "lava/validate": { "type": "path", "url": "../../packages/validate" },
+        "lava/view": { "type": "path", "url": "../../packages/view" },
+        "lava/http-client": { "type": "path", "url": "../../packages/http-client" }
     },
     "minimum-stability": "dev",
     "prefer-stable": true,

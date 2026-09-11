@@ -8,6 +8,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/Http/health.php';
 
 use App\Http\TasksController;
+use App\Http\TasksPageController;
+use App\Http\UpstreamController;
 use Lava\Core\Routing\Method;
 use Lava\Core\Routing\Router;
 
@@ -44,4 +46,21 @@ return function (Router $r): void {
     $r->get('/tasks/{id:int}', 'tasks.show')->handler([TasksController::class, 'show']);
     $r->post('/tasks/{id:int}/complete', 'tasks.complete')->handler([TasksController::class, 'complete']);
     $r->delete('/tasks/{id:int}', 'tasks.destroy')->handler([TasksController::class, 'destroy']);
+
+    // The HTML surface, registered after the API. It is a separate route per
+    // media rather than content negotiation on `/tasks`: a route here answers
+    // one thing, and `/tasks` answers JSON for everyone who asks for it —
+    // including the `curl` a person copies out of the README. `/tasks/{id}/view`
+    // sits under the same sub-path shape `complete` already uses, so the
+    // listing reads as one table rather than two.
+    $r->get('/', 'home')->handler([TasksPageController::class, 'index']);
+    $r->get('/tasks/{id:int}/view', 'tasks.page')->handler([TasksPageController::class, 'show']);
+
+    // The one route that leaves this process. Its shape is deliberately
+    // ordinary — a path, a name, a handler — because the pack is what carries
+    // the interesting part: the retry rule, the URL guard and the five problem
+    // codes all live behind `App\Upstream\Upstream`, not in this file. It is
+    // also the demo's only route whose failure arrives as a problem this app
+    // did not construct, which is why `UpstreamController` has no error branch.
+    $r->get('/upstream/health', 'upstream.health')->handler([UpstreamController::class, 'health']);
 };

@@ -17,6 +17,13 @@ jobs:
         with:
           php-version: '${{ matrix.php }}'
           coverage: none
+          # pcntl is what lets `lava serve` stop the server it started when the
+          # command itself is stopped. The command guards it behind
+          # function_exists — `lava serve` has to work without process control —
+          # so without this the guarantee is real but untested. ServeShutdownTest
+          # skips where pcntl is absent, which is honest and also invisible;
+          # asking for it here is what keeps that skip from becoming the norm.
+          extensions: pcntl
       - name: Install (monorepo, all packs via path repositories)
         run: composer install --no-interaction --no-progress
       - name: Verify (phpunit all suites + phpstan)
@@ -89,14 +96,18 @@ jobs:
           # migrations against a real file instead of only against memory.
           coverage: none
       - name: Fresh copy of the demo, beside the packs it loads, installed for real
-        # The demo is the canonical app, so it is the one place a change to core,
-        # db or validate has to survive contact with an app that actually uses
-        # them. Installed rather than run in-tree for the same reason as the
-        # skeleton: `vendor/lava/core` must be a symlink to the sibling checkout,
-        # which is what a real install looks like.
+        # The demo is the canonical app, so it is the one place a change to any
+        # pack has to survive contact with an app that actually uses it. Every
+        # pack the demo's composer.json requires must be copied here or the
+        # install fails on a path repository that is not on disk — which is why
+        # this list and `apps/demo/composer.json` move together.
+        #
+        # Installed rather than run in-tree for the same reason as the skeleton:
+        # `vendor/lava/core` must be a symlink to the sibling checkout, which is
+        # what a real install looks like.
         run: |
           rm -rf /tmp/demo && mkdir -p /tmp/demo/packages /tmp/demo/apps
-          cp -r packages/core packages/db packages/validate /tmp/demo/packages/
+          cp -r packages/core packages/db packages/validate packages/view packages/http-client /tmp/demo/packages/
           cp -r apps/demo /tmp/demo/apps/demo
           rm -rf /tmp/demo/apps/demo/vendor /tmp/demo/apps/demo/composer.lock
           cd /tmp/demo/apps/demo
@@ -110,6 +121,47 @@ jobs:
           ./vendor/bin/lava db:migrate
           ./vendor/bin/lava app:seed
           ./vendor/bin/lava app:stats --json
+      - name: The README's `lava serve` claim, over a real socket
+        # `lava check` runs the suite in-process, where `TestClient` never opens
+        # a socket — so the two claims the README makes about serving cannot be
+        # checked there. This is the only place they are:
+        #
+        #  - `/` is HTML a browser can read, with links `url()` built;
+        #  - `/upstream/health` fetches the app's OWN `/health`, because
+        #    `app.upstream` defaults to `http://127.0.0.1:8080`. That self-fetch
+        #    is the demo's claim that `lava serve` in one terminal is the whole
+        #    setup, and it fails here if the default port and `lava serve`'s
+        #    default ever drift apart.
+        #
+        # No `--port` on purpose: the claim under test is the DEFAULT one, and
+        # pinning the port would make this pass while the default was broken.
+        # (Value flags take `=` — `--port 8080` would be a bare flag plus a
+        # positional argument, and the port would silently stay 8080.)
+        #
+        # The server is stopped on every exit path, including a failure: a step
+        # that leaves it running hands an orphan holding 8080 to the rest of the
+        # job, and a background process the runner is still tracking is how a
+        # green step becomes a hung one. `lava serve` stops its own server when
+        # it is stopped, so killing this process is enough — see ServeShutdownTest.
+        working-directory: /tmp/demo/apps/demo
+        run: |
+          ./vendor/bin/lava serve >/tmp/demo-serve.log 2>&1 &
+          serve_pid=$!
+          trap 'kill "$serve_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8080/health >/dev/null && break
+            sleep 0.25
+          done
+
+          board=$(curl -sf http://127.0.0.1:8080/)
+          echo "$board" | grep -q 'href="/tasks/export"' \
+            || { echo "the board did not link the export route"; exit 1; }
+
+          upstream=$(curl -sf http://127.0.0.1:8080/upstream/health)
+          echo "upstream said: $upstream"
+          echo "$upstream" | grep -q '"status":"ok"' \
+            || { echo "the self-fetch did not come back ok"; exit 1; }
       - name: Verify the app the way its README says to
         working-directory: /tmp/demo/apps/demo
         run: |
