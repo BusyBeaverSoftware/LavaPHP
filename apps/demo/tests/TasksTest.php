@@ -28,7 +28,6 @@ use PHPUnit\Framework\TestCase;
  */
 final class TasksTest extends TestCase
 {
-    private static App $app;
     private static Connection $db;
     private static TestClient $client;
 
@@ -42,7 +41,6 @@ final class TasksTest extends TestCase
 
         (new MigrationRunner($connection, MigrationFiles::inApp($app->appDir)))->migrate();
 
-        self::$app = $app;
         self::$db = $connection;
         self::$client = new TestClient($app);
     }

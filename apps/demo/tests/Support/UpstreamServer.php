@@ -42,6 +42,16 @@ final class UpstreamServer
     private static ?self $shared = null;
 
     /**
+     * The ids `flakyId()` has handed out, so `stop()` can remove the counter
+     * files the router wrote for them. They are keyed by a random id, so nothing
+     * will ever reuse one — without this they are litter that accumulates in
+     * `/tmp` for the life of the machine.
+     *
+     * @var list<string>
+     */
+    private static array $counters = [];
+
+    /**
      * @param resource $handle
      */
     private function __construct(
@@ -118,7 +128,10 @@ final class UpstreamServer
     /** A unique id for a `/flaky-<id>` base, so tests never share a counter. */
     public static function flakyId(): string
     {
-        return bin2hex(random_bytes(8));
+        $id = bin2hex(random_bytes(8));
+        self::$counters[] = $id;
+
+        return $id;
     }
 
     /** How many times the client asked `/flaky-<id>` for an answer. */
@@ -163,6 +176,16 @@ final class UpstreamServer
 
         proc_close($this->process);
         $this->process = null;
+
+        // Both of these are files this harness made, so both go away with it —
+        // the same rule `ServedApp` keeps for its own log. A test run that
+        // leaves them behind leaves them behind for good: the log is a tempnam
+        // and the counters are keyed by a random id, so nothing reuses either.
+        @unlink($this->log);
+        foreach (self::$counters as $id) {
+            @unlink(sys_get_temp_dir() . '/' . self::COUNTER_PREFIX . $id);
+        }
+        self::$counters = [];
 
         return true;
     }

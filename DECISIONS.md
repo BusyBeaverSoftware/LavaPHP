@@ -1921,12 +1921,31 @@ do with either pack (decisions 109–113).
     guarantee is real but untested — `ServeShutdownTest` would skip on every
     matrix leg, and a skip is honest and invisible at the same time.
 
+115. **PHPStan now analyses `apps/demo` at level 8, and it found a dead property.**
+    `phpstan.neon` covered `packages/*/src` and nothing else, so the canonical app
+    — the code the docs tell people to copy — was the one tree no static analysis
+    touched: neither its `app/` nor its tests. Adding both paths at the same level
+    found exactly one error, and it was real: `TasksTest::$app` was assigned in
+    `setUpBeforeClass` and never read. Removed, not silenced. The app passes level
+    8 otherwise, which is worth knowing on its own — it means the examples a
+    reader copies are type-clean under the framework's own bar, not merely
+    runnable.
+
+116. **The demo's `UpstreamServer` removes the files it makes.** `stop()` now
+    unlinks its `tempnam` log — the same rule `ServedApp` already kept for its own
+    — and the `/flaky-<id>` counter files the router wrote. Eight files per run
+    were accumulating in `/tmp`, permanently: the log is a `tempnam` and the
+    counters are keyed by a random id, so nothing ever reuses one. Noticed by
+    looking at `/tmp` during the session-hygiene sweep, which is the only way this
+    class of leak shows up — nothing fails, and nothing that passes tells you.
+
 Verified by running, not by reading. The demo suite is 24 tests / 99 assertions;
 `lava check --strict` reports all nine sections `ok` and `lava map --check`
 confirms the regenerated map (10 routes / 17 services / 5 features / 4 packs /
 4 env vars, hash `d6b2a2d7e8377ce8`); the root gate is **875 tests, 4270
-assertions** with the live database tests enabled and PHPStan level 8 reports no
-errors. Over real HTTP through `lava serve`: the board renders, the task page
+assertions** with the live database tests enabled, and PHPStan level 8 reports no
+errors across every pack's `src` and now the demo's `app/` and `tests/` too. Over
+real HTTP through `lava serve`: the board renders, the task page
 renders, a hostile title is escaped to `&lt;script&gt;`, `/tasks/export` is 200
 `text/csv` with the flag on and a 404 with the nav link gone when
 `LAVA_FEATURE_TASKS_CSV_EXPORT=off`, a missing task answers `task_not_found` in

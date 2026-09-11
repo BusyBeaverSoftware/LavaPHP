@@ -6,5 +6,12 @@ parameters:
         - packages/validate/src
         - packages/view/src
         - packages/http-client/src
+        # The canonical app, at the same level as the framework. `apps/demo` is
+        # the code the docs tell people to copy, and it was the one tree nothing
+        # checked: `composer verify` analysed every pack's src and neither the
+        # app's own `app/` nor its tests. A canonical example that only RUNS is
+        # an example that can still teach a type error.
+        - apps/demo/app
+        - apps/demo/tests
     excludePaths:
         - packages/*/tests
