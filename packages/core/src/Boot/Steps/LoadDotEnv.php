@@ -12,6 +12,11 @@ use Lava\Core\Config\DotEnv;
  * Loads config/.env (if present) into the real environment — without ever
  * overriding variables that are already set. Missing file means "nothing to
  * load", not a problem: apps boot zero-config.
+ *
+ * Promotion is why `lava env` can't answer "shell or file?" after the fact: by
+ * the time any command runs, a .env value IS a real environment variable. So
+ * the decision made here is recorded — one entry per name that actually took
+ * its value from the file.
  */
 final class LoadDotEnv implements BootStep
 {
@@ -26,6 +31,7 @@ final class LoadDotEnv implements BootStep
             if ($ctx->realEnv($name) === null) {
                 $_ENV[$name] = $value;
                 putenv("{$name}={$value}");
+                $ctx->envFromFile[$name] = $value;
             }
         }
     }

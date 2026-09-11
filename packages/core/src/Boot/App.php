@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Lava\Core\Boot;
 
 use Lava\Core\Config\Config;
+use Lava\Core\Config\EnvVar;
 use Lava\Core\Container\Container;
 use Lava\Core\Features\FlagSubjectResolver;
 use Lava\Core\Features\Features;
 use Lava\Core\Http\HttpErrors;
+use Lava\Core\Modules\ModuleRef;
+use Lava\Core\Modules\PackInfo;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\ProblemReport;
 use Lava\Core\Routing\HandlerInvoker;
@@ -28,7 +31,19 @@ use Psr\Http\Server\RequestHandlerInterface;
 final class App implements RequestHandlerInterface
 {
     /**
+     * The trailing four fields are what boot DECIDED, carried forward for the
+     * inspection commands (`lava about`, `lava env`, `lava describe`). They are
+     * records of boot's own work, never recomputed at read time — a command
+     * that re-derived them could disagree with the app it is describing.
+     *
      * @param list<string> $globalMiddleware class-strings from app/Middleware.php
+     * @param list<ModuleRef> $moduleRefs every entry of app/Modules.php, in order
+     * @param array<string, PackInfo> $packs manifest by module class — enabled packs
+     *        and disabled-but-installed ones alike (a pack that is off and
+     *        missing is simply absent, which is why `lava about` can't guess)
+     * @param array<string, string> $dotEnv valid KEY => VALUE pairs from config/.env
+     * @param array<string, string> $envFromFile the subset of dotEnv boot promoted
+     *        because the real environment did not already define it
      */
     public function __construct(
         public readonly string $appDir,
@@ -39,7 +54,66 @@ final class App implements RequestHandlerInterface
         public readonly ProblemReport $problems,
         public readonly Router $router,
         public readonly array $globalMiddleware = [],
+        public readonly array $moduleRefs = [],
+        public readonly array $packs = [],
+        public readonly array $dotEnv = [],
+        public readonly array $envFromFile = [],
     ) {
+    }
+
+    /**
+     * Every environment variable this app reads, declared or not.
+     *
+     * The union is the point. App-declared EnvVars come first (in the order
+     * the app wrote them), then the packs' in module order, then names that
+     * exist only in config/.env — that last group is invisible to every other
+     * view of the app, and it is exactly what an agent needs when a value "is
+     * definitely set" but never reaches the code.
+     *
+     * A name declared twice keeps the APP's declaration: a pack and an app
+     * disagreeing about a variable is the app's call to make, and the app is
+     * the one the reader can see and change.
+     *
+     * @return list<array{name: string, var: EnvVar|null, by: string|null}>
+     *         `var` is null for a bare .env entry nothing declared
+     */
+    public function envVars(): array
+    {
+        $entries = [];
+
+        foreach ($this->packs as $pack) {
+            foreach ($pack->envVars as $name) {
+                $entries[$name] = [
+                    'name' => $name,
+                    'var' => EnvVar::optional($name, "Read by {$pack->package}."),
+                    'by' => $pack->package,
+                ];
+            }
+        }
+
+        // Boot validated this id's shape (see WireAppServices), so the
+        // instanceof is a guard against a fixture or a future step, not a
+        // routine possibility.
+        if ($this->container->has(EnvVar::CONTAINER_ID)) {
+            $declared = $this->container->get(EnvVar::CONTAINER_ID);
+            if (is_array($declared)) {
+                foreach ($declared as $entry) {
+                    if ($entry instanceof EnvVar) {
+                        $entries[$entry->name] = [
+                            'name' => $entry->name,
+                            'var' => $entry,
+                            'by' => 'app/Services.php',
+                        ];
+                    }
+                }
+            }
+        }
+
+        foreach (array_keys($this->dotEnv) as $name) {
+            $entries[$name] ??= ['name' => $name, 'var' => null, 'by' => null];
+        }
+
+        return array_values($entries);
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface

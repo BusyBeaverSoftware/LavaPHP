@@ -213,3 +213,102 @@ impossible to tell a new breakage from the old noise.
    from a command that ran and failed — an agent can tell "you typed it
    wrong" from "it's broken" without parsing. The envelope still carries the
    `unknown_command` problem with a nearest-name fix.
+
+## 2026-09-10 — M4 slice 2 (the inspection commands)
+
+**Context**: `about`, `routes`, `services`, `features` (+ `features resolve`),
+`config`, `env`, `describe`, `list`. The design question this slice turned on
+was *who owns the facts*: a command that re-derives what boot already decided
+can disagree with the app it is describing, and then the diagnostic lies.
+
+1. **`CheckAppDir` is the new first boot step, and `not_an_app` its code.**
+   Found while exercising the real binary from `/tmp`: a directory with no
+   `app/`, no `config/`, and no `public/index.php` booted **clean**, so
+   `lava routes` there answered `status: ok, routes: []`. That is not a
+   cosmetic gap — it reads as "your app has no routes" when the truth is
+   "there is no app here", which sends an agent debugging a 404 into the wrong
+   problem entirely. Every user-authored artifact in conventions.md is
+   optional, so *nothing else* in the pipeline can notice. The marker set is
+   deliberately generous — ANY ONE of the three suffices — because a
+   config-only app (`bad-flags-app`) and a zero-config app that is just
+   `public/index.php` are both legitimate; requiring a specific file would
+   fail real apps and requiring all three would fail most of them. Fatal
+   severity, and the test asserts the report holds *exactly* one problem:
+   nothing downstream of "there is no app" should invent findings.
+
+2. **`App` carries what boot DECIDED, not what commands can recompute.**
+   Four trailing fields: `globalMiddleware`, `moduleRefs`, `packs`, `dotEnv`,
+   `envFromFile`. `lava about` reads `moduleRefs` for gate state and `packs`
+   for manifests rather than re-reading `app/Modules.php`; `lava env` reads
+   `dotEnv`. All defaulted, so `SubjectGatingTest`'s direct `new App(...)`
+   still compiles and the change is additive.
+
+3. **`envFromFile` exists because `.env` promotion is destructive.** Boot
+   promotes `config/.env` values into the real process environment
+   (`LoadDotEnv`) and never takes them back. Afterwards, `getenv('APP_REGION')`
+   is indistinguishable from a shell export, so `lava env` reported
+   `source: env` for values that came from the file — a lie in the one column
+   the command exists to provide. The fix records boot's own promotion
+   *decision* (`envFromFile` = names the real environment did NOT already
+   define) instead of guessing post-hoc with a value-comparison heuristic,
+   which would have been wrong for any var whose shell value happened to equal
+   the file's. `DescribeCommand` applies the same rule.
+
+4. **`--env=<name>` reports source `flag` for `LAVA_ENV`.** The override is
+   applied for the boot only and then restored, so the process environment
+   holds no trace of it afterwards and `source: unset` would sit next to
+   `value: prod`. The flag *is* the source.
+
+5. **Usage errors exit 2, checked BEFORE the boot** (`AppCommand::usageProblem`,
+   matching `unknown_command`'s contract). A malformed invocation is not an
+   app problem, so it must not depend on the app booting — `lava describe`
+   with no selector reports `bad_usage` even where boot would have failed, and
+   the fix line quotes the usage.
+
+6. **Every command seeds its payload shape before the boot** (`emptyPayload`).
+   A command that threw mid-`inspect` used to emit `data: {}`, breaking the
+   promise that `lava.<cmd>/1` has a stable shape. Seeding first means every
+   exit path — usage, boot failure, unexpected throw — carries the command's
+   keys; `inspect()` overwrites them in place so insertion order is preserved.
+
+7. **`Console::run()` wraps dispatch, so a `LavaProblem` thrown *by a command*
+   is a report, never a stack trace.** Regression: `lava features resolve
+   <typo>` escaped as an uncaught `UnknownFeature` fatal. This is the single
+   dispatch point, so every command — including future pack commands —
+   inherits the guarantee; a non-LavaProblem becomes
+   `UnexpectedFailure::inCommand()` (which names the command, not a boot step,
+   so the report never mislabels where the failure happened).
+
+8. **`AboutCommand` is a plain `Command`, not an `AppCommand`.** "Why won't
+   this app start" is answered better by `about` than by anything else, and an
+   `AppCommand` would have nothing to say on `BootFailure`. It prints the PHP
+   facts first, then `app: null` / `packs: []` — stable keys, so a `--json`
+   consumer can tell "no packs" from "could not boot". `gateState()` returns
+   `'unknown'` when a `ModuleRef` names an undefined feature rather than
+   throwing the very exception it is meant to help diagnose.
+
+9. **`describe` resolves route → service → flag → env → command, and a miss is
+   never silent.** A name can legitimately be two of those at once, so
+   precedence is documented rather than errored. The `unknown_selector`
+   problem carries every candidate name by namespace *and* a nearest-match
+   hint whose search spans all five namespaces — resolution order must not
+   narrow the suggestion (`describe rutes` points at `lava routes`, a command,
+   even though commands resolve last).
+
+10. **`App::envVars()` is the single source of truth for env entries**, and
+    `Secrets` is only a fallback. `lava env` and `lava describe` each grew a
+    private `declared()`/`names()` helper, which both duplicated the union
+    (app declarations + pack declarations + unclaimed `.env` keys) and made
+    phpstan infer an always-non-null offset type, producing six
+    `nullsafe.neverNull` errors. Rather than suppress them, the union moved to
+    `App::envVars(): list<array{name, var, by}>` — one implementation, both
+    commands iterate entries and branch on `$var !== null`. The secret rule
+    followed the same shape: **a declaration always wins**, and the
+    name-based `Secrets::looksSecret()` heuristic applies only where nothing
+    declared the value (config keys, unclaimed `.env` entries). Word-boundary
+    matching means `api_key` is a secret but `monkey` and `base_url` are not.
+
+11. **`MissingEnvVar` is Warn, not Fatal.** `lava env` is a report; a
+    diagnostic that itself exits non-zero is an obstacle. `lava check
+    --strict` (slice 3) is where an unset required var becomes a build
+    failure.

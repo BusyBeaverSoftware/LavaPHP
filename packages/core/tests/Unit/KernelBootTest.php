@@ -9,6 +9,7 @@ use Lava\Core\Boot\BootFailure;
 use Lava\Core\Boot\Kernel;
 use Lava\Core\Boot\Steps\BuildFeatures;
 use Lava\Core\Boot\Steps\BuildRouter;
+use Lava\Core\Boot\Steps\CheckAppDir;
 use Lava\Core\Boot\Steps\CheckModules;
 use Lava\Core\Boot\Steps\CollectFlagDefinitions;
 use Lava\Core\Boot\Steps\LoadConfig;
@@ -34,6 +35,7 @@ final class KernelBootTest extends TestCase
     public function testStepsIsTheWholeBootAsOneReadableList(): void
     {
         self::assertSame([
+            CheckAppDir::class,
             LoadDotEnv::class,
             LoadConfig::class,
             CollectFlagDefinitions::class,
@@ -119,6 +121,42 @@ final class KernelBootTest extends TestCase
 
         self::assertSame('test', $app->env); // .env says prod; the real environment wins
         self::assertNotSame('test', getenv('LAVA_ENV'));
+    }
+
+    /**
+     * Booting a directory that is not an app must FAIL, not silently succeed
+     * with an empty one. Every artifact in conventions.md is optional, so
+     * without CheckAppDir a random directory boots clean and `lava routes`
+     * there answers `status: ok, routes: []` — which reads as "your app has no
+     * routes" rather than "there is no app here".
+     */
+    public function testBootingADirectoryThatIsNotAnAppIsAProblem(): void
+    {
+        $dir = sys_get_temp_dir() . '/lava-not-an-app-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($dir));
+
+        try {
+            $result = TestApp::boot($dir);
+
+            self::assertInstanceOf(BootFailure::class, $result);
+            $codes = array_map(static fn (LavaProblem $p): string => $p->code(), $result->problems->problems());
+            // Exactly one problem: nothing downstream of "there is no app"
+            // should invent findings of its own.
+            self::assertSame(['not_an_app'], $codes);
+
+            $problem = $result->problems->problems()[0];
+            self::assertSame($dir, $problem->context['app_dir']);
+            self::assertSame(['app', 'config', 'public/index.php'], $problem->context['expected']);
+
+            // The marker set is generous, not a ban: ONE of the three is
+            // enough. A config-only app is legitimate (bad-flags-app is one),
+            // so an empty config/ directory must boot green.
+            self::assertTrue(mkdir($dir . '/config'));
+            self::assertInstanceOf(App::class, TestApp::boot($dir));
+        } finally {
+            @rmdir($dir . '/config');
+            @rmdir($dir);
+        }
     }
 
     public function testMultiProblemAppReportsEverythingInOneBoot(): void

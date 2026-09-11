@@ -81,6 +81,20 @@ final class TestApp
         return $dir;
     }
 
+    /**
+     * Makes a fixture's App\ classes autoloadable WITHOUT booting it.
+     *
+     * A test that drives the CLI needs this: the command boots the app itself,
+     * and booting it first from the test would both waste the work and hide the
+     * very behaviour under test.
+     */
+    public static function autoloadFixture(string $name): string
+    {
+        $dir = self::fixturePath($name);
+        self::autoloadFor($dir);
+        return $dir;
+    }
+
     private static function autoloadFor(string $appDir): void
     {
         if (isset(self::$autoloaded[$appDir])) {

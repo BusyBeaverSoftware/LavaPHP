@@ -39,13 +39,36 @@ and every `--json` command):
 | `method_not_allowed` | `MethodNotAllowed` | the path matched but the method didn't (also: HEAD to a GET-only route — HEAD is never auto-mapped) | list the accepted methods |
 | `unknown_route` | `UnknownRoute` | URL generation asked for a route name that isn't registered | suggest the nearest registered name |
 | `unknown_command` | `UnknownCommand` | `lava <name>` named a command this app doesn't have | suggest the nearest registered command, else `lava list` |
+| `not_an_app` | `NotAnApp` | the directory booted has no `app/`, no `config/`, and no `public/index.php` | name the directory and the layout to create |
+| `bad_usage` | `BadUsage` | a command was invoked with a missing or malformed argument (the command exists; the arguments don't) — exit 2 | quote the usage line |
+| `missing_env_var` | `MissingEnvVar` | a declared required env var has no value in the process environment or `config/.env` — **severity warn** | set it in `config/.env` or export it |
+| `unknown_selector` | `UnknownSelector` | `lava describe <selector>` matched no route, service, flag, env var, or command | suggest the nearest name and list every candidate namespace |
+
+`not_an_app` is the one code that exists because booting the wrong directory
+**succeeds**. Every user-authored artifact is optional (see
+[conventions.md](conventions.md)), so without this check a random directory
+yields an app with no routes and `lava routes` there answers
+`status: ok, routes: []` — which reads as "your app has no routes" rather than
+"there is no app here".
+
+`missing_env_var` is deliberately Warn, not Fatal: `lava env` is a report, and a
+diagnostic that itself exits non-zero is an obstacle. `lava check --strict` is
+where an unset required var becomes a build failure.
+
+`bad_usage` is the only code that exits **2** rather than 1, alongside
+`unknown_command`. An agent can tell "you typed it wrong" from "it ran and
+failed" without parsing the body.
 
 M1/M2/M3 status: every code above has its class; all except `unexpected_failure` are
 exercised by fixture/unit tests under `packages/core/tests/` (see
 `tests/Unit/KernelBootTest.php` for the fixture-level ones — `bad-routes-app`
 collects five route problems in one boot; `module-app` exercises the module
-contract end to end). `unknown_command` arrives with M4's console kernel
-(`tests/Unit/ConsoleTest.php`, `tests/Cli/LavaBinaryTest.php`). Still to come
-with their milestones: pack-specific codes (M5+). The table is complete when
+contract end to end).
+
+M4 status: `unknown_command` (`tests/Unit/ConsoleTest.php`), `bad_usage`,
+`missing_env_var`, `unknown_selector` (`tests/Unit/InspectionCommandsTest.php`),
+and `not_an_app` (`tests/Unit/KernelBootTest.php`) are all live and covered.
+Still to come with their milestones: pack-specific codes (M5+), and the codes
+`lava check` / `lava serve` introduce in M4 slice 3. The table is complete when
 0.1.0 is tagged. `lava check` renders problems fix-first (runnable commands
 first).

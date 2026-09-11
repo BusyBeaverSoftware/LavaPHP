@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Lava\Core\Console;
 
+use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
+use Lava\Core\Problem\UnexpectedFailure;
 use Lava\Core\Problem\UnknownCommand;
 
 /**
@@ -61,7 +63,23 @@ final class Console
             return $io->emit($name);
         }
 
-        return $command->run($io, $args, $this->appDir);
+        // A command that throws is still a report, never a stack trace. This
+        // is the single dispatch point, so every command — including pack
+        // commands that don't exist yet — inherits the guarantee for free,
+        // exactly as Kernel does for boot steps. Whatever the command already
+        // wrote is kept: a partial table plus the reason it stopped is more
+        // useful than either alone.
+        try {
+            return $command->run($io, $args, $this->appDir);
+        } catch (LavaProblem $problem) {
+            $report = new ProblemReport();
+            $report->add($problem);
+            return $io->emit($name, $report);
+        } catch (\Throwable $throwable) {
+            $report = new ProblemReport();
+            $report->add(UnexpectedFailure::inCommand($name, $throwable));
+            return $io->emit($name, $report);
+        }
     }
 
     private function unknownCommand(IO $io, string $name): int

@@ -21,6 +21,15 @@ that" — zero-config apps are valid and boot green.
 | `config/.env` | optional | `KEY=VALUE` lines | `invalid_env_file` |
 | `public/index.php` | entry point | — (the canonical one is in lava/app) | — |
 
+An **app root** is any directory containing at least one of `app/`, `config/`,
+or `public/index.php`. That is the whole test — boot checks it first and
+reports `not_an_app` if none is present. The rule is deliberately generous
+(any one marker suffices) because every artifact above is optional: a
+config-only app, and a zero-config app that is just `public/index.php`, are
+both legitimate. It exists because the opposite failure is silent — booting a
+directory that is not an app otherwise succeeds with an empty app, and
+`lava routes` there answers `status: ok, routes: []`.
+
 `app/Classes/` autoload `App\` → `app/…` (real apps get this from their
 composer.json; fixture apps get it from the test harness). Function handlers
 are **not** autoloadable — require their file at the top of `app/Routes.php`.

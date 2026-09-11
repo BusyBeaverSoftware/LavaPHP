@@ -6,6 +6,7 @@ namespace Lava\Core\Boot;
 
 use Lava\Core\Boot\Steps\BuildFeatures;
 use Lava\Core\Boot\Steps\BuildRouter;
+use Lava\Core\Boot\Steps\CheckAppDir;
 use Lava\Core\Boot\Steps\CheckModules;
 use Lava\Core\Boot\Steps\CollectFlagDefinitions;
 use Lava\Core\Boot\Steps\LoadConfig;
@@ -24,6 +25,7 @@ final class Kernel
 {
     /** @var list<class-string<BootStep>> */
     public const STEPS = [
+        CheckAppDir::class,
         LoadDotEnv::class,
         LoadConfig::class,
         CollectFlagDefinitions::class,
@@ -75,6 +77,15 @@ final class Kernel
             return new BootFailure($ctx->problems, $appDir, $ctx->env);
         }
 
+        // Enabled packs contribute their live manifest; disabled-but-installed
+        // ones contributed theirs during WireModules. Merging here means
+        // `lava about` lists every pack the app can see, with its gate state
+        // read off moduleRefs rather than guessed from this map.
+        $packs = $ctx->moduleManifests;
+        foreach ($ctx->modules as $moduleClass => $module) {
+            $packs[$moduleClass] = $module->pack();
+        }
+
         return new App(
             $appDir,
             $ctx->env,
@@ -90,6 +101,10 @@ final class Kernel
             $ctx->problems,
             $ctx->router ?? new \Lava\Core\Routing\Router(),
             $ctx->globalMiddleware,
+            $ctx->moduleRefs,
+            $packs,
+            $ctx->dotEnv,
+            $ctx->envFromFile,
         );
     }
 }

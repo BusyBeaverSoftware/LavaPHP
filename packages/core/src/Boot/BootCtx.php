@@ -39,6 +39,14 @@ final class BootCtx
     /** @var array<string, string> valid KEY => VALUE pairs parsed from config/.env */
     public array $dotEnv = [];
 
+    /**
+     * @var array<string, string> the subset of dotEnv that boot actually
+     *      promoted — i.e. names the real environment did NOT already define.
+     *      A name in dotEnv but not here was overridden by the shell, which is
+     *      exactly the distinction `lava env` has to report.
+     */
+    public array $envFromFile = [];
+
     /** @var array<string, mixed> raw 'set' section of config/features.php, validated by BuildFeatures */
     public array $rawFlagSet = [];
 
@@ -64,13 +72,7 @@ final class BootCtx
     /** The value of a real environment variable (never the .env fallback). */
     public function realEnv(string $name): ?string
     {
-        foreach ([&$_ENV, &$_SERVER] as &$source) {
-            if (isset($source[$name]) && is_string($source[$name])) {
-                return $source[$name];
-            }
-        }
-        $value = getenv($name);
-        return $value === false ? null : $value;
+        return \Lava\Core\Config\ProcessEnv::real($name);
     }
 
     /** Real env first, then the parsed config/.env values. */

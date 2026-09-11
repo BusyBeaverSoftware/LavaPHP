@@ -12,6 +12,13 @@ namespace Lava\Core\Config;
  */
 final readonly class EnvVar
 {
+    /**
+     * The container id an app registers its declared EnvVars under. Boot
+     * validates the shape once (see WireAppServices) so `lava env` reads a
+     * list of EnvVar and never has to defend against arbitrary values.
+     */
+    public const CONTAINER_ID = 'app.env_vars';
+
     public function __construct(
         public string $name,
         public bool $required,

@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 namespace Lava\Core\Console;
 
+use Lava\Core\Console\Commands\AboutCommand;
+use Lava\Core\Console\Commands\ConfigCommand;
+use Lava\Core\Console\Commands\DescribeCommand;
+use Lava\Core\Console\Commands\EnvCommand;
+use Lava\Core\Console\Commands\FeaturesCommand;
 use Lava\Core\Console\Commands\ListCommand;
+use Lava\Core\Console\Commands\RoutesCommand;
+use Lava\Core\Console\Commands\ServicesCommand;
 
 /**
  * The commands this process can run, keyed by name.
@@ -67,10 +74,23 @@ final class CommandRegistry
     /**
      * The commands every LavaPHP app has. Pack commands (db:*, …) join the
      * registry when their module registers, once packs land.
+     *
+     * Registration order is the order `lava list` prints, so it is the order a
+     * human reads: orient (about), then the four tables, then the lookup.
+     * `list` goes last because it is the index, not an entry.
      */
     public static function core(): self
     {
         $registry = new self();
+        $registry->add(new AboutCommand());
+        $registry->add(new RoutesCommand());
+        $registry->add(new ServicesCommand());
+        $registry->add(new FeaturesCommand());
+        $registry->add(new ConfigCommand());
+        $registry->add(new EnvCommand());
+        // describe() needs the registry to answer for commands, so it is
+        // constructed against the same instance it is being added to.
+        $registry->add(new DescribeCommand($registry));
         $registry->add(new ListCommand($registry));
         return $registry;
     }
