@@ -47,7 +47,11 @@ the claims the gate cannot make on its own.
    then `composer validate`. This is the decoupling claim: a pack that has grown
    an undeclared dependency on a sibling fails here and nowhere else.
 6. **CI is green on the tag commit.** The five jobs are the authority on PHP
-   8.3, 8.4 and 8.5, on a machine that is not this one.
+   8.3, 8.4 and 8.5, on a machine that is not this one. This step is the one that
+   cannot be run from this checkout: it has **no git remote configured**, so the
+   workflow has never run. Push a branch, watch the five jobs go green, and only
+   then cut the tag — a tag on a commit CI has not seen is a tag that may have to
+   move, and a tag that moves is worse than a late one.
 
 ## The tag
 
@@ -77,11 +81,14 @@ Packagist picks it up from the push.
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
-- **The CI coverage job has never had a green run on GitHub.** The mechanism is
-  proven locally — `pcov.directory` set to the repository, the ini reaching
-  child processes through `PHP_INI_SCAN_DIR` — but setup-php's image is not this
-  machine, and the job must be observed green once before the gate can be called
-  verified.
+- **The CI coverage job has never had a green run on GitHub, because this
+  checkout has no remote.** The mechanism is proven locally — `pcov.directory`
+  set to the repository, the ini reaching child processes through
+  `PHP_INI_SCAN_DIR` — but setup-php's image is not this machine, and the job
+  must be observed green once before the gate can be called verified. Same for
+  the other four jobs, and for the `skeleton` job's `lava map --check` step,
+  which is what would have caught the stale map this repository shipped for two
+  milestones (see DECISIONS.md 170).
 - **PHP 8.3 and 8.4 are CI-only.** Development here is on 8.5.4. The floor is
   enforced by the CI matrix, not by anything runnable on this machine.
 - **No release has been published.** Until a tag is pushed, `lava/app`'s

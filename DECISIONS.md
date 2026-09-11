@@ -2658,3 +2658,13 @@ exit 0, timed 0.05/0.03/0.03s. `lava map --check` on `apps/demo`: current, exit 
 and current again from `/tmp/skel-check/app` — a different absolute path. Only the
 root `composer.lock` is tracked; every pack's and app's lock exists on disk and is
 ignored, as documented. `composer validate` passes on all four packs and the root.
+
+177. **This checkout has no git remote, which explains the CI gap structurally and
+    makes the tag a local one.** `git remote -v` is empty and `main` is the only
+    branch, so the five CI jobs have never run and cannot until a remote exists.
+    Two consequences recorded rather than worked around: `docs/releasing.md` step 6
+    now says the CI check is the step that CANNOT be run from here, and tells the
+    reader to push a branch, watch it go green, and only then tag — because a tag
+    that has to move is worse than a late one. The 0.1.0 tag created at the end of
+    this milestone is therefore LOCAL and unpushed; pushing it is the publication
+    act and is the user's call, gated on that first green run.
