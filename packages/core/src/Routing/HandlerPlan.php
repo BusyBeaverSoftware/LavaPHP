@@ -15,7 +15,7 @@ final readonly class HandlerPlan
      * @param string $kind 'method' | 'function'
      * @param string|null $class set for method handlers
      * @param string|null $file where the handler is written (for `lava routes`)
-     * @param list<array{kind: string, type: string, name: string}> $injects
+     * @param list<array{kind: 'request'|'args'|'service', type: string, name: string}> $injects
      *        kind: 'request' | 'args' | 'service'
      */
     public function __construct(

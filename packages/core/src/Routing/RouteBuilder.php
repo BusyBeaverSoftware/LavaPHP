@@ -11,6 +11,7 @@ namespace Lava\Core\Routing;
  */
 final class RouteBuilder
 {
+    /** @var array{0: string, 1: string}|string|null */
     private array|string|null $handler = null;
 
     /** @var list<string> */
@@ -29,7 +30,7 @@ final class RouteBuilder
     }
 
     /**
-     * @param array|string $handler [ClassName::class, 'method'] or 'function_name'
+     * @param array{0: string, 1: string}|string $handler [ClassName::class, 'method'] or 'function_name'
      */
     public function handler(array|string $handler): self
     {
@@ -60,7 +61,7 @@ final class RouteBuilder
      * Everything finalize() needs. Internal to the Router pairing — the only
      * reader is Router::finalize().
      *
-     * @return array{name: string, path: string, methods: list<Method>, handler: array|string|null, middleware: list<string>, feature: string|null}
+     * @return array{name: string, path: string, methods: list<Method>, handler: array{0: string, 1: string}|string|null, middleware: list<string>, feature: string|null}
      */
     public function parts(): array
     {

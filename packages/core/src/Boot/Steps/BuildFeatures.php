@@ -79,10 +79,7 @@ final class BuildFeatures implements BootStep
         };
         $collect(array_keys($_ENV));
         $collect(array_keys($_SERVER));
-        $all = getenv();
-        if (is_array($all)) {
-            $collect(array_keys($all));
-        }
+        $collect(array_keys(getenv()));
         ksort($names);
 
         $out = [];

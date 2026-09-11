@@ -27,7 +27,10 @@ final readonly class PackInfo
     ) {
     }
 
-    /** @param list<string> $configFiles @param list<string> $envVars */
+    /**
+     * @param array<mixed> $configFiles
+     * @param array<mixed> $envVars
+     */
     public static function of(string $package, string $feature, array $configFiles = [], array $envVars = []): self
     {
         $problems = [];
@@ -37,6 +40,10 @@ final readonly class PackInfo
         if (preg_match('/^[a-z][a-z0-9_]*$/', $feature) !== 1) {
             $problems[] = "feature '{$feature}' should be snake_case";
         }
+        // Params are array<mixed> because this factory's job is to validate
+        // hand-written pack manifests; each surviving name is collected into a
+        // typed list, so the constructor only ever sees list<string>.
+        $vars = [];
         foreach ($envVars as $name) {
             if (!is_string($name) || $name === '') {
                 $problems[] = 'env var names must be non-empty strings';
@@ -45,11 +52,15 @@ final readonly class PackInfo
             if (preg_match('/^[A-Z][A-Z0-9_]*$/', $name) !== 1) {
                 $problems[] = "env var name '{$name}' should be UPPER_SNAKE";
             }
+            $vars[] = $name;
         }
+        $configs = [];
         foreach ($configFiles as $name) {
             if (!is_string($name) || $name === '') {
                 $problems[] = 'config file names must be non-empty strings';
+                continue;
             }
+            $configs[] = $name;
         }
         if ($problems !== []) {
             throw new InvalidConfig(
@@ -58,7 +69,7 @@ final readonly class PackInfo
                 ['package' => $package, 'feature' => $feature],
             );
         }
-        return new self($package, $feature, array_values($configFiles), array_values($envVars));
+        return new self($package, $feature, $configs, $vars);
     }
 
     /** @return array<string, mixed> */

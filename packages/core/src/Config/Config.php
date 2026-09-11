@@ -66,7 +66,10 @@ final class Config
         return $this->optional($key, $default, 'boolean', is_bool(...));
     }
 
-    /** @return array<mixed> */
+    /**
+     * @param array<mixed> $default
+     * @return array<mixed>
+     */
     public function array(string $key, array $default): array
     {
         return $this->optional($key, $default, 'array', is_array(...));
@@ -104,7 +107,7 @@ final class Config
         );
     }
 
-    /** @return array<string, mixed> every key with its provenance — feeds `lava config --json`. */
+    /** @return list<array{key: string, value: mixed, from_file: string|null}> — feeds `lava config --json`. */
     public function json(): array
     {
         $out = [];
@@ -116,8 +119,9 @@ final class Config
 
     private function typed(string $key, string $expected, callable $check): mixed
     {
+        // Split before the branch: the wrong-type path below needs $file too.
+        [$file, $name] = $this->splitKey($key);
         if (!$this->has($key)) {
-            [$file, $name] = $this->splitKey($key);
             throw new InvalidConfig(
                 "Required config key '{$key}' is not set.",
                 "Set '{$name}' in config/{$file}.php, or read it with a default: \$config->"

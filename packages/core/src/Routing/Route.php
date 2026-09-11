@@ -14,7 +14,7 @@ final readonly class Route
 {
     /**
      * @param list<Method> $methods
-     * @param array|string $handler [ClassName::class, 'method'] or 'function_name'
+     * @param array{0: string, 1: string}|string $handler [ClassName::class, 'method'] or 'function_name'
      * @param list<string> $middleware PSR-15 middleware class-strings, innermost first
      * @param string|null $feature per-request gate (->when()), null when ungated
      * @param string $regex compiled pattern, without delimiters

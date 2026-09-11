@@ -310,4 +310,22 @@ final class KernelBootTest extends TestCase
         self::assertStringEndsWith('app/Wiring/Boom.php:12', $boom->context['at']);
         self::assertStringContainsString('not a LavaPHP wiring problem', $boom->fix);
     }
+
+    public function testRedefiningAPackGateFlagInConfigIsReported(): void
+    {
+        $result = TestApp::bootFixture('redefined-pack-flag-app');
+
+        self::assertInstanceOf(BootFailure::class, $result);
+        $redefinition = null;
+        foreach ($result->problems->problems() as $problem) {
+            if (($problem->context['feature'] ?? null) === 'redefined_pack') {
+                $redefinition = $problem;
+            }
+        }
+        self::assertNotNull($redefinition, 'expected the pack-flag redefinition problem');
+        self::assertSame('invalid_config', $redefinition->code());
+        self::assertSame('lava/redefined-pack', $redefinition->context['package']);
+        self::assertStringContainsString('is the gate for pack lava/redefined-pack', $redefinition->getMessage());
+        self::assertStringContainsString("override it in 'set'", $redefinition->fix);
+    }
 }

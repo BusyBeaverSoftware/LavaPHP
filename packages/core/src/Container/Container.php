@@ -82,6 +82,11 @@ final class Container implements ContainerInterface
         $this->chain[] = $id;
         $this->owners[] = $id;
         $this->traces[$id] ??= new ResolutionTrace($id);
+        // Value registrations returned above; every remaining kind carries a
+        // factory. The guard makes that invariant explicit rather than assumed.
+        if ($registration->factory === null) {
+            throw new \LogicException("Registration '{$id}' has no factory.");
+        }
         try {
             $value = ($registration->factory)($this);
         } finally {
@@ -174,13 +179,17 @@ final class Container implements ContainerInterface
         if ($owner === null) {
             return null;
         }
-        return (string) ($this->registrations[$owner]?->declaredAt ?? $owner);
+        $registration = $this->registrations[$owner] ?? null;
+        return $registration !== null ? (string) $registration->declaredAt : $owner;
     }
 
     private static function closureLocation(\Closure $factory): SourceLocation
     {
         $reflection = new \ReflectionFunction($factory);
-        return SourceLocation::of($reflection->getFileName() ?? 'unknown', $reflection->getStartLine());
+        return SourceLocation::of(
+            $reflection->getFileName() ?: 'unknown',
+            $reflection->getStartLine() ?: 0,
+        );
     }
 
     private static function callerLocation(): SourceLocation

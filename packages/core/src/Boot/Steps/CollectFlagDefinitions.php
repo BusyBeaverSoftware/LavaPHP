@@ -107,7 +107,7 @@ final class CollectFlagDefinitions implements BootStep
     {
         foreach ($loaded as $section => $content) {
             if ($section === 'define') {
-                $this->absorbDefine($ctx, $set, is_array($content) ? $content : null);
+                $this->absorbDefine($ctx, $set, is_array($content) ? $content : null, $packFeatures);
             } elseif ($section === 'set') {
                 $this->absorbSet($ctx, is_array($content) ? $content : null);
             } else {
@@ -120,8 +120,11 @@ final class CollectFlagDefinitions implements BootStep
         }
     }
 
-    /** @param array<mixed>|null $content */
-    private function absorbDefine(BootCtx $ctx, FeatureSet $set, ?array $content): void
+    /**
+     * @param array<mixed>|null $content
+     * @param array<string, string> $packFeatures feature name => package, from app/Modules.php
+     */
+    private function absorbDefine(BootCtx $ctx, FeatureSet $set, ?array $content, array $packFeatures): void
     {
         if ($content === null) {
             $ctx->problems->add(new InvalidConfig(

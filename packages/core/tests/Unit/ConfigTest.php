@@ -52,6 +52,21 @@ final class ConfigTest extends TestCase
         }
     }
 
+    public function testWrongTypeWithoutProvenanceStillNamesTheConfigFile(): void
+    {
+        // A Config built from values alone (no provenance) must still render a
+        // well-formed file name — the splitKey fallback, never "config/.php".
+        $config = new Config(['app.debug' => 5]);
+
+        try {
+            $config->needBool('app.debug');
+            self::fail('InvalidConfig expected');
+        } catch (InvalidConfig $problem) {
+            self::assertStringContainsString('config/app.php', $problem->fix);
+            self::assertStringNotContainsString('config/.php', $problem->fix);
+        }
+    }
+
     public function testOptionalAccessorsDefaultButStillTypeCheck(): void
     {
         $config = (new Config())->with('app.debug', true, 'config/app.php');

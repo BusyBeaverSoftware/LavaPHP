@@ -159,3 +159,57 @@ it generalizes to *every* registration: after `WireAppServices` and
    the container unset; every later step guards on null rather than
    re-reporting the upstream failure. This is why `bad-flags-app` still
    yields its single expected code list and the sweep can't shift it.
+
+## 2026-09-10 — M4 slice 1 (console kernel) + the phpstan sweep
+
+**Context**: M4 begins. Slice 1 is the CLI walking skeleton — argv → command →
+dual-written output → exit code — with `bin/lava` and `lava list`. While
+building it, `composer verify` was found to be **red** (34 phpstan level-8
+errors) — a pre-existing condition from M1–M3 that the plan defers to M9
+("phpstan max on core"). The sweep below happened now, not in M9, for one
+reason: two of those "type" errors were real bugs, and a red gate makes it
+impossible to tell a new breakage from the old noise.
+
+1. **`CollectFlagDefinitions::absorbDefine()` — `$packFeatures` was never in
+   scope.** `absorb()` accepted the `feature => package` map and dropped it
+   when calling `absorbDefine()`, so the guard `isset($packFeatures[...])`
+   was always false: the "an app cannot redefine a pack's own gate flag"
+   check was dead code. Threaded the map through; locked in by the new
+   `redefined-pack-flag-app` fixture + KernelBootTest case.
+
+2. **`Config::typed()` — `$file` was out of scope on the wrong-type path.**
+   `[$file, $name] = splitKey()` ran only inside the "key missing" branch, so
+   a wrong-typed key *without* provenance rendered its fix as
+   `config/.php`. Split the key before the branch (`optional()` already did
+   this correctly). Locked in by
+   `testWrongTypeWithoutProvenanceStillNamesTheConfigFile`.
+
+3. **The rest were genuinely dead checks or missing docblocks** — not
+   silences. `getenv()` with no arguments always returns an array (verified
+   empirically), so the `is_array(getenv())` guards in `TestApp`/`BuildFeatures`
+   were unreachable and removed; `getFileName()`/`getStartLine()` return
+   `string|false`/`int|false`, so `?:` replaces `??`; `Closure|null` and the
+   `array|string` handler shapes got real types. No `@phpstan-ignore`, no
+   baseline, no casts — `composer verify` is green on the merits.
+
+4. **`Command` is an abstract class, not the interface the plan listed.**
+   `flags()`/`pack()`/`arguments()`/`usage()` are identical across all 13
+   commands; an interface would have forced four lines of boilerplate into
+   each. The contract is unchanged — `name()`, `summary()`, `run()` are still
+   abstract.
+
+5. **`Envelope` is its own class** (the plan folded the envelope into
+   `Console`). Keeping the versioned shape (`lava.<cmd>/1`) and its compact
+   encoding in one testable place beat inlining it in the kernel; `IO` owns
+   accumulation and emission, `Envelope` owns the wire shape.
+
+6. **Value flags are spelled `--flag=value`, never `--flag value`.** The
+   space-separated form is ambiguous with positionals (`lava describe --json
+   users.show` would swallow the selector). One unambiguous spelling is a
+   contract an agent can rely on. `-q`/`-h`/`-j` short forms map to
+   `quiet`/`help`/`json`.
+
+7. **Unknown commands exit 2, not 1.** A bad invocation is distinguishable
+   from a command that ran and failed — an agent can tell "you typed it
+   wrong" from "it's broken" without parsing. The envelope still carries the
+   `unknown_command` problem with a nearest-name fix.

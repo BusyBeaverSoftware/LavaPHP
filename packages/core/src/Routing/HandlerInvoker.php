@@ -33,7 +33,7 @@ final class HandlerInvoker
     }
 
     /**
-     * @param array|string $handler [ClassName::class, 'method'] or 'function_name'
+     * @param array{0: string, 1: string}|string $handler [ClassName::class, 'method'] or 'function_name'
      * @return HandlerPlan the validated, boot-frozen plan
      */
     public function plan(array|string $handler): HandlerPlan
@@ -62,6 +62,15 @@ final class HandlerInvoker
             $result = (new $class())->{$method}(...$values);
         } else {
             $function = $plan->function;
+            // Checked at plan time; re-checked here because a function can only
+            // be called if it still exists, and `is_callable` is what proves it.
+            if (!is_callable($function)) {
+                throw BadHandler::of(
+                    $plan->describe(),
+                    'the function is no longer defined at dispatch time',
+                    'Require its file in app/Routes.php (or composer.json autoload.files) so it exists for the whole request.',
+                );
+            }
             $result = $function(...$values);
         }
 
@@ -135,6 +144,7 @@ final class HandlerInvoker
         return $this->finishPlan('function', null, $function, $reflection);
     }
 
+    /** @param \ReflectionClass<object> $class */
     private function requireParameterlessConstructor(\ReflectionClass $class, string $describe): void
     {
         $constructor = $class->getConstructor();
@@ -186,6 +196,7 @@ final class HandlerInvoker
             );
         }
 
+        /** @var list<array{kind: 'request'|'args'|'service', type: string, name: string}> $injects */
         $injects = [];
         foreach ($reflection->getParameters() as $param) {
             $injects[] = $this->planParameter($describe, $param);
@@ -195,12 +206,13 @@ final class HandlerInvoker
             $kind,
             $class,
             $function,
-            $reflection->getFileName(),
-            $reflection->getStartLine(),
+            $reflection->getFileName() ?: null,
+            $reflection->getStartLine() ?: null,
             $injects,
         );
     }
 
+    /** @return array{kind: 'request'|'args'|'service', type: string, name: string} */
     private function planParameter(string $describe, \ReflectionParameter $param): array
     {
         $name = $param->getName();

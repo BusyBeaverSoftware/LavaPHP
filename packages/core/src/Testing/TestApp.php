@@ -46,7 +46,7 @@ final class TestApp
 
         $envBefore = $_ENV;
         $serverBefore = $_SERVER;
-        $realBefore = is_array(getenv()) ? getenv() : [];
+        $realBefore = getenv();
 
         self::clearLavaEnv();
         foreach ($env as $name => $value) {
@@ -62,7 +62,11 @@ final class TestApp
         }
     }
 
-    /** Boots a fixture app from tests/fixtures/apps/&lt;name&gt; with the same hermetic contract. */
+    /**
+     * Boots a fixture app from tests/fixtures/apps/&lt;name&gt; with the same hermetic contract.
+     *
+     * @param array<string, string> $env
+     */
     public static function bootFixture(string $name, array $env = []): App|BootFailure
     {
         return self::boot(self::fixturePath($name), $env);
@@ -105,12 +109,10 @@ final class TestApp
             }
         }
         unset($source);
-        $real = getenv();
-        if (is_array($real)) {
-            foreach (array_keys($real) as $key) {
-                if (is_string($key) && self::isLavaVar($key)) {
-                    putenv((string) $key); // putenv('NAME') unsets
-                }
+        // getenv() with no arguments is always an array — no false case to guard.
+        foreach (array_keys(getenv()) as $key) {
+            if (self::isLavaVar($key)) {
+                putenv($key); // putenv('NAME') unsets
             }
         }
     }
@@ -124,13 +126,9 @@ final class TestApp
     {
         $_ENV = $envBefore;
         $_SERVER = $serverBefore;
-        $realAfter = getenv();
-        if (!is_array($realAfter)) {
-            return;
-        }
-        foreach ($realAfter as $name => $value) {
+        foreach (getenv() as $name => $value) {
             if (!array_key_exists($name, $realBefore) || $realBefore[$name] !== $value) {
-                putenv(array_key_exists($name, $realBefore) ? "{$name}={$realBefore[$name]}" : (string) $name);
+                putenv(array_key_exists($name, $realBefore) ? "{$name}={$realBefore[$name]}" : $name);
             }
         }
     }

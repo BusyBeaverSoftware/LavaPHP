@@ -76,7 +76,7 @@ HTML;
             $rows = '';
             foreach ($problem->context as $key => $value) {
                 $key = self::e((string) $key);
-                $value = self::e(is_scalar($value) || $value === null ? (string) $value : json_encode($value) ?? '');
+                $value = self::e(is_scalar($value) || $value === null ? (string) $value : (json_encode($value) ?: ''));
                 $rows .= "<dt>{$key}</dt><dd>{$value}</dd>";
             }
             $context = "<dl>{$rows}</dl>";
