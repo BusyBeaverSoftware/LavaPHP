@@ -90,15 +90,19 @@ final class ServedApp
     /**
      * Stops the master AND anything it forked.
      *
-     * `php -S` with PHP_CLI_SERVER_WORKERS forks workers; terminating the master
-     * can leave a worker holding the port and serving stale code to the next
-     * run. The port is unique to this server, so the sweep cannot touch another.
+     * `php -S` with PHP_CLI_SERVER_WORKERS forks workers, and terminating the
+     * master can leave one holding the port and serving stale code to the next
+     * run. `lava serve` now handles that itself: it terminates its server when
+     * it is asked to stop, so a SIGTERM to this process takes the whole tree
+     * with it. This method used to follow up with a `pkill` for the port; the
+     * sweep is gone because the thing it compensated for is gone, and a pattern
+     * kill that no longer has a reason to exist is just a way to kill something
+     * else by accident.
      */
     public function stop(): void
     {
         proc_terminate($this->process);
         proc_close($this->process);
-        exec('pkill -f ' . escapeshellarg('php -S 127.0.0.1:' . $this->port) . ' > /dev/null 2>&1');
         @unlink($this->logFile);
     }
 

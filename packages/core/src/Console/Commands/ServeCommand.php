@@ -160,14 +160,22 @@ final class ServeCommand extends Command
         $environment = getenv();
         $environment['PHP_CLI_SERVER_WORKERS'] = (string) $workers;
 
-        $command = sprintf(
-            '%s %s-S %s -t %s %s',
-            escapeshellarg(PHP_BINARY),
-            self::prependArgument(),
-            escapeshellarg("{$host}:{$port}"),
-            escapeshellarg($appDir . '/public'),
-            escapeshellarg($entryPoint),
-        );
+        // An ARRAY command, not a string. PHP runs an array through execve
+        // directly, where a string is handed to `/bin/sh -c` — and that shell is
+        // why a stopped `lava serve` used to leave the server running: a signal
+        // sent to this process reached the shell, and `php -S` never heard it.
+        // The array form also removes escapeshellarg, and with it every quoting
+        // rule the shell would otherwise apply to `--host`, whatever a caller
+        // passes.
+        $command = [
+            PHP_BINARY,
+            ...self::prependArguments(),
+            '-S',
+            "{$host}:{$port}",
+            '-t',
+            $appDir . '/public',
+            $entryPoint,
+        ];
 
         // The child inherits this process's own streams, so the server log goes
         // straight to the terminal — no buffering, no interception, and Ctrl-C
@@ -177,7 +185,87 @@ final class ServeCommand extends Command
             return ExitCode::Failure;
         }
 
-        return proc_close($process) === 0 ? ExitCode::Ok : ExitCode::Failure;
+        self::stopServerOnSignal($process);
+
+        return self::waitForServer($process);
+    }
+
+    /**
+     * Wait for the server, dispatching signals while it runs.
+     *
+     * NOT `proc_close()`. `php -S` runs until something stops it, and PHP's
+     * `waitpid` wrapper retries on `EINTR` — so a signal that arrives mid-wait
+     * is remembered but never dispatched: dispatching needs the VM to reach a
+     * safe point, and the VM is parked inside a syscall that keeps restarting.
+     * The handler below would be dead code, and the server would outlive this
+     * process exactly as it did before there was a handler at all. Polling puts
+     * opcodes back between waits, which is what gives the signal somewhere to
+     * run — the cost is one 20ms nap per interval, on a process whose job is to
+     * sit there for hours.
+     *
+     * The exit code comes from `proc_get_status` for the same reason: once a
+     * status poll has reaped the child, `proc_close` has nothing left to report
+     * and returns -1 whatever happened.
+     *
+     * @param resource $process
+     */
+    private static function waitForServer($process): int
+    {
+        while (true) {
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                proc_close($process);
+
+                // A child killed by a signal reports -1 here, which is a
+                // non-zero exit and so a failure — correct for a server that
+                // stopped without being asked, and unreachable for Ctrl-C
+                // because the handler exits first.
+                return $status['exitcode'] === 0 ? ExitCode::Ok : ExitCode::Failure;
+            }
+
+            usleep(20_000);
+        }
+    }
+
+    /**
+     * Stop the server when this process is asked to stop.
+     *
+     * A `php -S` child is a separate process: it does NOT die with its parent.
+     * In a terminal that is invisible, because Ctrl-C signals the whole
+     * foreground process group and both processes receive it. Every OTHER way of
+     * stopping `lava serve` — `kill <pid>` from a script, an agent stopping a
+     * server it started in the background, a CI cleanup trap — reaches only this
+     * process, and the server keeps the port, serving stale code to whatever
+     * runs next. That is not hypothetical: this framework's own HTTP test
+     * harness carries a `pkill` at its call site to clean up afterwards, which
+     * is the workaround this replaces.
+     *
+     * pcntl is what makes a handler run at all — without it, SIGTERM's default
+     * disposition ends this process with no chance to act, and the child is
+     * orphaned exactly as before. So it is guarded rather than required:
+     * `lava serve` has to work on a PHP built without process control.
+     *
+     * The exit code is 128 + the signal, which is what a shell reports for a
+     * process killed by that signal — so Ctrl-C still looks like Ctrl-C to
+     * whatever is waiting on this one.
+     *
+     * @param resource $process
+     */
+    private static function stopServerOnSignal($process): void
+    {
+        if (!function_exists('pcntl_signal') || !function_exists('pcntl_async_signals')) {
+            return;
+        }
+
+        pcntl_async_signals(true);
+
+        $stop = static function (int $signal) use ($process): void {
+            proc_terminate($process);
+            exit(128 + $signal);
+        };
+
+        pcntl_signal(SIGINT, $stop);
+        pcntl_signal(SIGTERM, $stop);
     }
 
     /**
@@ -191,14 +279,16 @@ final class ServeCommand extends Command
      * missing whatever the prepend provides (a class loader, most often) and
      * every request would render a diagnostics page for a problem the CLI
      * cannot see.
+     *
+     * @return list<string>
      */
-    private static function prependArgument(): string
+    private static function prependArguments(): array
     {
         $prepend = ini_get('auto_prepend_file');
         if (!is_string($prepend) || $prepend === '' || strtolower($prepend) === 'none') {
-            return '';
+            return [];
         }
 
-        return '-d ' . escapeshellarg('auto_prepend_file=' . $prepend) . ' ';
+        return ['-d', 'auto_prepend_file=' . $prepend];
     }
 }
