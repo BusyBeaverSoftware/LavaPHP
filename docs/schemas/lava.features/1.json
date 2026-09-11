@@ -71,20 +71,26 @@
       "required": ["flag", "subject"],
       "properties": {
         "flag": {
-          "type": "object",
-          "required": ["name", "enabled", "source", "setting", "trace"],
-          "properties": {
-            "name": { "type": "string" },
-            "enabled": { "type": "boolean" },
-            "source": { "enum": ["code", "config", "env"] },
-            "setting": { "$ref": "#/$defs/setting" },
-            "trace": {
-              "type": "array",
-              "description": "Every layer that applied, innermost first — the whole answer to 'why is it on', not just the winner.",
-              "items": { "$ref": "#/$defs/layer" }
-            }
-          },
-          "additionalProperties": false
+          "description": "The flag's resolution. Null when the invocation was refused before a flag was named — a usage error still carries this key, so the shape is a resolution in which nothing was resolved. Without the null, the refused envelope matches neither branch of the `oneOf` above and fails its own schema.",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["name", "enabled", "source", "setting", "trace"],
+              "properties": {
+                "name": { "type": "string" },
+                "enabled": { "type": "boolean" },
+                "source": { "enum": ["code", "config", "env"] },
+                "setting": { "$ref": "#/$defs/setting" },
+                "trace": {
+                  "type": "array",
+                  "description": "Every layer that applied, innermost first — the whole answer to 'why is it on', not just the winner.",
+                  "items": { "$ref": "#/$defs/layer" }
+                }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
         },
         "subject": {
           "description": "The subject this was resolved for (--subject), or null for the anonymous default.",

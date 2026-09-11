@@ -7,14 +7,14 @@ namespace Lava\Core\Boot\Steps;
 use Lava\Core\Boot\BootCtx;
 use Lava\Core\Boot\BootStep;
 use Lava\Core\Config\Config;
-use Lava\Core\Problem\InvalidConfig;
-use Lava\Core\Problem\SourceLocation;
+use Lava\Core\Config\ConfigFile;
 
 /**
  * Loads the core config files (config/app.php, config/logging.php) into an
  * immutable Config with per-key provenance, then resolves the environment
  * name: LAVA_ENV (real env or .env) wins, then config/app.php 'env', then
- * 'dev'. Pack-declared config files are added by the module system.
+ * 'dev'. Pack-declared config files are loaded by {@see LoadPackConfig},
+ * through the same {@see ConfigFile} loader this uses.
  */
 final class LoadConfig implements BootStep
 {
@@ -24,21 +24,13 @@ final class LoadConfig implements BootStep
     {
         $config = new Config();
         foreach (self::FILES as $name) {
-            $file = $ctx->configPath($name . '.php');
-            if (!is_file($file)) {
-                continue;
-            }
-            $loaded = require $file;
-            if (!is_array($loaded)) {
-                $ctx->problems->add(new InvalidConfig(
-                    "config/{$name}.php must return an array of config values.",
-                    "End the file with: return [ … ]; — config keys become '{$name}.<key>'.",
-                    ['file' => "config/{$name}.php"],
-                    SourceLocation::of($file, 1),
-                ));
-                continue;
-            }
-            $config = $this->absorb($config, $name, $loaded, "config/{$name}.php", $ctx);
+            $config = ConfigFile::load(
+                $config,
+                $ctx->configPath($name . '.php'),
+                $name,
+                "config/{$name}.php",
+                $ctx->problems,
+            );
         }
         $ctx->config = $config;
 
@@ -47,24 +39,5 @@ final class LoadConfig implements BootStep
             $env = $config->string('app.env', 'dev');
         }
         $ctx->env = $env ?? 'dev';
-    }
-
-    /**
-     * @param array<mixed> $loaded
-     */
-    private function absorb(Config $config, string $name, array $loaded, string $fromFile, BootCtx $ctx): Config
-    {
-        foreach ($loaded as $key => $value) {
-            if (!is_string($key)) {
-                $ctx->problems->add(new InvalidConfig(
-                    "config/{$name}.php has a non-string key (" . get_debug_type($key) . ").",
-                    "Use string keys: return ['base_url' => …] — they become '{$name}.<key>'.",
-                    ['file' => $fromFile, 'key' => $key],
-                ));
-                continue;
-            }
-            $config = $config->with("{$name}.{$key}", $value, $fromFile);
-        }
-        return $config;
     }
 }

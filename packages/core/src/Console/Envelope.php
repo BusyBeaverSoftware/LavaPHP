@@ -20,9 +20,25 @@ final class Envelope
 {
     public const VERSION = '1';
 
+    /**
+     * The contract name for a command: `routes` → `lava.routes/1`,
+     * `db:status` → `lava.db.status/1`.
+     *
+     * The colon in a pack's namespaced command becomes a dot, and that is a
+     * deliberate translation rather than an accident of string handling. The
+     * schema name is a FILE name — `docs/schemas/<schema>.json` — and a colon
+     * is illegal in a path on Windows, so `docs/schemas/lava.db:status/1.json`
+     * would make the repository uncheckoutable there. It also keeps the name
+     * inside the envelope's own `schema` pattern, which admits letters, digits
+     * and dots.
+     *
+     * `command` in the envelope is NOT translated: it stays the string a
+     * caller types, because that is what an agent passes back on the command
+     * line. Only the contract's name is filename-safe.
+     */
     public static function schema(string $command): string
     {
-        return 'lava.' . $command . '/' . self::VERSION;
+        return 'lava.' . str_replace(':', '.', $command) . '/' . self::VERSION;
     }
 
     /**

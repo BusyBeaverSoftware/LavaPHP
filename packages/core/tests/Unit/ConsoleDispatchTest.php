@@ -24,7 +24,10 @@ final class ConsoleDispatchTest extends CommandTestCase
 
         self::assertSame(ExitCode::Ok, $code);
         self::assertSame('ok', $envelope['status']);
-        self::assertSame('lava.demo:ping/1', $envelope['schema']);
+        // `demo:ping` → `lava.demo.ping/1`, not `lava.demo:ping/1`: the schema
+        // name is also a FILE name under docs/schemas/, and a colon is illegal
+        // in a path on Windows. See Envelope::schema().
+        self::assertSame('lava.demo.ping/1', $envelope['schema']);
         self::assertSame(['pong' => true], $envelope['data']);
     }
 
@@ -33,7 +36,7 @@ final class ConsoleDispatchTest extends CommandTestCase
         [$code, $envelope] = $this->json('commands-app', ['app:report']);
 
         self::assertSame(ExitCode::Ok, $code);
-        self::assertSame('lava.app:report/1', $envelope['schema']);
+        self::assertSame('lava.app.report/1', $envelope['schema']);
         self::assertStringEndsWith('commands-app', (string) $envelope['data']['app_dir']);
     }
 

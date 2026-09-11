@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.db.new/1.json",
+  "title": "lava db:new --json",
+  "description": "Writes a migration file with the next timestamp. The name IS the ordering, so the command owns it and the caller does not type it — two people generating migrations on separate branches cannot collide on a number they were both told to increment.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.db.new/1" },
+        "command": { "const": "db:new" },
+        "data": {
+          "type": "object",
+          "required": ["name", "file", "table", "is_empty"],
+          "properties": {
+            "name": {
+              "description": "The migration's name: <YYYY_MM_DD_HHMMSS>_<snake_case_description>. Null only when the invocation was refused, in which case no file was written.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "file": {
+              "description": "Absolute path of the file written. Null when the invocation was refused.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "table": {
+              "description": "The table the generated migration creates and drops, when the description followed `create_<table>_table`. Null for any other description — the file is then a commented template, not a guess at which column of which table was meant.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "is_empty": {
+              "type": "boolean",
+              "description": "True when the generated up() is an empty body with a commented example — the caller has to open the file and describe the change. False when the migration is already working and reversible."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

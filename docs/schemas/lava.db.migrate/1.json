@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.db.migrate/1.json",
+  "title": "lava db:migrate --json",
+  "description": "Applies every pending migration as one batch. `applied` is what this run actually recorded — which on a FAILED run is the migrations that succeeded before the failure, not an empty list. The database has changed by then, and an agent must not be told otherwise.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.db.migrate/1" },
+        "command": { "const": "db:migrate" },
+        "data": {
+          "type": "object",
+          "required": ["applied", "applied_count", "batch"],
+          "properties": {
+            "applied": {
+              "type": "array",
+              "description": "Names of the migrations applied and recorded by this run, in the order they ran. Empty when there was nothing pending.",
+              "items": { "type": "string" }
+            },
+            "applied_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "count(applied)."
+            },
+            "batch": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "The batch those migrations went into, which is the argument `db:rollback --batches` will need. 0 when this run applied nothing, including the case where it failed on its first migration."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

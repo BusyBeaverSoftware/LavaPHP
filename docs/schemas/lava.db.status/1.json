@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.db.status/1.json",
+  "title": "lava db:status --json",
+  "description": "What the migration repository has recorded, what is still on disk unapplied, and what it remembers without a file. Three lists rather than two because the third is the one that bites: an applied migration whose file is gone means the schema carries a change nothing can undo, and `db:rollback` will refuse to go past it.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.db.status/1" },
+        "command": { "const": "db:status" },
+        "data": {
+          "type": "object",
+          "required": ["applied", "pending", "orphaned", "batch", "pending_count"],
+          "properties": {
+            "applied": {
+              "type": "array",
+              "description": "Recorded migrations, oldest first. Read from the repository table, not from the files, so a deleted file still appears here until it is rolled back.",
+              "items": {
+                "type": "object",
+                "required": ["name", "batch", "applied_at"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The migration's file name without .php — the name is the identity, which is why it is also the repository's primary key."
+                  },
+                  "batch": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The run that applied it. One batch per `db:migrate`, so a batch is 'a deploy'."
+                  },
+                  "applied_at": {
+                    "type": "string",
+                    "description": "When it was recorded, as YYYY-MM-DD HH:MM:SS in the server's timezone."
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "pending": {
+              "type": "array",
+              "description": "Migrations on disk the repository has not recorded, in the order they would be applied. Empty when the database is up to date.",
+              "items": { "type": "string" }
+            },
+            "orphaned": {
+              "type": "array",
+              "description": "Recorded as applied, but the file is gone. Non-empty here is the warning that `db:rollback` will refuse.",
+              "items": {
+                "type": "object",
+                "required": ["name", "batch", "applied_at"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "batch": { "type": "integer", "minimum": 1 },
+                  "applied_at": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "batch": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "The highest batch recorded, or 0 when nothing has ever been applied — which is why it is 0 rather than null on a fresh database."
+            },
+            "pending_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "count(pending), so a caller does not have to measure the list to branch on it."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

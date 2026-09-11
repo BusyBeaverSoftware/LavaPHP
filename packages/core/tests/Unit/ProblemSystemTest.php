@@ -27,7 +27,7 @@ final class ProblemSystemTest extends TestCase
 {
     public function testProblemJsonHasTheStableShape(): void
     {
-        $problem = self::missingDb();
+        $problem = self::missingSearch();
 
         self::assertSame(
             ['code', 'problem', 'fix', 'context', 'source', 'severity'],
@@ -40,11 +40,11 @@ final class ProblemSystemTest extends TestCase
 
     public function testMissingPackFixNamesTheExactInstallCommand(): void
     {
-        $problem = self::missingDb();
+        $problem = self::missingSearch();
 
-        self::assertStringContainsString('composer require lava/db', $problem->fix);
-        self::assertSame('db', $problem->context['feature']);
-        self::assertSame('lava/db', $problem->context['package']);
+        self::assertStringContainsString('composer require lava/search', $problem->fix);
+        self::assertSame('search', $problem->context['feature']);
+        self::assertSame('lava/search', $problem->context['package']);
     }
 
     public function testServiceNotRegisteredIsAPsr11NotFound(): void
@@ -83,15 +83,15 @@ final class ProblemSystemTest extends TestCase
     public function testCliRendererIsGrepFriendlyAndAlwaysShowsTheFix(): void
     {
         $report = new ProblemReport();
-        $report->add(self::missingDb());
+        $report->add(self::missingSearch());
 
         $text = (new ProblemCliRenderer())->render($report);
 
         self::assertStringContainsString('[X] [fatal] missing_pack', $text);
-        self::assertStringContainsString("PROBLEM: Feature 'db' is enabled", $text);
-        self::assertStringContainsString('FIX: Run: composer require lava/db', $text);
+        self::assertStringContainsString("PROBLEM: Feature 'search' is enabled", $text);
+        self::assertStringContainsString('FIX: Run: composer require lava/search', $text);
         self::assertStringContainsString('AT: ' . __FILE__ . ':', $text);
-        self::assertStringContainsString('feature: db', $text);
+        self::assertStringContainsString('feature: search', $text);
     }
 
     public function testCliRendererOnAnEmptyReport(): void
@@ -108,9 +108,12 @@ final class ProblemSystemTest extends TestCase
         self::assertSame($report->json(), json_decode((new ProblemJsonRenderer())->render($report), true));
     }
 
-    private static function missingDb(): MissingPack
+    private static function missingSearch(): MissingPack
     {
-        return MissingPack::of(ModuleRef::of(\Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'));
+        // A fictional pack on purpose: every real pack in this monorepo is
+        // installed, so a MissingPack built from one would describe a state the
+        // framework can no longer produce. See missing-pack-app/app/Modules.php.
+        return MissingPack::of(ModuleRef::of(\Lava\Search\SearchModule::class, package: 'lava/search', feature: 'search'));
     }
 
     private static function warnProblem(): LavaProblem

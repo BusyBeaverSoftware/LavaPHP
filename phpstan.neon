@@ -2,5 +2,6 @@ parameters:
     level: 8
     paths:
         - packages/core/src
+        - packages/db/src
     excludePaths:
         - packages/*/tests

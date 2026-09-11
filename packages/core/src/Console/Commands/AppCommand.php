@@ -33,6 +33,22 @@ abstract class AppCommand extends Command
 
     final public function run(IO $io, Args $args, string $appDir): int
     {
+        // Seed the payload shape before anything can fail — including the usage
+        // check below. A command that throws mid-inspect (an unknown flag, say)
+        // has written no data yet, and an envelope with `{}` for data would make
+        // a `--json` consumer branch on a shape it was promised would be stable.
+        // Seeding means every exit path — ok, usage error, boot failure, thrown
+        // problem — carries this command's keys. inspect() overwrites them in
+        // place as it works.
+        //
+        // The order matters and was once wrong: with the usage check first, a
+        // malformed invocation emitted `"data":[]` — an empty PHP array, which
+        // JSON-encodes as a LIST, not an object. So the one envelope a caller is
+        // most likely to feed to a schema validator was the one that failed it.
+        foreach ($this->emptyPayload($args) as $key => $value) {
+            $io->data($key, $value);
+        }
+
         // Usage is checked BEFORE the boot: "you typed it wrong" does not
         // depend on the app's state, and an agent that fumbled the invocation
         // should not also have to read a boot report to find that out.
@@ -42,16 +58,6 @@ abstract class AppCommand extends Command
             $report->add($usage);
             $io->emit($this->name(), $report);
             return ExitCode::Usage;
-        }
-
-        // Seed the payload shape before anything can fail. A command that
-        // throws mid-inspect (an unknown flag, say) has written no data yet,
-        // and an envelope with `{}` for data would make a `--json` consumer
-        // branch on a shape it was promised would be stable. Seeding means
-        // every exit path — ok, boot failure, thrown problem — carries this
-        // command's keys. inspect() overwrites them in place as it works.
-        foreach ($this->emptyPayload($args) as $key => $value) {
-            $io->data($key, $value);
         }
 
         $boot = AppBoot::boot($appDir, $args->value('env'));

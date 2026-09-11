@@ -147,7 +147,7 @@ final class LavaBinaryTest extends TestCase
         $result = LavaCli::run(['demo:ping', '--json'], $this->fixture('commands-app'));
 
         self::assertSame(ExitCode::Ok, $result->exit);
-        self::assertSame('lava.demo:ping/1', $result->schema());
+        self::assertSame('lava.demo.ping/1', $result->schema());
         self::assertSame(['pong' => true], $result->data());
     }
 

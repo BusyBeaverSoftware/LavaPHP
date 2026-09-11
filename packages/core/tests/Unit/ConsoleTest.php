@@ -60,6 +60,18 @@ final class ConsoleTest extends TestCase
         self::assertStringEndsWith("\n", Envelope::encode($envelope));
     }
 
+    public function testAPackCommandGetsAFilenameSafeSchemaName(): void
+    {
+        // The contract's name is a file name, so a pack's `pack:command` cannot
+        // keep its colon — a colon is illegal in a path on Windows, which would
+        // make docs/schemas/ uncheckoutable there. `command` stays as typed,
+        // because that is what an agent passes back on the command line.
+        $envelope = Envelope::of('db:status', 'ok', [], []);
+
+        self::assertSame('lava.db.status/1', $envelope['schema']);
+        self::assertSame('db:status', $envelope['command']);
+    }
+
     public function testJsonModeEmitsOnlyData(): void
     {
         [$io, $stdout] = $this->io(json: true);

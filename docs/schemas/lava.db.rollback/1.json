@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.db.rollback/1.json",
+  "title": "lava db:rollback --json",
+  "description": "Undoes the last N batches, newest migration first. The unit is the batch, not the migration: 'undo the last deploy' is the question, and it has an answer that does not depend on remembering how many migrations that deploy contained.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.db.rollback/1" },
+        "command": { "const": "db:rollback" },
+        "data": {
+          "type": "object",
+          "required": ["rolled_back", "rolled_back_count", "batches"],
+          "properties": {
+            "rolled_back": {
+              "type": "array",
+              "description": "The migrations undone, in the order they were undone — newest first, the reverse of the order they were applied. Empty when there was nothing to do, or when the run was refused before undoing anything.",
+              "items": { "type": "string" }
+            },
+            "rolled_back_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "count(rolled_back)."
+            },
+            "batches": {
+              "type": "array",
+              "description": "The batch numbers those migrations came from, highest first — derived from what actually came off, not from what was asked for. So a run refused part-way reports the batches it touched, and `rolled_back` and `batches` always agree.",
+              "items": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

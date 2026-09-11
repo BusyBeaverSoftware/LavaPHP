@@ -21,6 +21,19 @@ that" — zero-config apps are valid and boot green.
 | `config/features.php` | optional | `array` with `define` / `set` sections | `invalid_config` |
 | `config/.env` | optional | `KEY=VALUE` lines | `invalid_env_file` |
 | `public/index.php` | entry point | — (the canonical one is in lava/app) | — |
+| `config/database.php` | optional | `array` (string keys) — **lava/db** | `invalid_config` |
+| `app/Database/Migrations/*.php` | optional | `return new class extends Migration {…};` — **lava/db** | `invalid_migration_file` |
+
+The last two rows are contributed by a pack rather than by core: the file path,
+the expected shape, and the code all belong to `lava/db`, and core never reads
+them. The convention is the part that generalises — a pack declares a fixed
+path under `app/` or `config/` and one problem code for a wrong shape, so an
+agent learns where to look once per artifact and never has to read the pack's
+source to find out. Core's own loader (`Boot/Steps/LoadPackConfig`) reads a
+pack's declared `configFiles` at boot, which is why `config/database.php`'s keys
+appear in `lava config` like any core key; the migration directory is read by
+the pack's own commands instead, because nothing else in the framework has an
+opinion about it.
 
 An **app root** is any directory containing at least one of `app/`, `config/`,
 or `public/index.php`. That is the whole test — boot checks it first and
@@ -44,6 +57,9 @@ are **not** autoloadable — require their file at the top of `app/Routes.php`.
   from the builtins `int`, `str`, `uuid`, `path`.
 - Container ids: class-strings for objects, `dot.separated` for values.
 - Config keys are addressed as `<file>.<key>` (`app.env`, `logging.level`).
+- Migration files: `<YYYY_MM_DD_HHMMSS>_<snake_case>.php` — **lava/db**. The
+  timestamp is the ordering, so `db:new` writes the name and the caller supplies
+  only a description.
 
 ## Resolution orders (deterministic, documented, no fallbacks)
 

@@ -4,15 +4,9 @@ declare(strict_types=1);
 
 namespace Lava\Core\Tests\Schema;
 
+use Lava\Core\Tests\Support\EnvelopeSchemas;
 use Lava\Core\Tests\Support\LavaCli;
 use Lava\Core\Tests\Support\LavaResult;
-use Opis\JsonSchema\Errors\ErrorFormatter;
-use Opis\JsonSchema\Errors\ValidationError;
-use Opis\JsonSchema\SchemaLoader;
-use Opis\JsonSchema\Parsers\SchemaParser;
-use Opis\JsonSchema\Resolvers\SchemaResolver;
-use Opis\JsonSchema\Uri;
-use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -39,10 +33,23 @@ use PHPUnit\Framework\TestCase;
  */
 final class JsonSchemaTest extends TestCase
 {
-    private const SCHEMA_BASE = 'https://lavaphp.dev/schemas/';
-
     /** The app the healthy-run invocations use. */
     private const APP = 'ok-app';
+
+    /**
+     * Contracts documented in `docs/schemas/` that belong to a pack.
+     *
+     * A colon in a command name cannot survive into a file name — it is illegal
+     * in a path on Windows — so `db:status`'s contract is `lava.db.status/1`.
+     *
+     * @var list<string>
+     */
+    private const PACK_SCHEMAS = [
+        'lava.db.migrate/1',
+        'lava.db.new/1',
+        'lava.db.rollback/1',
+        'lava.db.status/1',
+    ];
 
     /**
      * One entry per invocation: the argv, and the fixture app to run it in.
@@ -71,6 +78,13 @@ final class JsonSchemaTest extends TestCase
             'test' => [['test', '--json'], self::APP],
 
             // ── failed runs: the payload shape has to survive ───────────────
+            // A usage error is checked before the boot, so these two are the
+            // only invocations where the payload is emitted without the app
+            // ever being consulted — and the schema still requires its keys.
+            // They once emitted `"data":[]`, a LIST where the contract says
+            // object, because the payload was seeded after the check.
+            'describe with no selector' => [['describe', '--json'], self::APP],
+            'features resolve with no flag' => [['features', 'resolve', '--json'], self::APP],
             'check on an app that cannot boot' => [['check', '--no-tests', '--json'], 'broken-wiring-app'],
             'routes on an app that cannot boot' => [['routes', '--json'], 'broken-wiring-app'],
             'about on an app that cannot boot' => [['about', '--json'], 'broken-wiring-app'],
@@ -91,12 +105,12 @@ final class JsonSchemaTest extends TestCase
         $result = LavaCli::run($args, self::fixture($fixture));
 
         $schema = $result->schema();
-        $errors = self::validator()->validate(self::json($result), self::url($schema));
+        $errors = EnvelopeSchemas::validator()->validate(EnvelopeSchemas::json($result), EnvelopeSchemas::url($schema));
 
         self::assertTrue(
             $errors->isValid(),
             '`lava ' . implode(' ', $args) . "` on {$fixture} emitted {$schema}, which its own schema rejects:\n"
-            . self::explain($errors->error()),
+            . EnvelopeSchemas::explain($errors->error()),
         );
     }
 
@@ -109,8 +123,8 @@ final class JsonSchemaTest extends TestCase
             $schema = LavaCli::run($args, self::fixture($fixture))->schema();
 
             self::assertFileExists(
-                self::file($schema),
-                "`{$label}` claims {$schema}, but " . self::file($schema) . ' does not exist.',
+                EnvelopeSchemas::file($schema),
+                "`{$label}` claims {$schema}, but " . EnvelopeSchemas::file($schema) . ' does not exist.',
             );
         }
     }
@@ -122,11 +136,11 @@ final class JsonSchemaTest extends TestCase
         // cross-references point at a URL that no longer exists — which the
         // prefix resolver would hide, since it maps URLs to paths and would
         // cheerfully load the file under either name.
-        foreach (self::schemaFiles() as $file) {
+        foreach (EnvelopeSchemas::schemaFiles() as $file) {
             $schema = json_decode((string) file_get_contents($file), true);
             self::assertIsArray($schema, "{$file} is not a JSON object");
 
-            $expected = self::SCHEMA_BASE . basename(dirname($file)) . '/' . basename($file);
+            $expected = EnvelopeSchemas::url(basename(dirname($file)) . '/' . basename($file, '.json'));
             self::assertSame($expected, $schema['$id'] ?? null, "{$file} declares the wrong \$id");
         }
     }
@@ -137,11 +151,11 @@ final class JsonSchemaTest extends TestCase
         // resolves the draft from `$schema`, and resolves each `$ref` — so a
         // typo'd keyword or a `$ref` pointing at a file that is not there fails
         // HERE, rather than as a confusing error inside some later validation.
-        foreach (self::schemaFiles() as $file) {
+        foreach (EnvelopeSchemas::schemaFiles() as $file) {
             $schema = basename(dirname($file)) . '/' . basename($file, '.json');
 
             try {
-                $loaded = self::loader()->loadSchemaById(self::uri($schema));
+                $loaded = EnvelopeSchemas::loader()->loadSchemaById(EnvelopeSchemas::uri($schema));
             } catch (\Throwable $error) {
                 self::fail("{$file} could not be loaded as a schema: {$error->getMessage()}");
             }
@@ -170,12 +184,21 @@ final class JsonSchemaTest extends TestCase
         // And the reverse: a schema file nothing claims is a contract for a
         // command that no longer exists.
         $documented = [];
-        foreach (self::schemaFiles() as $file) {
+        foreach (EnvelopeSchemas::schemaFiles() as $file) {
             $documented[] = basename(dirname($file)) . '/' . basename($file, '.json');
         }
 
         $expected = array_map(static fn (string $name): string => "lava.{$name}/1", $core);
         $expected[] = 'lava-envelope/1'; // the shared vocabulary, not a command
+
+        // Pack commands are named `pack:command`, so they are absent from an
+        // app that does not enable the pack, and this test cannot enumerate
+        // them without depending on a pack's fixtures — which is exactly the
+        // coupling the packs exist to avoid. They are listed here instead, and
+        // each pack's own schema test holds its own to this list: it asserts
+        // the same set in the other direction, so a deleted or stale pack
+        // schema fails there rather than going unnoticed here.
+        $expected = array_merge($expected, self::PACK_SCHEMAS);
 
         sort($documented);
         sort($expected);
@@ -188,7 +211,7 @@ final class JsonSchemaTest extends TestCase
         // failed boot, from a typo, from `lava check`, and from a wrong-shaped
         // artifact all validate against ONE definition. If they ever diverge, an
         // agent's error handler needs a branch per source.
-        $problemSchema = self::url('lava-envelope/1') . '#/$defs/problem';
+        $problemSchema = EnvelopeSchemas::url('lava-envelope/1') . '#/$defs/problem';
 
         $sources = [
             'a failed boot' => LavaCli::run(['routes', '--json'], self::fixture('broken-wiring-app')),
@@ -197,111 +220,24 @@ final class JsonSchemaTest extends TestCase
         ];
 
         foreach ($sources as $label => $result) {
-            $envelope = self::json($result);
+            $envelope = EnvelopeSchemas::json($result);
             $problems = $envelope->problems ?? [];
             self::assertIsArray($problems, "{$label} carried no problems array");
             self::assertNotEmpty($problems, "{$label} produced no problems to validate");
 
             foreach ($problems as $index => $problem) {
-                $errors = self::validator()->validate($problem, $problemSchema);
+                $errors = EnvelopeSchemas::validator()->validate($problem, $problemSchema);
                 self::assertTrue(
                     $errors->isValid(),
                     "the problem from {$label} (#{$index}) is not the shared problem shape:\n"
-                    . self::explain($errors->error()),
+                    . EnvelopeSchemas::explain($errors->error()),
                 );
             }
         }
     }
 
-    // ── the plumbing ────────────────────────────────────────────────────────
-
-    /**
-     * A validator that resolves `https://lavaphp.dev/schemas/…` to the files in
-     * `docs/schemas/`. Errors are collected rather than stopped at the first,
-     * because a schema violation usually arrives in a cluster and discovering
-     * them one run at a time is the slow way to find that out.
-     */
-    private static function validator(): Validator
-    {
-        return new Validator(self::loader(), 50, false);
-    }
-
-    private static function loader(): SchemaLoader
-    {
-        $resolver = new SchemaResolver();
-        $resolver->registerPrefix(self::SCHEMA_BASE, self::docsDir());
-
-        return new SchemaLoader(new SchemaParser(), $resolver, true);
-    }
-
-    /** `lava.check/1` → the URL its schema is registered under. */
-    private static function url(string $schema): string
-    {
-        return self::SCHEMA_BASE . $schema . '.json';
-    }
-
-    private static function uri(string $schema): Uri
-    {
-        $uri = Uri::parse(self::url($schema));
-        self::assertNotNull($uri, "{$schema} is not a usable URI");
-
-        return $uri;
-    }
-
-    /** `lava.check/1` → `docs/schemas/lava.check/1.json`. */
-    private static function file(string $schema): string
-    {
-        return self::docsDir() . '/' . $schema . '.json';
-    }
-
-    private static function docsDir(): string
-    {
-        return dirname(__DIR__, 4) . '/docs/schemas';
-    }
-
-    /** @return list<string> absolute paths of every schema file, sorted */
-    private static function schemaFiles(): array
-    {
-        $files = glob(self::docsDir() . '/*/*.json');
-        self::assertIsArray($files, 'docs/schemas/ is unreadable');
-        sort($files);
-
-        return $files;
-    }
-
     private static function fixture(string $name): string
     {
         return dirname(__DIR__) . '/fixtures/apps/' . $name;
-    }
-
-    /**
-     * The envelope as opis wants it: `json_decode`'s DEFAULT mode, which yields
-     * stdClass objects.
-     *
-     * opis will not accept a PHP associative array as a JSON object —
-     * `Helper::getJsonType()` returns null for anything that is not an indexed
-     * array — so validating the array form would fail every command for a reason
-     * that has nothing to do with the payload. Decoding the raw stdout also
-     * means the schema is checked against the bytes the command actually wrote,
-     * not against a re-encoding of them.
-     */
-    private static function json(LavaResult $result): object
-    {
-        $decoded = json_decode(trim($result->stdout));
-        self::assertIsObject($decoded, "stdout was not a JSON object (exit {$result->exit}): {$result->stdout}");
-
-        return $decoded;
-    }
-
-    private static function explain(?ValidationError $error): string
-    {
-        if ($error === null) {
-            return '(no error object)';
-        }
-
-        return json_encode(
-            (new ErrorFormatter())->format($error, true),
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
-        ) ?: '(unformattable error)';
     }
 }

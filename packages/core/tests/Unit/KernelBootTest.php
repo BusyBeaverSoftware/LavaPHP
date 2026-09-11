@@ -14,6 +14,7 @@ use Lava\Core\Boot\Steps\CheckModules;
 use Lava\Core\Boot\Steps\CollectFlagDefinitions;
 use Lava\Core\Boot\Steps\LoadConfig;
 use Lava\Core\Boot\Steps\LoadDotEnv;
+use Lava\Core\Boot\Steps\LoadPackConfig;
 use Lava\Core\Boot\Steps\RegisterCommands;
 use Lava\Core\Boot\Steps\RegisterCoreServices;
 use Lava\Core\Boot\Steps\ValidateWiring;
@@ -42,6 +43,7 @@ final class KernelBootTest extends TestCase
             CollectFlagDefinitions::class,
             BuildFeatures::class,
             CheckModules::class,
+            LoadPackConfig::class,
             RegisterCoreServices::class,
             WireModules::class,
             WireAppServices::class,
@@ -207,6 +209,15 @@ final class KernelBootTest extends TestCase
 
     public function testMissingPackAndInvalidGatingReportTogether(): void
     {
+        // Fixture-rot guard. missing_pack only fires while this class is
+        // absent, so the day it lands the assertions below fail for a reason
+        // that has nothing to do with what they test. Fail here instead, where
+        // the cause is one line away.
+        self::assertFalse(
+            class_exists('Lava\Search\SearchModule'),
+            'missing-pack-app needs a module class that does not exist; pick another fictional pack.',
+        );
+
         $result = TestApp::bootFixture('missing-pack-app');
 
         self::assertInstanceOf(BootFailure::class, $result);
@@ -214,7 +225,7 @@ final class KernelBootTest extends TestCase
         self::assertSame(['missing_pack', 'invalid_gating'], $codes);
 
         $missing = $result->problems->problems()[0];
-        self::assertStringContainsString('composer require lava/db', $missing->fix);
+        self::assertStringContainsString('composer require lava/search', $missing->fix);
         self::assertSame('Modules.php', basename($missing->source->file));
 
         $gating = $result->problems->problems()[1];

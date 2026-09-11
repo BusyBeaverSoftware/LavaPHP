@@ -30,6 +30,25 @@ final class BadUsage extends LavaProblem
         );
     }
 
+    /**
+     * The same refusal for a positional argument, which is a different thing to
+     * type and so a different thing to report.
+     *
+     * Kept separate from {@see invalid()} rather than parameterised, because the
+     * value that matters here is the NAME: an agent told "invalid value for
+     * --description" tries `--description=...` next and gets a second, different
+     * failure. Spelling it `<description>` matches the usage line it is given,
+     * so the next attempt is the one that works.
+     */
+    public static function invalidArgument(string $argument, string $value, string $expected, string $usage): self
+    {
+        return new self(
+            "Invalid value '{$value}' for <{$argument}>: {$expected}.",
+            "Run: {$usage}",
+            ['argument' => $argument, 'value' => $value],
+        );
+    }
+
     public function code(): string
     {
         return 'bad_usage';

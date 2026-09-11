@@ -477,3 +477,242 @@ Not fixed here because the fix is a product decision, not a slice-3 task:
 
 No code depends on the current permissiveness, so either option is available
 whenever you want it.
+
+## 2026-09-11 — M5 (lava/db)
+
+The plan's acceptance criteria for M5 are "compiler snapshot tests green
+driver-free; with sqlite installed: demo CRUD, `lava db:status` applied/pending,
+migrate/rollback round-trip; db pack installs standalone". All four are met and
+verified against the real binary (see 20). The M4 open finding above is still
+open and unacted on.
+
+1. **The pack is split into a driver-free half and a driver-bound half.**
+   `Sql/SchemaCompiler` turns a `Table` definition into DDL strings and touches
+   no database; `Schema`/`Connection` execute it. So the compiler's tests are
+   pure — no PDO, no server, no skip — and they can assert the exact DDL for all
+   three dialects, which a live test never could (it can only assert that
+   *something* worked). This is what makes "compiler snapshot tests green
+   driver-free" a real guarantee rather than a euphemism for "the live tests were
+   skipped".
+
+2. **Foreign keys are emitted as table-level `CONSTRAINT … FOREIGN KEY` clauses,
+   not inline column `REFERENCES`.** MySQL parses an inline column-level
+   `REFERENCES` and then *silently ignores it* — no error, no constraint. A
+   schema layer whose FK syntax works on two dialects and quietly does nothing on
+   the third is worse than one that lacks the feature, because the failure
+   appears months later as orphaned rows. Consequence: `addColumns()` **refuses**
+   a referencing column on MySQL (`bad_schema`) rather than emitting DDL that
+   does nothing, since `ALTER TABLE ADD CONSTRAINT` on an existing table is a
+   different operation the DSL does not offer.
+
+3. **Postgres spells boolean literals `TRUE`/`FALSE`; MySQL and SQLite use
+   `1`/`0`.** Found by hand-writing the expected DDL for every type × dialect
+   before writing the compiler test, which is the only reason it was found at
+   all: `DEFAULT 1` on a `BOOLEAN` column is accepted by Postgres in some
+   contexts and not others, and no live SQLite test would ever have exercised it.
+
+4. **`Schema::checkReferences()` catches a reference to a column the target does
+   not have — and deliberately not a reference to a table that does not exist.**
+   SQLite accepts a dangling FK at DDL time and only fails on the first insert,
+   so `foreign key mismatch` surfaced at a point far from its cause. But a
+   reference to a table that does not exist *yet* is legitimate — migrations run
+   in order and the target may be created by a later one — so the check consults
+   the snapshot only for tables that are already there. The asymmetry is the
+   point: it catches the mistake that is always a mistake and leaves the case
+   that is sometimes correct to the database.
+
+5. **`Connection::lastInsertId()` returns `?string`, not `string`.** `PDO` returns
+   `string|false`, and the `false` is a real case (a driver or statement that
+   cannot report it). Coercing it to `"0"` would be indistinguishable from a real
+   id of zero; `null` says "not known", which is what a caller needs to branch on.
+
+6. **No transaction around a migration.** Wrapping the batch would look tidier
+   and would work on SQLite and Postgres — but MySQL commits implicitly on every
+   DDL statement, so there the "rollback" would undo only the repository rows
+   while the tables stayed. The result would be a migration recorded as unapplied
+   but actually applied, and the next run would fail on `table already exists`.
+   Instead each migration is recorded the moment it succeeds, so a failure leaves
+   everything before it applied *and* recorded, and the run is resumable. The
+   `migration_failed` fix text was corrected to say exactly this — it previously
+   claimed the batch was rolled back, which was never true.
+
+7. **A migration file returns an instance: `return new class extends Migration
+   {…};`.** That removes the two things that make migration discovery fragile
+   elsewhere — parsing a class name out of a timestamp, and instantiating a class
+   by reflection. Empirically verified before committing to it: re-`require`-ing
+   the same file yields distinct instances of the same class entry, so a
+   long-lived process that loads the directory twice does not get a redeclare
+   fatal and does not share state between instances.
+
+8. **The migration repository is created with the pack's own schema DSL.** So
+   `lava db:migrate` is the first real exercise of the DSL: if it works at all,
+   the DSL works end to end against a real driver. `has()` then `create()` rather
+   than `CREATE TABLE IF NOT EXISTS`, because the DSL has no `if not exists` and
+   adding one to the compiler for this single caller would be a feature the
+   schema layer does not otherwise offer; losing the race between the two calls
+   produces "table already exists", which says what happened.
+
+9. **`db:new` owns the migration's name; the caller supplies only a
+   description.** The name *is* the ordering, so `<YYYY_MM_DD_HHMMSS>_<snake>` is
+   generated rather than typed — two people on separate branches cannot collide
+   on a number they were both told to increment. CamelCase is accepted
+   (`CreateUsersTable` and `create_users_table` produce the same file), because
+   both are things a person types. Only the `create_<table>_table` shape produces
+   a working body; every other description gets a commented template and the
+   command says so on the way out, because `add_avatar_to_users` could be read as
+   "add a column to users" and guessing which column, of which type, with which
+   default is how a generator writes a migration nobody asked for. An existing
+   file is refused, never overwritten: the only way to collide is to generate two
+   migrations inside the same second, and the file already there may be someone's
+   half-written work.
+
+10. **`--batches`, not `--steps`.** The unit is the batch, not the migration, so
+    the flag is named for what it counts. `--steps` would invite the reading that
+    it counts migrations, which is a different operation this command does not
+    offer. A non-numeric value is refused rather than coerced (`--batches=all`
+    becoming 0, or 1, or `PHP_INT_MAX`, would silently pick a different amount of
+    undo on the one operation where that is hardest to notice).
+
+11. **`db_not_configured` is raised lazily, when a command runs — not at boot.**
+    The pack is enabled and the app boots fine without a database; only a command
+    that needs one fails. So the pack can be enabled on an app whose database has
+    not been created yet, and a missing DSN is reported as "add `DATABASE_DSN`"
+    rather than as a boot failure that hides every other diagnostic. The
+    `Connection` constructor stores a DSN and nothing talks to a driver until the
+    first query.
+
+12. **`PackInfo::configFiles` was declared but nothing loaded it — a genuine core
+    gap, found while wiring this pack.** `LoadConfig` loaded only `app` and
+    `logging`, so `lava about` would have advertised `config/database.php` while
+    `lava config` showed none of its keys. Fixed by extracting the loader into
+    `Config\ConfigFile` (shared by both) and adding a `LoadPackConfig` boot step
+    between `CheckModules` and `RegisterCoreServices`. `Kernel::STEPS` went from
+    12 entries to 13, and `KernelBootTest` asserts the list. The new step
+    swallows instantiation and `instanceof` failures on purpose: `WireModules`
+    reports those far more precisely, and two reports of one mistake is worse
+    than one.
+
+13. **A fixture that named a real pack rotted the moment the pack landed.**
+    `missing-pack-app` referenced `\Lava\Db\DbModule` to produce `missing_pack`,
+    and creating `DbModule` in this milestone made the class resolve — so the
+    problem vanished and two unrelated tests failed with no visible connection to
+    the cause. The fixture now names a deliberately fictional pack
+    (`lava/search`, which is not one of the five this monorepo builds) and
+    `KernelBootTest` asserts that class does not exist, so the fixture fails
+    loudly at its own line if it ever does. The lesson is recorded in the fixture
+    and in the test, not just here, because the next person to touch it is the one
+    who needs it.
+
+14. **`BadUsage::invalidArgument()` — a positional is not a flag.** `db:new`'s
+    description was reported as `Invalid value '…' for --description`, but it is a
+    positional argument. An agent told that retries with `--description=…` and
+    gets a second, different failure. Found by running the real binary and reading
+    the output, not by reading the code. The two now report the name the caller
+    actually types, and the `context` key differs (`argument` vs `flag`) so a
+    consumer can tell which it was.
+
+15. **`db:migrate` and `db:rollback` report partial progress, and the mechanism
+    is a callback rather than a re-query.** A run that stopped on its third
+    migration has still applied two, and the envelope said `applied: []` next to a
+    database with two new tables — the one report an agent must not be given, and
+    a direct contradiction of the framework's "the payload's keys are true on
+    every exit path" promise. The runner now calls a callback the moment each
+    migration is run *and recorded*, and `DbCommand::guarded()` gained a third
+    argument for payload keys that are written whether or not the work finished.
+    Re-querying the database inside the catch was rejected: the database may be
+    exactly what is broken, and a second failure there would replace the
+    diagnosis with a worse one. `rollback()`'s `batches` is now derived from what
+    actually came off rather than from what was asked for, so it and `rolled_back`
+    always agree.
+
+16. **A usage error emitted `"data":[]` — a JSON list where the contract says
+    object.** `AppCommand::run()` checked usage *before* seeding the payload, so
+    the one envelope most likely to be fed to a schema validator was the one that
+    failed it. Found by adding the usage-error invocations to the schema test.
+    Fixed by seeding first; two new `JsonSchemaTest` entries pin it. The fix also
+    exposed two *schema* inaccuracies — `lava.describe/1` declared `selector` as a
+    non-nullable string and `lava.features/1`'s `resolution` branch required
+    `flag` to be an object — both of which forbade the nulls a refused invocation
+    legitimately carries. The schemas were wrong, not the payloads.
+
+17. **A pack command's contract is `lava.<pack>.<command>/1`, not
+    `lava.<pack>:<command>/1`.** `db:status` emits `lava.db.status/1`. The colon
+    would make the schema name `docs/schemas/lava.db:status/1.json`, and a colon
+    is illegal in a path on Windows — the repository would be uncheckoutable for
+    a whole platform. It also keeps the name inside the envelope's own `schema`
+    pattern, which admits letters, digits and dots: the previous behaviour
+    produced names the envelope's own contract rejected, a contradiction that had
+    never been exercised because no pack command existed. The envelope's `command`
+    field keeps the colon, because that is the string an agent types. Three
+    existing assertions of the old form were updated. **Flagged for you**: this is
+    a public naming rule for pack contracts and it is pre-1.0, so it is cheap to
+    overrule now and expensive later.
+
+18. **Pack schemas live in the same `docs/schemas/` as core's, and the core
+    schema test lists them by name.** The alternative — a per-pack schemas
+    directory — would mean the envelope's `$id` prefix resolved to different
+    files in different suites, which is worse than the duplication it avoids. But
+    the core test runs in an app that enables no packs, so it cannot *enumerate*
+    pack commands without depending on a pack's fixtures, which is the coupling
+    the packs exist to avoid. It therefore lists the four names explicitly, and
+    `packages/db/tests/Schema/DbSchemaTest.php` asserts the same set in the other
+    direction — a deleted or stale pack schema fails there. The weak point is the
+    list itself: adding a pack means adding its schemas here or the core test
+    fails, which is loud rather than silent, but it is a coupling worth naming.
+
+19. **`packages/db/src` was added to `phpstan.neon`'s `paths`.** It was absent
+    because the directory had no source in it. Level 8 is clean on the pack, with
+    no ignores, no baselines, no `assert()` and no added casts — the five errors
+    the first run found were all real (two dead `inTransaction()` guards that
+    PHPStan correctly proved unreachable because it treats the method as pure, one
+    genuinely unhandled `string|false` return, one imprecise `array` return type
+    fixed with `array_values`, and one redundant `array_values` on an already-list).
+
+20. **Verifying "with sqlite installed" needed no privileges and no package
+    install.** `apt-get download php8.5-sqlite3` + `dpkg-deb -x` into a temp
+    directory yields a working `pdo_sqlite.so`, and `PHP_INI_SCAN_DIR=:<dir>`
+    loads it for a process *and every subprocess it spawns* — because `PHP_INI_SCAN_DIR`
+    is an environment variable and the CLI test harness forwards the environment
+    rather than the command line. So the live tests and the CLI golden tests need
+    one variable, and no harness change. The extraction is a local technique, not
+    a repository dependency: the tests skip with instructions when no driver is
+    available, and the skip message names `PHP_INI_SCAN_DIR` because that is the
+    difference between "the parent has it" and "the subprocess has it".
+
+21. **The schema plumbing moved to `Lava\Core\Tests\Support\EnvelopeSchemas`.**
+    Core and db now share one prefix resolver rather than two copies. That
+    matters more than the duplication: if the two resolved `$id`s differently, a
+    `$ref` between a core schema and a pack schema would pass in one suite and
+    fail in the other for no reason a reader could see. `JsonSchemaTest` was
+    refactored onto it with no behaviour change.
+
+### Open finding, not acted on (needs your call)
+
+**Whether a pack's envelope contracts should be listed by name in the core
+schema test** (18). The current compromise keeps the core test pack-agnostic and
+the check loud, but it means a new pack edits a core test. The alternatives are
+a per-pack schemas directory (rejected: splits the `$id` space) or letting core
+reach into pack fixtures (rejected: the coupling the packs exist to avoid). A
+third option exists if you would rather: have `lava list` report the schema name
+each command claims, so the test can enumerate contracts from *any* app without
+knowing which packs exist — which is a small payload addition to `lava.list/1`
+and would remove the list entirely. Say the word and it is a twenty-minute change.
+
+### Open finding, not acted on (needs your call)
+
+**The problem-code registry is documentation that nothing checks** (22). The
+table in `docs/problem-codes.md` claims "Every code maps 1:1 to one Problem class
+and is exercised by a fixture test", and no test reads the file — so a code can
+be renamed in a class and the table will go on describing the old name, in the
+one document an agent is told to trust. The fix is the same shape as the schema
+drift guard: a test that reflects over `LavaProblem` subclasses in both
+namespaces, collects `code()`, and asserts the set equals the table's first
+column, in both directions.
+
+I have not written it, because doing so *changes what the table is*: it stops
+being prose that happens to be accurate and becomes a machine-checked contract,
+which means every future problem class must be added to the table in the same
+commit or the suite goes red. That is probably what you want given the
+agent-first pillar, and it is a fifteen-minute test. But it is a decision about
+what the document *is*, so it is yours rather than mine. Say the word and it is
+in the next milestone's first commit.
