@@ -3145,24 +3145,40 @@ class.
     pushes. `README.md` gained the `check:floor` line and the reason it and
     `coverage` sit outside `verify`.
 
+215. **CI is green on all seven jobs, `test (8.3)` included.** Run
+    `34653678933`, on `1ad17a8`: `demo`, `skeleton`, `isolated-install`,
+    `test (8.5)`, `test (8.4)`, `test (8.3)` and `coverage` — all `success`,
+    zero failing jobs. The 8.3 job is the one that matters here: it ran the full
+    suite on the version the manifest claims, on a machine that is not this one,
+    and it passed. The floor holds.
+
+    That closes the verification gap entry 6 of `docs/releasing.md` described
+    and entry 205 left open. It does **not** authorise the tag: decision 6 was
+    "push a BRANCH only", and the tag was explicitly withheld from that
+    authorisation. Pushing a release tag is on the "stop and ask" list, so
+    `0.1.0` is still local and stays local until the user says otherwise.
+
 ### What is still not verified
 
-- **CI has not seen these commits.** The 8.3 fixes, the fixture change and the
-  gate are verified locally and in containers (below), but `test (8.3)` on
-  GitHub has not re-run. That is the next push's job, and it is the only
-  remaining authority on whether the floor now holds.
-- **`php:8.3-cli` is not GitHub's 8.3.** The container is a faithful-enough
-  proxy (it reproduced CI's exact parse error, message for message) but it is
-  not the same image `shivammathur/setup-php` builds. The `ServeTest` fix is
-  verified against the *behaviour* — the prepend not reaching `php -S` workers
-  — which is a property of PHP itself, not of the image.
-- **The floor gate needs network on a cold machine.** `php:8.3-cli` must be
-  pulled once. The gate says so rather than failing obscurely, but a CI machine
-  without docker or without network cannot run it — which is why it is not in
-  `verify`, and why the 8.3 matrix job remains the authority.
+- **The container was a proxy, and the proxy was right.** `php:8.3-cli` is not
+  GitHub's 8.3, so the local runs could not have proved the CI result — but they
+  predicted it exactly, including the parse error verbatim. The `php -S`
+  behaviour is a property of PHP rather than of an image, which is why it
+  transferred. Nothing here is now pending on CI.
+- **`php:8.3-cli` must be pulled once.** The floor gate needs network on a cold
+  machine. It says so rather than failing obscurely, but a machine with no
+  docker cannot run it — which is why it is not in `verify`, and why the 8.3
+  matrix job remains the authority.
 - **`lava serve` on a real app on 8.3 is untested here.** The fix is reasoned
-  from the fixture/app difference (a real app has its own autoloader) but the
-  only 8.3 serve exercised is a fixture's.
+  from the fixture/app difference (a real app has its own autoloader) and the
+  fixtures now prove the mechanism, but the only 8.3 serve exercised is a
+  fixture's.
+- **`git push origin main` will be non-fast-forward.** The org repository's
+  `main` and `dev` hold an unrelated 2024 prototype (`decec6a`, `bb5492b`) and
+  have never been touched by this work. Landing on `main` therefore means either
+  a force-push or a rename, and both are irreversible — a release-time decision
+  for the user, not a thing to pre-empt.
+
 
 ### Verified by running
 
@@ -3191,3 +3207,9 @@ writes a line in the worker logged `ran pid=7 env='/probe/path'` under
 `php -S … PHP_CLI_SERVER_WORKERS=2` on 8.5, and produced no file at all on 8.3,
 while `variables_order` (`EGPCS`) and `getenv()`'s contents were identical on
 both — which is what ruled out the environment and left the SAPI behaviour.
+
+And CI, on `1ad17a8`: **`gh run view 34653678933` reports all seven jobs
+`success`** — `demo`, `skeleton`, `isolated-install`, `test (8.5)`,
+`test (8.4)`, `test (8.3)`, `coverage`. The first run of this workflow ever to
+finish green, and the first time the `^8.3` floor has been checked by anything
+other than the manifest that declares it.
