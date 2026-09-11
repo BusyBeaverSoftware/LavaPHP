@@ -48,7 +48,7 @@ final class FeaturesCommand extends AppCommand
         return null;
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         // `resolve` reports one flag; the list reports many. An agent parsing
         // the failed-boot envelope still gets the keys its subcommand promises.

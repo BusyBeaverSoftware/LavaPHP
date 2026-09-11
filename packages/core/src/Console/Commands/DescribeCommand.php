@@ -58,7 +58,7 @@ final class DescribeCommand extends AppCommand
         return $args->arg(0) === null ? BadUsage::missing('selector', $this->usage()) : null;
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['selector' => $args->arg(0), 'kind' => null, 'match' => null];
     }

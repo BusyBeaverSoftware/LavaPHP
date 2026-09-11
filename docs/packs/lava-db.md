@@ -292,10 +292,35 @@ executed in a third. `Connection` is what executes it — `fetch()`,
 raw SQL, `transaction()` for a closure, and `lastInsertId()`.
 
 `table()` gives `select()`, `where()` / `orWhere()`, `whereNull()` /
-`whereNotNull()`, `whereIn()` / `whereNotIn()`, `whereBetween()`, `whereRaw()`
-(each with an `or` variant), `innerJoin()`, `leftJoin()`, `orderBy()`,
-`limit()`, `offset()`, and the terminals `toSelect()`, `insert()`,
+`whereNotNull()`, `whereIn()` / `whereNotIn()`, `whereBetween()`, `whereRaw()`,
+`whereGroup()` (each with an `or` variant), `innerJoin()`, `leftJoin()`,
+`orderBy()`, `limit()`, `offset()`, and the terminals `toSelect()`, `insert()`,
 `insertMany()`, `update()`, `delete()`.
+
+### Grouping
+
+A flat chain combines left to right, so `where('a')->orWhere('b')->where('c')`
+is `a OR (b AND c)` — `AND` binds tighter, which is the opposite of what the
+chain looks like as a sentence. `whereGroup()` writes the parentheses:
+
+```php
+$db->table('users')
+    ->whereGroup(function (ConditionGroup $group): void {
+        $group->where('role', Operator::Eq, 'admin')->orWhereIn('plan', ['pro']);
+    })
+    ->whereNotNull('email_verified_at')
+    ->toSelect();
+// … WHERE ("role" = ? OR "plan" IN (?, ?)) AND "email_verified_at" IS NOT NULL
+```
+
+The closure is handed a `ConditionGroup`, not the builder, because a builder
+there would accept `->limit(5)` and the group would drop it — a call that is
+accepted and ignored is the one thing this pack refuses everywhere else. The
+group is a `Condition` like any other term and the compiler renders it, so its
+columns are still quoted and its bindings still ordered by the same code as the
+rest of the clause; nesting is just a group inside a group. A closure that adds
+nothing is a `bad_query` rather than `()`, which is a syntax error on every
+dialect.
 
 `lastInsertId()` returns `?string`, not `string`. PDO returns `string|false`,
 and the `false` is a real case — a driver or statement that cannot report it.
@@ -316,8 +341,8 @@ says "not known", which is what a caller needs to branch on.
   either way;
 - an operator that is not two-sided (`IsNull`, `In`, `Between`, `Raw`) passed to
   `where()`, which has dedicated methods for each;
-- an empty `whereRaw()` fragment, or a write with no columns, or a multi-row
-  insert whose rows set different columns;
+- an empty `whereRaw()` fragment, or an empty `whereGroup()` closure, or a write
+  with no columns, or a multi-row insert whose rows set different columns;
 - a negative `limit()` or `offset()`;
 - calling `run()` on a SELECT;
 - and **an unbounded `UPDATE` or `DELETE`** — the one that saves a table.

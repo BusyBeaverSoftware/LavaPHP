@@ -52,7 +52,11 @@ final class TestCommand extends Command
     {
         // Seeded first so every exit path carries the same keys — a consumer
         // can always read `tests`, whether the suite is green, red, or missing.
-        foreach (self::emptyPayload() as $key => $value) {
+        // The kernel seeds this same shape before dispatching, because it emits
+        // envelopes of its own (`--help`, a rejected flag) that must obey
+        // `lava.test/1` without the suite ever running; the writes are the same
+        // values, so which one happens first cannot change the output.
+        foreach ($this->emptyPayload($args) as $key => $value) {
             $io->data($key, $value);
         }
 
@@ -109,8 +113,14 @@ final class TestCommand extends Command
         ];
     }
 
-    /** @return array<string, mixed> */
-    private static function emptyPayload(): array
+    /**
+     * A run that produced nothing: no suite, no counts, no cases. The keys are
+     * the ones `lava.test/1` requires, so the shape holds when the runner could
+     * not be started at all.
+     *
+     * @return array<string, mixed>
+     */
+    public function emptyPayload(Args $args): array
     {
         return [
             'suite' => null,

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\Core\Tests\Schema;
 
-use Lava\Core\Console\Envelope;
+use Lava\Core\Console\ExitCode;
 use Lava\Core\Tests\Support\EnvelopeSchemas;
 use Lava\Core\Tests\Support\LavaCli;
 use Lava\Core\Tests\Support\LavaResult;
@@ -16,11 +16,12 @@ use PHPUnit\Framework\TestCase;
  *
  * The envelope's own `schema` field names the contract, and `docs/schemas/`
  * holds the contract as a file: `lava.check/1` means
- * `docs/schemas/lava.check/1.json`. So this test never lists commands — it runs
- * them, reads the claim off the output, and holds the output to it. That is what
- * makes it a drift check rather than a snapshot: add a key to a payload without
- * touching its schema and this goes red, because the schemas say
- * `additionalProperties: false`.
+ * `docs/schemas/lava.check/1.json`. So this test never restates a payload by
+ * hand — it runs the commands, reads the claim off the output, and holds the
+ * output to it. That is what makes it a drift check rather than a snapshot: add
+ * a key to a payload without touching its schema and this goes red, because the
+ * schemas say `additionalProperties: false`. Even the union of commands and
+ * schemas is read off `lava list` rather than written out here.
  *
  * The failed runs are validated too, and they are the more valuable half. The
  * envelope promises its `data` keys on EVERY exit path — including a failed
@@ -36,21 +37,6 @@ final class JsonSchemaTest extends TestCase
 {
     /** The app the healthy-run invocations use. */
     private const APP = 'ok-app';
-
-    /**
-     * Contracts documented in `docs/schemas/` that belong to a pack.
-     *
-     * A colon in a command name cannot survive into a file name — it is illegal
-     * in a path on Windows — so `db:status`'s contract is `lava.db.status/1`.
-     *
-     * @var list<string>
-     */
-    private const PACK_SCHEMAS = [
-        'lava.db.migrate/1',
-        'lava.db.new/1',
-        'lava.db.rollback/1',
-        'lava.db.status/1',
-    ];
 
     /**
      * One entry per invocation: the argv, and the fixture app to run it in.
@@ -174,50 +160,99 @@ final class JsonSchemaTest extends TestCase
         }
     }
 
-    public function testEveryCoreCommandHasASchema(): void
+    /**
+     * The union, in one app: every contract a command claims has a file under
+     * `docs/schemas/`, and every file there is claimed by a command.
+     *
+     * Both directions need an app that has every pack — the command set is a
+     * boot decision, so an app that loads no pack cannot be asked about a pack's
+     * commands. That app is `packed-app`, the smallest app whose
+     * `app/Modules.php` names a real pack's module class.
+     *
+     * The claim is read off the payload (`commands[].schema`) rather than
+     * re-derived from the command name, so the colon-to-dot rule and the
+     * per-command version have exactly one home, `Envelope::schema()`. A `/2`
+     * bump that forgot this payload's copy therefore cannot happen: there is no
+     * copy. This used to be a list of pack contracts in this file, which meant a
+     * pack adding a command had to edit a CORE test; now it edits a fixture
+     * app's manifest, which is the same edit an app makes to use the pack. A
+     * list in a test is a copy of the registry; an app manifest is a use of it.
+     */
+    public function testEverySchemaIsClaimedAndEveryClaimIsDocumented(): void
     {
-        // The convention this test enforces: a core command named `x` emits
-        // `lava.x/1` and is documented by `docs/schemas/lava.x/1.json`. It is a
-        // convention, not a law — but a new command that breaks it should break
-        // this test, so that the decision to break it is made deliberately.
-        $listed = LavaCli::run(['list', '--json'], self::fixture(self::APP));
+        if (!class_exists(\Lava\Db\DbModule::class)) {
+            self::markTestSkipped('lava/db is not installed, so no fixture can boot with a pack enabled');
+        }
 
-        $core = [];
+        $listed = LavaCli::run(['list', '--json'], self::fixture('packed-app'));
+        self::assertTrue(
+            $listed->data()['booted'] === true,
+            "the packed fixture did not boot, so its command set is the core one only:\n{$listed->stderr}",
+        );
+
+        $claimed = [];
         foreach ($listed->data()['commands'] as $command) {
             self::assertIsArray($command);
-            if (($command['pack'] ?? null) === 'core') {
-                $core[] = (string) $command['name'];
-            }
+            $claimed[] = (string) $command['schema'];
         }
-        self::assertNotEmpty($core, 'lava list reported no core commands');
+        $claimed[] = 'lava-envelope/1'; // the shared vocabulary, not a command
 
-        // And the reverse: a schema file nothing claims is a contract for a
-        // command that no longer exists.
-        $documented = [];
-        foreach (EnvelopeSchemas::schemaFiles() as $file) {
-            $documented[] = basename(dirname($file)) . '/' . basename($file, '.json');
-        }
+        $documented = EnvelopeSchemas::schemaNames();
 
-        // The version is read off Envelope rather than hardcoded to /1, because
-        // the version is a PER-COMMAND fact now: `lava check` moved to /2 when
-        // M7 added a section to its enum. Deriving the expectation means a bump
-        // that forgot its schema file fails here, and a bump that forgot its
-        // Envelope entry fails here too — the two cannot drift apart silently.
-        $expected = array_map(static fn (string $name): string => Envelope::schema($name), $core);
-        $expected[] = 'lava-envelope/1'; // the shared vocabulary, not a command
-
-        // Pack commands are named `pack:command`, so they are absent from an
-        // app that does not enable the pack, and this test cannot enumerate
-        // them without depending on a pack's fixtures — which is exactly the
-        // coupling the packs exist to avoid. They are listed here instead, and
-        // each pack's own schema test holds its own to this list: it asserts
-        // the same set in the other direction, so a deleted or stale pack
-        // schema fails there rather than going unnoticed here.
-        $expected = array_merge($expected, self::PACK_SCHEMAS);
-
+        sort($claimed);
         sort($documented);
-        sort($expected);
-        self::assertSame($expected, $documented, 'docs/schemas/ and the core command set disagree');
+        self::assertSame($claimed, $documented, implode("\n", [
+            'docs/schemas/ and the command set disagree. A contract only in the list is',
+            'a command claiming a schema file that does not exist; one only in the files',
+            "is a document describing a command nothing registers. Both are edited in",
+            'docs/schemas/ — and a pack that adds a command belongs in the packed-app',
+            "fixture's app/Modules.php, not in a list in this test.",
+        ]));
+    }
+
+    /**
+     * A REJECTED invocation, for every command in an app that has every pack:
+     * the envelope the kernel emits before the command runs must still obey
+     * the contract that command claims.
+     *
+     * This is what holds the flag check to the envelope contract, and it is
+     * generated from `lava list` rather than written out case by case. Every
+     * `lava.<cmd>/N` says `required: [...]` with `additionalProperties: false`,
+     * and a usage error is emitted WITHOUT the command running — so the payload
+     * has to be a declared shape ({@see \Lava\Core\Console\Command::emptyPayload()})
+     * rather than something the command happens to write on its way past. A
+     * command added to core or to a pack tomorrow is covered here without
+     * anyone remembering to add it, because `packed-app` is what puts that
+     * pack's commands in the list.
+     */
+    public function testARejectedInvocationObeysTheSchemaItsCommandClaims(): void
+    {
+        if (!class_exists(\Lava\Db\DbModule::class)) {
+            self::markTestSkipped('lava/db is not installed, so no fixture can boot with a pack enabled');
+        }
+
+        $listed = LavaCli::run(['list', '--json'], self::fixture('packed-app'));
+        self::assertTrue(
+            $listed->data()['booted'] === true,
+            "the packed fixture did not boot, so its command set is the core one only:\n{$listed->stderr}",
+        );
+
+        foreach ($listed->data()['commands'] as $command) {
+            self::assertIsArray($command);
+            $name = (string) $command['name'];
+
+            $result = LavaCli::run([$name, '--lava-no-such-flag', '--json'], self::fixture('packed-app'));
+
+            self::assertSame(
+                ExitCode::Usage,
+                $result->exit,
+                "`lava {$name}` accepted a flag it does not declare:\n{$result->stdout}{$result->stderr}",
+            );
+            // The same contract the command claims on a real run — the schema
+            // is not swapped for a generic one just because the run failed.
+            self::assertSame((string) $command['schema'], $result->schema());
+            EnvelopeSchemas::assertObeys($result, "`lava {$name} --lava-no-such-flag --json`");
+        }
     }
 
     public function testTheProblemObjectIsTheSameShapeEverywhere(): void

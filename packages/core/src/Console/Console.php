@@ -6,6 +6,7 @@ namespace Lava\Core\Console;
 
 use Lava\Core\Boot\App;
 use Lava\Core\Boot\BootFailure;
+use Lava\Core\Problem\BadUsage;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
 use Lava\Core\Problem\UnexpectedFailure;
@@ -15,6 +16,12 @@ use Lava\Core\Problem\UnknownCommand;
  * The CLI kernel: turn argv into a command, run it, and let IO render the
  * result. Everything else in the console layer is a leaf — this is the only
  * place that reads argv, resolves a name, and maps a result to an exit code.
+ *
+ * It is also the only place that checks an invocation against the flags the
+ * command declares. That belongs here rather than in each command for the same
+ * reason the problem-report catch does: a pack command written tomorrow is
+ * covered by this file without its author knowing to write the check, and a
+ * check that each command must remember is one that the next command forgets.
  *
  * `main()` is the whole entry point `bin/lava` needs; the app directory
  * defaults to the current working directory, so `lava` runs from an app root
@@ -81,10 +88,39 @@ final class Console
             return $this->unknownCommand($io, $name, $registry, $failure);
         }
 
+        // Seed the command's declared payload shape before deciding anything,
+        // because two of the envelopes emitted below are emitted WITHOUT the
+        // command ever running: `--help`, and an invocation rejected for a flag
+        // the command does not declare. Both claim `lava.<cmd>/N`, and that
+        // schema requires its `data` keys on every exit path — so the shape has
+        // to be in place before either branch. The command seeds the same shape
+        // itself; the values are identical and the writes are idempotent, so
+        // which seed comes first cannot change the output.
+        foreach ($command->emptyPayload($args) as $key => $value) {
+            $io->data($key, $value);
+        }
+
         if ($args->bool('help')) {
             $io->line($command->usage());
             $io->line($command->summary());
             return $io->emit($name);
+        }
+
+        // A flag the command does not declare used to be parsed by `Args`,
+        // handed to the command, and never asked for — so `lava routes --strct`
+        // printed the route table and exited 0. A silently ignored flag is the
+        // one mistake this CLI would otherwise swallow, and it is a mistake an
+        // agent makes, so it is a usage error: it is about how the command was
+        // typed, not about the app. Every flag is therefore declared by the
+        // command or read by the kernel ({@see Command::UNIVERSAL_FLAGS}).
+        $unknown = $this->unknownFlags($command, $args);
+        if ($unknown !== []) {
+            $report = new ProblemReport();
+            foreach ($unknown as $flag) {
+                $report->add(BadUsage::unknownFlag($flag, $name, $command->flags()));
+            }
+            $io->emit($name, $report);
+            return ExitCode::Usage;
         }
 
         // A command that throws is still a report, never a stack trace. This
@@ -104,6 +140,26 @@ final class Console
             $report->add(UnexpectedFailure::inCommand($name, $throwable));
             return $io->emit($name, $report);
         }
+    }
+
+    /**
+     * The flags in this invocation that neither the command declares nor the
+     * kernel reads, in the order they were typed.
+     *
+     * Read off the parsed flag map, not re-scanned from argv, so `--` literal
+     * arguments are positional by the time this runs and a flag after it is
+     * never mistaken for one. Pack-defined flags come through the same door as
+     * core ones: a command that declares `batches` accepts `--batches`.
+     *
+     * @return list<string>
+     */
+    private function unknownFlags(Command $command, Args $args): array
+    {
+        return array_values(array_diff(
+            array_keys($args->flags()),
+            $command->flags(),
+            Command::UNIVERSAL_FLAGS,
+        ));
     }
 
     /**

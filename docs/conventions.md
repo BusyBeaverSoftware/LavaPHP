@@ -183,17 +183,34 @@ that pinned a version keeps working, and `packages/core/tests/Schema/` fails the
 build when a payload and its schema drift apart.
 
 The numeral is per command, and `docs/schemas/` is the list of what exists — the
-one place to look. It is not always `1`: `lava.check` is at `/2`, because `map`
-was added to its `sections` enum when `lava map` landed, and a widened enum is a
-breaking change to that payload. `/1` was deleted rather than kept beside it,
-because nothing could emit it and nothing had pinned it — the first release was
-not tagged — so it would have been a schema file no code can produce, which is a
-document that lies about what exists. The version has one home,
-`Envelope::schema()`, so a bump cannot be half-applied.
+one place to look. Two commands are past `1`, and both are there because a
+consumer that read the older file would mishandle a value the newer one carries:
+`lava.check` is at `/2` because `map` was added to its `sections` enum when
+`lava map` landed, and `lava.map` is at `/2` because `path` and `fingerprint`
+are facts about the app — so an invocation that never read one (an undeclared
+flag, `--help`, a failed boot) has no honest string for them, and `/1`'s
+`string` described a payload the command has never produced. A widened enum and
+a widened type are equally breaking here, for the same reason: the numeral is
+how the consumer learns it must handle something new. `/1` was deleted rather
+than kept beside each, because nothing could emit it and nothing had pinned it —
+the first release was not tagged — so it would have been a schema file no code
+can produce, which is a document that lies about what exists. The version has
+one home, `Envelope::schema()`, so a bump cannot be half-applied.
 
 - **Exit codes**: `0` ok, `1` a problem or a red result, `2` a malformed
-  invocation (a typo'd command name, a bad flag value). Only `2` is about how
-  the command was typed; `1` means it ran and the app is at fault.
+  invocation (a typo'd command name, a bad flag value, a flag the command does
+  not declare). Only `2` is about how the command was typed; `1` means it ran
+  and the app is at fault.
+- **A flag is accepted only if the command declares it, or the kernel reads
+  it.** The kernel reads `--json`, `--quiet`, `--help` and `--env` on every
+  command's behalf (`Command::UNIVERSAL_FLAGS`), so those four are declared by
+  none and accepted by all; everything else must appear in the command's own
+  `flags()`. `Args` parses any `--flag` it is handed, so without this check a
+  typo (`lava routes --strct`) printed the table and exited `0` — the one
+  mistake a CLI can silently swallow, and the one an agent with no muscle memory
+  for a flag list makes most. The refusal names the flag, lists what the command
+  does accept, and points at `lava <cmd> --help`. A flag after `--` is a
+  positional argument and never reaches the check.
 - **`data` keys are promised on every exit path**, including a failed boot. A
   consumer never branches on a shape that is only sometimes there.
 - **`problems` is ordered to act on**: severity is the major key — fatals

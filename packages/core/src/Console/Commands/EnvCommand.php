@@ -47,7 +47,7 @@ final class EnvCommand extends AppCommand
         return 'lava env [--reveal] [--env=<name>] [--json]';
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['env' => [], 'resolved_env' => null, 'env_file' => null];
     }

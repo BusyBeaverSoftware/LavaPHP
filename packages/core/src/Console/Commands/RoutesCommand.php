@@ -32,7 +32,7 @@ final class RoutesCommand extends AppCommand
         return ['json', 'all', 'env'];
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['routes' => []];
     }

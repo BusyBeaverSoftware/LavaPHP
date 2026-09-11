@@ -6,9 +6,11 @@ namespace Lava\Core\Problem;
 
 /**
  * A CLI invocation was malformed in a way the flag parser can't catch — a
- * required positional is missing (`lava features resolve` with no flag), or a
- * value doesn't fit its flag. Distinct from `unknown_command`: the command
- * exists, the arguments don't. The fix always shows the correct invocation.
+ * required positional is missing (`lava features resolve` with no flag), a
+ * value doesn't fit its flag, or a flag is not one the command declares.
+ * Distinct from `unknown_command`: the command exists, the arguments don't.
+ * The fix always shows an invocation that works — the usage line, or `--help`
+ * with the flags the command accepts.
  */
 final class BadUsage extends LavaProblem
 {
@@ -18,6 +20,35 @@ final class BadUsage extends LavaProblem
             "Missing required argument <{$argument}>.",
             "Run: {$usage}",
             ['missing' => $argument],
+        );
+    }
+
+    /**
+     * A flag that is neither declared by the command nor read by the kernel.
+     *
+     * The accepted list is the command's OWN flags, not the universal set, and
+     * that is the useful half rather than an omission: `--json`, `--quiet` and
+     * `--env` can never reach this error, because the kernel reads them on
+     * every command's behalf — and `--help`, the fourth, is the command the fix
+     * names next. So the list is exactly the set of flags the caller could have
+     * meant, which is what makes printing it worth a line for what is almost
+     * always a typo.
+     *
+     * @param list<string> $accepted the command's declared flags, in any order
+     */
+    public static function unknownFlag(string $flag, string $command, array $accepted): self
+    {
+        sort($accepted);
+
+        $list = $accepted === [] ? '' : ' (it accepts ' . implode(', ', array_map(
+            static fn (string $name): string => '--' . $name,
+            $accepted,
+        )) . ')';
+
+        return new self(
+            "Unknown flag '--{$flag}'.",
+            "Run: lava {$command} --help{$list}",
+            ['flag' => $flag, 'command' => $command, 'accepted' => $accepted],
         );
     }
 

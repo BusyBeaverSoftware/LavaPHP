@@ -85,9 +85,23 @@ final class CheckCommand extends AppCommand
         return 'lava check [--quick] [--strict] [--no-tests] [--filter=<pattern>] [--env=<name>] [--json]';
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
-        return ['sections' => [], 'counts' => self::zeroCounts(), 'tests' => null];
+        return [
+            'sections' => [],
+            'counts' => self::zeroCounts(),
+            'tests' => null,
+            // Both are functions of how the invocation was TYPED, not of
+            // anything inspected, so they are knowable before the boot — and
+            // both are required keys, so leaving them to `report()` meant the
+            // envelopes emitted before it (a problem thrown by a section, and
+            // any invocation the kernel rejects) claimed `lava.check/2` while
+            // missing two of its properties. The schema's `additionalProperties:
+            // false` is what turned that into a failing test rather than a
+            // payload an agent silently mis-reads.
+            'strict' => $args->bool('strict'),
+            'quick' => $args->bool('quick'),
+        ];
     }
 
     protected function inspect(IO $io, Args $args, App $app): int

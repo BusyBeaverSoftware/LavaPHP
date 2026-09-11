@@ -45,7 +45,7 @@ final class MapCommandTest extends TestCase
 
         $written = LavaCli::run(['map', '--json'], $dir);
         self::assertSame(ExitCode::Ok, $written->exit, $written->stderr);
-        self::assertSame('lava.map/1', $written->schema());
+        self::assertSame('lava.map/2', $written->schema());
         self::assertTrue($written->data()['written']);
         // `found` and `fresh` describe the file the command FOUND, read before
         // it acted; `written` reports what it then did. On a first write that

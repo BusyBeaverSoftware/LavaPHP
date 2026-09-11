@@ -48,6 +48,21 @@ final class AboutCommand extends Command
         return 'lava about [--env=<name>] [--json]';
     }
 
+    /**
+     * The runtime facts are the one thing knowable when nothing else is — that
+     * is why `about` is a plain Command — so the seed is the real `php` block
+     * rather than a typed empty. `app: null` and `packs: []` are exactly what
+     * the failed-boot branch emits, and they are also the honest answer for an
+     * invocation the kernel rejects before the boot: nothing was inspected, so
+     * nothing is claimed about the app.
+     *
+     * @return array<string, mixed>
+     */
+    public function emptyPayload(Args $args): array
+    {
+        return ['php' => self::phpFacts(), 'app' => null, 'packs' => []];
+    }
+
     public function run(IO $io, Args $args, string $appDir): int
     {
         $io->data('php', self::phpFacts());

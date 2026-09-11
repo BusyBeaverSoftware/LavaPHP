@@ -271,6 +271,22 @@ can disagree with the app it is describing, and then the diagnostic lies.
    exit path — usage, boot failure, unexpected throw — carries the command's
    keys; `inspect()` overwrites them in place so insertion order is preserved.
 
+   *Amended 2026-09-11 (M9 post-release).* Two corrections, both forced by the
+   flag check. First, the kernel seeds the SAME shape before it dispatches, so
+   the two envelopes it emits without running the command at all — `--help`, and
+   an invocation refused for an undeclared flag — carry the command's keys; that
+   required `emptyPayload` to be `public` (15 one-word widenings, one name for
+   one concept, rather than a second forwarding method that could drift).
+   Second, "seeding first" was **necessary but not sufficient**: a seed is only
+   an improvement if its values satisfy the contract, and three keys across two
+   commands did not — `lava.check/2` required `strict`/`quick` that only
+   `report()` wrote, and `lava.map/1` called `path`/`fingerprint` strings when
+   no invocation with no app has an honest string for them. Seeding an INVALID
+   shape is not better than seeding none; it is the same bug with a friendlier
+   stack. The generated guard in
+   `JsonSchemaTest::testARejectedInvocationObeysTheSchemaItsCommandClaims` is
+   what makes that class of bug impossible to ship unnoticed from here on.
+
 7. **`Console::run()` wraps dispatch, so a `LavaProblem` thrown *by a command*
    is a report, never a stack trace.** Regression: `lava features resolve
    <typo>` escaped as an uncaught `UnknownFeature` fatal. This is the single
@@ -449,7 +465,17 @@ the temporary real-SAPI gate.
     needs `lava.check/2` rather than an edit — the frozen-`/N` rule applies to
     the section list like anything else.
 
-### Open finding, not acted on (needs your call)
+### Open finding — **decided and implemented 2026-09-11** (M9 post-release)
+
+**Acted on**: you chose the recommended option — an undeclared flag is
+`bad_usage`, exit 2, with the command's declared list and `lava <cmd> --help` in
+the fix. The two open questions it raised are settled in
+[§ M9 post-release](#): the implicit global set is `--json`, `--quiet`,
+`--help`, `--env` (the `--env` call included), `--` literals stay positional
+because the check reads the PARSED flag map, and pack-defined flags keep working
+because the check compares against the command's own `flags()` rather than a
+list of core's. The text below is the finding as written; it is kept for the
+reasoning, not as outstanding work.
 
 **`flags()` is descriptive, not enforced: an undeclared flag is silently
 ignored.** Verified live: `lava routes --strct` exits 0 and prints the route
@@ -475,16 +501,19 @@ Not fixed here because the fix is a product decision, not a slice-3 task:
   `severity: warn`), leaving exit 0. Less correct, zero risk of breaking a
   caller that passes an unknown flag on purpose.
 
-No code depends on the current permissiveness, so either option is available
-whenever you want it.
+No code depended on the permissiveness, so the change cost nothing: the only
+tests that moved were ones asserting a payload's keys, and every command's seed
+had to be checked against its schema — which is how `lava.check/2` and
+`lava.map/1` turned out to promise properties their commands never emitted on
+failure paths. See § M9 post-release.
 
 ## 2026-09-11 — M5 (lava/db)
 
 The plan's acceptance criteria for M5 are "compiler snapshot tests green
 driver-free; with sqlite installed: demo CRUD, `lava db:status` applied/pending,
 migrate/rollback round-trip; db pack installs standalone". All four are met and
-verified against the real binary (see 20). The M4 open finding above is still
-open and unacted on.
+verified against the real binary (see 20). The M4 open finding above was still
+open at the time and is now decided and implemented (see § M9 post-release).
 
 1. **The pack is split into a driver-free half and a driver-bound half.**
    `Sql/SchemaCompiler` turns a `Table` definition into DDL strings and touches
@@ -2511,7 +2540,14 @@ the two.
     flagged as reversible — the reasoning is in `tools/coverage-check.php` next
     to the constant.
 
-### Open finding, not acted on (needs your call)
+### Open finding — **decided and implemented 2026-09-11** (M9 post-release)
+
+**Acted on**: you chose the `whereGroup(Closure)` / `orWhereGroup(Closure)` pair.
+The implementation is in `Lava\Db\Query\HasConditions` (the shared where-family),
+`ConditionGroup` (what the closure is handed), `Condition::group()` (the nested
+value) and `Compiler::terms()` (parentheses); the reasoning, including the one
+wrinkle it accepted, is in § M9 post-release below. The text below is the finding
+as written; it is kept for the reasoning, not as outstanding work.
 
 **`QueryBuilder` has no condition grouping, so `(A OR B) AND C` is not
 expressible.** Decision 162 documents the behaviour and the live test asserts
@@ -2527,9 +2563,14 @@ compiled SQL of anything that adopts it, and it is a product decision about how
 much query builder this framework wants.
 
 Also still open from earlier: decision 18 (whether a pack's envelope contracts
-should be listed by name in the core schema test), decision 22 (whether the
-problem-code registry should become a machine-checked contract), and
-`SchemaSnapshot::equals()`'s order-sensitivity from slice 3.
+should be listed by name in the core schema test — **decided: read them off
+`lava list` in the packed-app fixture instead of listing them here**),
+decision 22 (whether the problem-code registry should become a machine-checked
+contract — **decided: machine-check it; see § M9 post-release**), and
+`SchemaSnapshot::equals()`'s order-sensitivity from slice 3 (**decided: correct
+the docblock; the method's order-sensitivity is intended**). The three were
+settled in the M9 post-release pass; the sections they are described in are the
+record.
 
 ### Verified by running
 
@@ -2736,3 +2777,255 @@ tests), level 8 and core-at-`max` both `[OK] No errors`. `composer coverage` exi
 fixtures, not `src`). The demo suite: 24 tests / 99 assertions, 0 files left in
 `/tmp`. The http-client suite: 100 tests / 261 assertions, **0 files left** — it
 was about nine per run. The 179 accumulated artifacts were removed.
+
+## 2026-09-11 — M9 post-release: the five decisions, and what acting on them found
+
+The findings left open through M4–M9 were put to you with options; five were
+answered and are implemented here. Decisions 1–4 are the flag rule and the
+three smaller corrections; decision 5 is the query group; decision 6 (the
+remote and the branch push) is last and is the only one that leaves the machine.
+Everything in this section was verified against the real binary, and the numbers
+are at the end.
+
+183. **The flag check lives in the KERNEL, not in each command.** `Args` parses
+    any `--flag` it is handed and nothing compared that against the command's
+    `flags()`, so `lava routes --strct` printed the route table and exited 0. The
+    check is in `Console::run()` for the same reason the `LavaProblem` catch is:
+    it is the single dispatch point, so a pack command written tomorrow is
+    covered without its author knowing to write the check, and a check each
+    command must remember is one the next command forgets. Doing it per command
+    would also have to be re-litigated in a review of every future pack.
+
+184. **A flag is universal exactly when the KERNEL reads it, and that rule
+    decides the set.** `Command::UNIVERSAL_FLAGS = ['json','quiet','help','env']`.
+    The membership test is mechanical rather than a matter of taste: `json` and
+    `quiet` build the writer (`IO::standard`), `help` is answered by the
+    dispatcher before the command is consulted, and `env` selects the boot — so
+    none of the four needs a command's cooperation, and requiring every command
+    to declare them would be describing the kernel's work as the command's.
+    `--env` was the interesting one you flagged; it is universal on this rule
+    even though commands also declare it, and the `env` in the fix list below is
+    the command's own declaration, not this const.
+
+185. **`--json` stays declared by commands even though it is universal.** The
+    `flags` column in `lava list` describes what a command makes of its
+    arguments, and a reader scanning that table should not have to know
+    `UNIVERSAL_FLAGS` to learn that `--json` works. The const is the enforcement
+    rule; `flags()` is the description. Two questions, so two lists — and the
+    union is what the check uses, which is why the pair cannot disagree.
+
+186. **`emptyPayload()` became `public`, and the kernel seeds it too.** Two
+    envelopes are emitted WITHOUT the command running — `--help`, and an
+    invocation refused for an undeclared flag — and both claim `lava.<cmd>/N`,
+    whose schema requires its `data` keys on every exit path. So the kernel
+    seeds the command's declared shape before it dispatches. That needed the
+    method public (15 one-word widenings, one per command), and a public method
+    was chosen over a second forwarding method because two names for one concept
+    is how a shape starts to drift. `emptyPayload(Args)` deliberately stays a
+    function of the INVOCATION alone — not of the app — which is the rule that
+    later forced the `map` contract change (see 191).
+
+187. **`--help` is answered BEFORE the flag check, so a typo cannot hide the
+    answer to the question it was asking.** `lava routes --strct --help` prints
+    the usage and exits 0. Failing the help request would hide the flag list
+    behind the mistake that needed it, and `--help` is exactly what the refusal
+    tells the caller to type next; a refusal-to-refusal loop would be the
+    framework's own fix hint failing to work.
+
+188. **The fix names the command's own flags and the universal four are left
+    out.** `Run: lava routes --help (it accepts --all, --env, --json)` — not a
+    padded list including `--quiet` and `--help`. Two reasons: those two can
+    never reach this error, so listing them would suggest the typo might be one
+    of them; and the list is the answer to "what did I mean to type", so it
+    should contain candidates for the mistake rather than a complete inventory
+    of the parser's abilities. `accepted` in `context` is sorted, so two runs of
+    the same mistake produce byte-identical output — a diffable payload.
+
+189. **A pack's flag is a flag in this process, and the check still refuses it
+    on the wrong command.** `packages/db/tests/Cli/DbUsageTest.php` pins the two
+    edges a blanket rule gets wrong: `db:rollback --batches=1` must still be
+    accepted, and `db:status --batches=1` must be refused even though a sibling
+    in the same pack declares `batches`. `lava db:status --batches` is `lava env
+    --strict` in pack form — the mistake a helpful-sounding flag invites — and
+    it is why the check compares against the command's `flags()` rather than a
+    process-wide union of everything any command declares.
+
+190. **The guard that proves it is GENERATED from `lava list`, not a list of
+    cases.** `JsonSchemaTest::testARejectedInvocationObeysTheSchemaItsCommandClaims`
+    boots `packed-app` (the smallest app that enables lava/db), reads the command
+    set off the payload, refuses each command a flag it does not declare, and
+    validates the envelope that comes back against the schema THAT command
+    claims. A command added to core or a pack tomorrow is covered without anyone
+    remembering to add it — and it found two real bugs within minutes of
+    existing, which is the argument for the generated form in one sentence.
+
+191. **That guard immediately found `lava.check/2` violating its own contract.**
+    `strict` and `quick` are required properties of `lava.check/2` and were
+    written only in `report()` — so any envelope emitted before it (a section
+    that throws, a refused flag, `--help`) claimed the schema while missing two
+    of its keys. Both are functions of how the invocation was TYPED, not of
+    anything inspected, so the fix is to seed them: knowable before the boot,
+    which is exactly the test the seed must pass.
+
+192. **And then `lava.map/1`, whose seed could NOT be made honest — so the
+    contract changed instead: `lava.map/2`.** `path` and `fingerprint` were
+    typed `string`, but `fingerprint` is a hash of the app's DECLARATIONS, so no
+    invocation that never booted has an honest value for it — a failed boot, a
+    refused flag, and `--help` all emit it. `/2` widens both to
+    `["string","null"]`, with null meaning "the app was never read". The idiom is
+    already in that schema (`found` is nullable), so this is not a new concept.
+    Consequences accepted: **bumping is right even though no emitted value
+    changes**, because the numeral is how a consumer LEARNS it must handle a
+    value it was told could not occur — a consumer that pinned `/1` and receives
+    a null `path` on a failed boot is precisely the one that needs to be told.
+    `/1` was deleted rather than kept beside `/2`, exactly as `lava.check/1` was:
+    nothing could emit it, so it would be a schema file no code produces, which
+    is a document that lies about what exists. `Envelope::VERSIONS` gained the
+    entry, and `MapCommandTest` now asserts `/2` — one home for the version means
+    a half-applied bump cannot happen, which the test then proves.
+
+193. **The alternative for `map` was rejected on cost, and the rejection is
+    recorded.** Threading the app directory into `emptyPayload` would have made
+    `path` a real string (it is knowable pre-boot), but `fingerprint` still could
+    not be, so the contract would still have needed `/2` — a signature change
+    across 20 command classes plus the kernel, buying one nicer key on a payload
+    whose `problems` are the thing to read. Keeping `emptyPayload(Args)` a pure
+    function of the invocation is one rule; the alternative was two rules and a
+    wider API.
+
+194. **A richer failed-boot payload for `map` is noted and NOT done.** On a
+    failed boot `found` and `path` are both knowable without a boot (they come
+    off the file), so `map` could report "your AGENTS.md claims hash X and I
+    could not compute what the app hashes to" instead of nulls. That is a
+    behaviour improvement, not a contract repair, and it is not in the decision
+    this pass was implementing. Recorded here so it is a choice rather than an
+    oversight.
+
+195. **`whereGroup` needed the closure to be handed a type that cannot lie.**
+    The obvious implementation — hand the closure a `QueryBuilder` — would accept
+    `->limit(5)` inside a group and drop it, which is the silent-ignore failure
+    this framework bans everywhere else. So the closure gets a `ConditionGroup`,
+    a class whose ONLY methods are the condition ones. To avoid a second copy of
+    twenty method bodies (and the drift that comes with it: `IN ()` refused,
+    `= NULL` refused, one bound argument each), those bodies moved into a trait,
+    `HasConditions`, used by both. Sharing the BODIES rather than the TYPE is the
+    distinction that matters: a group is not a builder and a builder is not a
+    group, which is what a trait expresses and what an inheritance chain would
+    have had to lie about. `ConditionGroupTest` asserts all three parts — the
+    shared vocabulary, the absent terminal vocabulary, and that the two are not
+    `is_a` each other — so the design cannot quietly regress into "hand it the
+    builder, it's easier".
+
+196. **A group is a `Condition`, and the compiler is still the only renderer.**
+    The builder has no dialect, so it cannot quote columns and therefore cannot
+    pre-render a group; `Condition::group()` stores the nested list and
+    `Compiler` renders it. That keeps the pack's one real invariant intact — the
+    compiler trusts what it is handed and never re-checks — and it means a
+    group's columns are quoted, its bindings ordered, and its `whereRaw`
+    fragments bound by the same code as the rest of the clause. The cost is
+    stated in `Condition`'s docblock rather than hidden: a group's
+    `expression`/`operator`/`bindings` hold `''`/`Raw`/`[]` because the
+    properties are non-nullable, NOT because they mean anything, and
+    `isGroup()` is the only sanctioned way to ask which kind a Condition is.
+
+197. **`AND`/`OR` placement now has exactly one home.** `Compiler::where()` and
+    the group renderer both call a new `terms()`, so the prefix loop — including
+    the first-term-has-no-prefix rule — is written once. A group that rendered
+    its own body would have been a second implementation of the one thing most
+    likely to differ, and `terms()` is what makes nesting free rather than a
+    special case.
+
+198. **An empty group is `bad_query`, not `()`.** `whereGroup(fn ($q) => null)`
+    compiles to `()` — a syntax error on every dialect — so `Condition::group()`
+    refuses it with the fix naming the closure to write. This is also what makes
+    `isGroup()` total (a group is never the empty list), which is why the
+    discriminant can be the nested list at all.
+
+199. **The live test that documented the limitation now documents the fix, and
+    proves the group equals the raw SQL it replaced.** The old test asserted the
+    ungrouped chain selects a surprising set and said the intended reading "is
+    not expressible". Both halves survive: the chain still means what precedence
+    says, and the intended reading is now written with `whereGroup` and RUN
+    against the same database as the hand-written fragment — so "the group is the
+    same query" is an executed assertion, not a comment. The one thing a raw
+    fragment could get wrong while looking right is placeholder order, which is
+    why the equality is asserted by running both.
+
+200. **`ServeCommand`'s defaults became constants and its URL one method.**
+    `DEFAULT_HOST`/`DEFAULT_PORT`/`DEFAULT_WORKERS`/`DOC_ROOT`/`ENTRY_POINT`
+    replace literals that appeared in the seeding, the resolution, two prose
+    lines and the `proc_open` path — so a `serve` envelope that could not boot
+    cannot describe a different server than the one it would have started, and
+    `url()` builds the URL in one place. Found while making `emptyPayload`
+    honest, which is the general lesson: the seed is where a payload's
+    duplications become visible.
+
+201. **`lava.list` stayed at `/1`, and the reason is the frozen-`/N` rule
+    read precisely.** The `schema` column it gained in decision 2 is ADDITIVE —
+    every payload valid under `/1` is valid under the new one and the schema file
+    was edited to match, which is what an additive change is allowed to do.
+    `lava.check` and `lava.map` were bumped because a consumer could MISHANDLE
+    the new value (a widened enum, a widened type); nothing here can. Both moves
+    follow the same rule, and the rule is what decided them rather than
+    symmetry.
+
+202. **Decision 18's answer was implemented as a FIXTURE, not a list.** The core
+    schema test no longer names the pack contracts: it reads `commands[].schema`
+    off `lava list` in `packed-app`, so the colon-to-dot rule and the
+    per-command version have exactly one home (`Envelope::schema()`). A pack
+    adding a command now edits a fixture app's manifest — the same edit an app
+    makes to USE the pack — instead of a core test, which is the difference
+    between a use of the registry and a copy of it.
+
+203. **Decision 22's answer is a machine-checked registry, and it was already
+    live.** `lava list` reports each command's `schema`, and
+    `JsonSchemaTest`/`DbSchemaTest` check the union in both directions: a schema
+    file for a command nothing registers, and a command whose file was never
+    written, both fail. The registry is therefore `docs/schemas/` plus
+    `Envelope::schema()`, and it cannot drift silently.
+
+204. **Decision 4 was a docblock correction, and the correction is stated as
+    such.** `SchemaSnapshot::equals()` is order-sensitive, that is intended (a
+    column order difference is a schema difference), and the docblock said
+    otherwise. The fix was the docblock, not the method: changing the method
+    would have hidden a real drift signal to make a sentence true.
+
+205. **The release is a BRANCH, and the tag stays local.** You authorised
+    creating a remote and pushing a branch so the five CI jobs run for the first
+    time. The `0.1.0` tag does NOT go with it: the tag is what makes a release
+    real, and the whole point of the run is to learn whether it is deserved. See
+    the entry that records what was pushed and what CI said.
+
+### What is still not verified
+
+- **The five CI jobs have never run.** Everything above was verified locally, on
+  PHP 8.5.4 with the sqlite/pcov extensions loaded from `/tmp`. PHP 8.3 and 8.4
+  exist only in CI, so the `^8.3` floor is asserted by the constraint and by
+  nothing else yet.
+- **The coverage job is verified locally and not on GitHub.** `composer coverage`
+  exits 0 here with pcov; whether the runner's PHP has the driver is a question
+  only CI can answer, and it is the one job most likely to differ.
+- **`lava serve` cannot be verified to completion in this harness.** Its success
+  path blocks by design; the payload shape is checked on the usage-error path and
+  the server itself is exercised by the router tests, but a real browser-facing
+  run is not something this pass did.
+
+### Verified by running
+
+`composer verify`: **992 tests, 5382 assertions** (from 960 / 4603 — 32 tests and
+779 assertions added), level 8 and core-at-`max` both `[OK] No errors`.
+`composer coverage` exits **0** with every pack at or above its floor: core
+3110/3511 = 88.58%, db 1097/1234 = **88.90%** (up from 88.64% — the group API's
+new `src` lines are covered), http-client 263/272 = 96.69%, validate 461/469 =
+98.29%, view 172/176 = 97.73%, all packs 5103/5662 = 90.13%.
+
+The flag rule and the `map` contract were both run through the real binary, not
+read: `lava map --strct --json` emits `lava.map/2` with
+`{"path":null,"fingerprint":null,…}` and a `bad_usage` problem naming the flag,
+the accepted list and the fix, exit **2**; `lava check --strct --json` on an app
+that cannot boot emits `lava.check/2` with `strict`/`quick` seeded and the same
+one-problem report; universal and short flags are accepted everywhere;
+`--help` wins over a typo; `--` literals stay positional; and on the demo,
+`lava map --check` reports `lava.map/2` with `fresh: true` and exits 0, which is
+also the proof that the version bump reached the binary rather than only the
+class.

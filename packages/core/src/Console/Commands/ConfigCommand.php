@@ -41,7 +41,7 @@ final class ConfigCommand extends AppCommand
         return 'lava config [--reveal] [--env=<name>] [--json]';
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['config' => []];
     }

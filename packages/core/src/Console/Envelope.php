@@ -26,10 +26,18 @@ final class Envelope
      *
      * The frozen-`/N` rule (docs/conventions.md) says a breaking payload change
      * means a NEW `/N`, never an edit to the existing one — so the version is a
-     * per-command fact, and this is the one place it lives. `lava.check/1`
+     * per-command fact, and this is the one place it lives.
+     *
+     * Two commands are on `/2`, for the same reason worded two ways: a consumer
+     * that read `/1` would mishandle a value `/2` can carry. `lava.check/1`
      * promised that `sections[].name` was one of eight names; M7 added `map`,
      * which a consumer switching exhaustively on that enum would not have
-     * handled, so `check` is `/2` and every other command is untouched.
+     * handled. `lava.map/1` promised `path` and `fingerprint` were strings, but
+     * both are facts about the APP — so an invocation that never read one (a
+     * flag the command does not declare, `--help`, a boot that failed) had no
+     * honest string to put there, and `/1` described a payload the command has
+     * never emitted on those paths. Widening is therefore breaking by this
+     * project's rule, and the numeral is how the consumer finds out.
      *
      * Nothing emits a superseded version — pre-0.1.0 there is no release to
      * keep compatible — so a bump here also means deleting the old schema file,
@@ -38,7 +46,7 @@ final class Envelope
      *
      * @var array<string, string>
      */
-    private const VERSIONS = ['check' => '2'];
+    private const VERSIONS = ['check' => '2', 'map' => '2'];
 
     /**
      * The contract name for a command: `routes` → `lava.routes/1`,

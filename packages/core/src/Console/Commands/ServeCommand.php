@@ -30,6 +30,18 @@ use Lava\Core\Problem\ProblemReport;
  */
 final class ServeCommand extends Command
 {
+    /** The bind address, port, and worker count a bare `lava serve` uses. */
+    private const DEFAULT_HOST = '127.0.0.1';
+    private const DEFAULT_PORT = 8080;
+    private const DEFAULT_WORKERS = 4;
+
+    /**
+     * Relative to the app root, and named once: the payload reports them and
+     * the child process is pointed at them, so the two must be the same file.
+     */
+    private const DOC_ROOT = 'public';
+    private const ENTRY_POINT = 'public/index.php';
+
     public function name(): string
     {
         return 'serve';
@@ -50,6 +62,37 @@ final class ServeCommand extends Command
         return 'lava serve [--host=<addr>] [--port=<n>] [--workers=<n>] [--env=<name>] [--json]';
     }
 
+    /**
+     * A server that was never started: every value at its default, `booted`
+     * false.
+     *
+     * This is the shape of an invocation the kernel rejected (an undeclared
+     * flag) — `lava.serve/1` requires all seven keys, and none of them was
+     * decided, so each reports what a bare `lava serve` would use. The defaults
+     * are the same constants `run()` resolves through, so a payload of
+     * placeholders cannot announce a port the server would not have bound.
+     *
+     * @return array<string, mixed>
+     */
+    public function emptyPayload(Args $args): array
+    {
+        return [
+            'host' => self::DEFAULT_HOST,
+            'port' => self::DEFAULT_PORT,
+            'workers' => self::DEFAULT_WORKERS,
+            'url' => self::url(self::DEFAULT_HOST, self::DEFAULT_PORT),
+            'doc_root' => self::DOC_ROOT,
+            'entry_point' => self::ENTRY_POINT,
+            'booted' => false,
+        ];
+    }
+
+    /** The URL to request, built in one place so no two copies can drift. */
+    private static function url(string $host, int $port): string
+    {
+        return "http://{$host}:{$port}";
+    }
+
     public function run(IO $io, Args $args, string $appDir): int
     {
         // One place decides what a usable port or worker count is, and it hands
@@ -61,20 +104,22 @@ final class ServeCommand extends Command
         $usage = $this->usage();
         $report = new ProblemReport();
 
-        $host = $args->value('host') ?? '127.0.0.1';
-        $port = self::number($args, 'port', 8080, 65535, 'an integer 1-65535', $usage, $report);
-        $workers = self::number($args, 'workers', 4, PHP_INT_MAX, 'a positive integer', $usage, $report);
+        $host = $args->value('host') ?? self::DEFAULT_HOST;
+        $port = self::number($args, 'port', self::DEFAULT_PORT, 65535, 'an integer 1-65535', $usage, $report);
+        $workers = self::number($args, 'workers', self::DEFAULT_WORKERS, PHP_INT_MAX, 'a positive integer', $usage, $report);
 
         // Seeded BEFORE anything can fail — the same contract AppCommand keeps:
         // a `--json` consumer must not have to branch on a shape that is only
         // sometimes there. `booted: false` is accurate until the boot below
-        // actually happens.
+        // actually happens. The kernel seeds this same shape before dispatching,
+        // for the envelopes it emits without this command running; the values
+        // are identical, so which seed happens first cannot change the output.
         $io->data('host', $host);
         $io->data('port', $port);
         $io->data('workers', $workers);
-        $io->data('url', "http://{$host}:{$port}");
-        $io->data('doc_root', 'public');
-        $io->data('entry_point', 'public/index.php');
+        $io->data('url', self::url($host, $port));
+        $io->data('doc_root', self::DOC_ROOT);
+        $io->data('entry_point', self::ENTRY_POINT);
         $io->data('booted', false);
 
         if (!$report->isEmpty()) {
@@ -85,21 +130,21 @@ final class ServeCommand extends Command
         // Checked before anything is announced: a server that starts and then
         // 404s everything looks like a working server with a broken app, which
         // is the worst possible diagnosis.
-        $entryPoint = $appDir . '/public/index.php';
+        $entryPoint = $appDir . '/' . self::ENTRY_POINT;
         if (!is_file($entryPoint)) {
             $report = new ProblemReport();
             $report->add(MissingEntryPoint::in($appDir));
             return $io->emit($this->name(), $report);
         }
 
-        $url = "http://{$host}:{$port}";
+        $url = self::url($host, $port);
 
         $boot = AppBoot::boot($appDir, $args->value('env'));
 
         $io->data('booted', !$boot instanceof BootFailure);
 
-        $io->text("serving {$url} ({$workers} worker(s), doc root public/)\n");
-        $io->text("entry point: public/index.php\n");
+        $io->text("serving {$url} ({$workers} worker(s), doc root " . self::DOC_ROOT . "/)\n");
+        $io->text('entry point: ' . self::ENTRY_POINT . "\n");
         $io->text("press Ctrl-C to stop\n");
 
         if ($boot instanceof BootFailure) {
@@ -173,7 +218,7 @@ final class ServeCommand extends Command
             '-S',
             "{$host}:{$port}",
             '-t',
-            $appDir . '/public',
+            $appDir . '/' . self::DOC_ROOT,
             $entryPoint,
         ];
 

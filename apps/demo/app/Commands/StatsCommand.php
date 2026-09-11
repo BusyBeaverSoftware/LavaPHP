@@ -36,7 +36,7 @@ final class StatsCommand extends AppTaskCommand
     /**
      * @return array<string, int>
      */
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['total' => 0, 'open' => 0, 'done' => 0, 'overdue' => 0];
     }

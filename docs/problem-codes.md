@@ -57,14 +57,14 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `bad_test_report` | `BadTestReport` | the runner ran but wrote no JUnit report, or wrote one that isn't well-formed XML | run the runner directly; its own output rides in `context` |
 | `incomplete_test_report` | `IncompleteTestReport` | the runner exited non-zero but its JUnit report lists no failures and no errors — a test class that errors in `setUpBeforeClass` is written as an empty `<testsuite>`, so the report cannot describe the failure it had | run the runner directly; PHPUnit's own output is the only place the error exists |
 | `not_an_app` | `NotAnApp` | the directory booted has no `app/`, no `config/`, and no `public/index.php` | name the directory and the layout to create |
-| `bad_usage` | `BadUsage` | a command was invoked with a missing or malformed argument (the command exists; the arguments don't) — exit 2 | quote the usage line |
+| `bad_usage` | `BadUsage` | a command was invoked with a missing or malformed argument, **or a flag it does not declare** (the command exists; the arguments don't) — exit 2 | quote the usage line, or list the flags the command accepts and point at `lava <cmd> --help` |
 | `missing_env_var` | `MissingEnvVar` | a declared required env var has no value in the process environment or `config/.env` — **severity warn** | set it in `config/.env` or export it |
 | `unknown_selector` | `UnknownSelector` | `lava describe <selector>` matched no route, service, flag, env var, or command | suggest the nearest name and list every candidate namespace |
 | `stale_map` | `StaleMap` | the committed `AGENTS.md` is not an accurate map of the app — absent (`why: missing`), generated from an older app (`why: stale`), or unwritable when `lava map` tried to write it (`why: unwritable`) — **severity warn** | `Run: lava map` |
 | `unsupported_dialect` | `UnsupportedDialect` (db) | `DATABASE_DSN` names a scheme no driver handles (`pgsql`, `mysql`, `sqlite` are supported) | list the supported schemes and show a working DSN |
 | `db_not_configured` | `DbNotConfigured` (db) | a `db:*` command ran with no `DATABASE_DSN` in the environment or `config/database.php` | show the exact line to add |
 | `db_connection_failed` | `DbConnectionFailed` (db) | the DSN is well-formed but the driver refused it — bad credentials, missing database, server down. The password in the DSN is redacted | report the driver's own message; name the server and database |
-| `bad_query` | `BadQuery` (db) | a query was built with something the builder cannot express — `IS NULL` as an equality, an array or object bound as a value, an empty `IN`, an empty where fragment, a read verb in a write statement, a negative limit | name the column and the builder call to use instead |
+| `bad_query` | `BadQuery` (db) | a query was built with something the builder cannot express — `IS NULL` as an equality, an array or object bound as a value, an empty `IN`, an empty where fragment, an empty `whereGroup` closure, a read verb in a write statement, a negative limit | name the column and the builder call to use instead |
 | `bad_schema` | `BadSchema` (db) | a table definition is invalid — empty or duplicate column, `autoIncrement` on a non-integer or on a composite key, an index on a column that isn't declared, a non-literal default, an inline FK on MySQL | name the column/index and the declaration to write |
 | `query_failed` | `QueryFailed` (db) | the driver rejected a statement the builder produced — the DDL or SQL is well-formed but the database disagrees (a type it won't accept, a constraint it can't satisfy) | the statement, the bound values, and the driver's message |
 | `migration_failed` | `MigrationFailed` (db) | a migration's `up()`/`down()` threw, or a recorded migration's file is gone | point at the migration file and line, and say the batch was NOT rolled back |
@@ -96,6 +96,17 @@ where an unset required var becomes a build failure.
 `bad_usage` is the only code that exits **2** rather than 1, alongside
 `unknown_command`. An agent can tell "you typed it wrong" from "it ran and
 failed" without parsing the body.
+
+It is raised for a flag the command does not declare as well as for a missing or
+malformed argument, and that half is the kernel's: `Args` parses any `--flag` it
+is handed, so before this rule `lava routes --strct` printed the route table and
+exited `0`. A silently ignored flag is the one mistake a CLI can swallow without
+anyone noticing, and it is the mistake an agent — which has no muscle memory for
+a flag list — makes most. The refusal names the flag, lists what the command
+does accept, and points at `lava <cmd> --help`; the four flags the kernel reads
+for every command (`--json`, `--quiet`, `--help`, `--env`, see
+`Command::UNIVERSAL_FLAGS`) are accepted everywhere without any command
+declaring them, and an argument after `--` is positional, never a flag.
 
 The db pack's eight codes split along one line: **whether the answer is knowable
 without a database.** `bad_query` and `bad_schema` are raised by the builder and
@@ -131,7 +142,10 @@ contract end to end).
 M4 status: all of M4's codes are live and covered — `unknown_command`
 (`tests/Unit/ConsoleTest.php`, `tests/Unit/ConsoleDispatchTest.php`),
 `bad_usage` (`tests/Unit/InspectionCommandsTest.php`,
-`tests/Unit/ServeCommandTest.php`), `duplicate_command`
+`tests/Unit/ServeCommandTest.php`, and for the flag half
+`tests/Unit/UnknownFlagTest.php` plus `tests/Cli/DbUsageTest.php` in the db pack,
+which is where a pack's own flag, a pack's flag on a core command, and a
+sibling command's flag can be told apart), `duplicate_command`
 (`tests/Unit/RegisterCommandsTest.php`), `missing_env_var` and
 `unknown_selector` (`tests/Unit/InspectionCommandsTest.php`),
 `missing_entry_point` (`tests/Unit/ServeCommandTest.php`),
@@ -139,7 +153,15 @@ M4 status: all of M4's codes are live and covered — `unknown_command`
 (`tests/Unit/TestCommandTest.php`, `tests/Unit/CheckCommandTest.php`,
 `tests/Unit/JunitTest.php` — the fixture app is
 `tests/fixtures/apps/setup-error-app/`), and `not_an_app`
-(`tests/Unit/KernelBootTest.php`). `missing_env_var` is raised by one shared
+(`tests/Unit/KernelBootTest.php`). The flag half is also held to the envelope
+contract for every command at once, generated from `lava list` rather than
+written out case by case —
+`tests/Schema/JsonSchemaTest::testARejectedInvocationObeysTheSchemaItsCommandClaims`
+refuses each command a flag it does not declare and validates the envelope that
+comes back against the schema that command claims, so a command added to core or
+a pack tomorrow is covered without anyone remembering to add it. That guard is
+what found `lava.map/1` promising `string` for two keys a refused invocation has
+no honest value for; the contract is now `lava.map/2`. `missing_env_var` is raised by one shared
 rule (`Config/EnvAudit`) used by both `lava env` and `lava check`, so the two
 commands cannot disagree about whether a variable is set. The table is complete
 when 0.1.0 is tagged. `lava check` renders problems fix-first (runnable commands

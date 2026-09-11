@@ -27,7 +27,7 @@ final class ServicesCommand extends AppCommand
         return 'List container registrations with their wiring site and real dependencies.';
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['services' => []];
     }

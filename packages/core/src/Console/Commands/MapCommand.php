@@ -53,7 +53,21 @@ final class MapCommand extends AppCommand
         return 'lava map [--check] [--env=<name>] [--json]';
     }
 
-    protected function emptyPayload(Args $args): array
+    /**
+     * `path` and `fingerprint` are null because they are facts about the APP,
+     * and this seed is written before the app is read. That is not a placeholder
+     * waiting to be filled — it is the honest value for an invocation that never
+     * built the registries the hash comes from, and it is the value a refused
+     * flag, `--help`, and a failed boot all leave in place.
+     *
+     * `lava.map/1` called both of them strings, which meant every one of those
+     * payloads violated the contract it named — an agent parsing `path` would
+     * have found the schema lied about what it promised on the one exit path it
+     * could not check. `/2` admits null instead (see docs/schemas/lava.map/),
+     * which is why this method needs no special case for the failure paths:
+     * nothing was read, so nothing is claimed.
+     */
+    public function emptyPayload(Args $args): array
     {
         return [
             'path' => null,
