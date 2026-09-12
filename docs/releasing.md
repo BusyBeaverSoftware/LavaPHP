@@ -72,7 +72,23 @@ git tag -a 0.1.0 -m "0.1.0"
 
 Push it only when the release is meant to be published — the push is what makes
 it a release, and a pushed tag is not reversible in the way a local one is.
-Packagist picks it up from the push.
+
+**The push does not, by itself, publish anything to Packagist.** Packagist
+learns about a tag from a webhook on a package that is *already registered*, so
+the order runs the other way from what "the push makes it a release" suggests:
+register the package, put the webhook in place, and only then is a tag push
+visible to the world. Measured on 2026-09-12, **none of the six packages exists
+on Packagist** — `packagist.org/packages/lava/core.json` and the five siblings
+all return `404` — so a tag push today creates the tag on GitHub and leaves
+`composer require lava/core` failing for everyone. The names are unclaimed, so
+registering them is available on demand; until it is done, a green tag push is
+evidence about the code and not a distribution event.
+
+Two consequences worth expecting. The push triggers a **full duplicate run of
+all seven CI jobs** on the tagged commit, because the workflow triggers on any
+push with no `tags:` filter and no job branches on `github.ref`; it is
+redundant but harmless. And the tagged commit is whatever the tag points at:
+move the tag to the commit whose record should ship, not to a convenient one.
 
 ## What is deliberately not part of a release
 
@@ -109,6 +125,10 @@ implies everything was verified is worse than one that lists what was not.
   tracked file against a real 8.3 through docker. What is still CI-only is the
   *suite* on those versions — a local 8.3 or 8.4 run means mounting the
   repository into `php:8.3-cli` and running PHPUnit there by hand.
-- **No release has been published.** Until a tag is pushed, `lava/app`'s
-  `composer create-project` path is untested against Packagist — the skeleton is
-  verified by copy-and-install (step 5) instead.
+- **No release has reached anyone.** The `0.1.0` tag is pushed as of
+  2026-09-12, but the six packages are not registered on Packagist, so no
+  webhook exists for Packagist to learn about it from — `composer require
+  lava/core` still 404s and `lava/app`'s `composer create-project` path is still
+  untested against Packagist. The skeleton is verified by copy-and-install
+  (step 5) instead. Registering the packages is the step that would make the
+  pushed tag mean what "release" usually means; see "The tag" above.

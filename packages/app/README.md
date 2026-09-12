@@ -12,6 +12,13 @@ composer create-project lava/app my-app
 cd my-app
 ```
 
+**This does not work yet.** `lava/app` is not registered on Packagist, so today
+that command 404s — see [the release checklist](../../docs/releasing.md#the-tag)
+for why a pushed tag does not change this on its own. Until the packages are
+registered, the working path is to copy `packages/app` next to a checkout of
+`packages/core` and run `composer install` there; that is what CI's `skeleton`
+job does, and it is the arrangement the rest of this file describes.
+
 ## Run it
 
 ```sh

@@ -3352,3 +3352,53 @@ for after anything that exercises the demo.
   remote copy is gone before the laptop is.
 - **One green CI run is not a pattern.** It is the authority for `cdc75ee` and
   nothing else; any commit that moves the tag has to earn its own green.
+
+## 2026-09-12 — the first tag push, and what it does and does not publish
+
+224. **"Packagist picks it up from the push" was measured false, and the docs
+    said it.** `docs/releasing.md` closed its release instructions with that
+    sentence for the whole of M9. It is the kind of claim that is true in the
+    general case and false here, which is the dangerous combination: Packagist
+    learns about a tag from a **webhook on a package that is already
+    registered**, so the dependency runs the other way — registration first, tag
+    second. Measured directly on 2026-09-12,
+    `packagist.org/packages/lava/{core,db,validate,view,http-client,app}.json`
+    all return `404`: none of the six packages is registered, so no webhook
+    exists, so pushing `0.1.0` reaches GitHub and stops there. `composer require
+    lava/core` keeps failing for everyone. The useful half of that measurement
+    is that the **names are unclaimed** — nobody has squatted `lava/core`, so
+    registering is available whenever the user wants it. The sentence was
+    replaced with the prerequisite and the measurement, and
+    `packages/app/README.md` — public now, and telling readers to run
+    `composer create-project lava/app my-app`, which 404s — was given the caveat
+    its own line 72 already carried further down.
+
+225. **`0.1.0` was moved to the release commit and pushed.** The tag sat on
+    `cdc75ee`, which is now one commit behind `main`: the record of the repo
+    swap (entries 216–223) and the corrections in 224 live in the commit after
+    it. A release should carry the account of what it is, so the tag moves onto
+    the commit that holds that account rather than staying on the convenient
+    one. This is a second move of a tag that has already moved once (entry 221),
+    and the same justification applies with the same force: it has never been
+    pushed, so no consumer has resolved it, and nothing published is being
+    rewritten. It is pushed in this commit, which is what changes that fact.
+
+    The push costs a **full duplicate run of all seven jobs**, deliberately
+    accepted rather than worked around. The workflow triggers on any push with
+    no `tags:` filter, and no job branches on `github.ref`, so CI cannot tell a
+    tag push from a branch push — and that is the right design here: it means a
+    green result is a statement about *the code at that commit*, not about how
+    the ref was named. The cost is one redundant run on a commit already
+    verified green; the alternative would be a `tags:`-filtered workflow that
+    skips its own checks at the moment they matter most.
+
+226. **The verification of 225 is recorded in the commit after it, and the tag
+    is not moved again.** A commit cannot contain the outcome of the action it
+    takes — the run on the tag does not exist until the tag is pushed, and the
+    tag's SHA is not knowable until the commit is written. So the record splits,
+    by necessity rather than by taste, exactly as it did for entry 215 (the
+    green CI run recorded in `ca351c6`, the commit *after* the one that earned
+    it). The alternative — moving the tag onto the commit that verifies it —
+    would recurse forever, each move needing a verification that needs a move.
+    The tag therefore stays where 225 put it, and later commits on `main` pass
+    it by. That is what a release commit is: a fixed point, not a tip.
