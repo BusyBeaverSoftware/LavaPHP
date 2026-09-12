@@ -90,6 +90,26 @@ push with no `tags:` filter and no job branches on `github.ref`; it is
 redundant but harmless. And the tagged commit is whatever the tag points at:
 move the tag to the commit whose record should ship, not to a convenient one.
 
+**Registering the packages would not be enough either.** Five of the six
+manifests are still in monorepo development shape, so a consumer's install fails
+on the manifest before Packagist is even reached:
+
+- `lava/app`, `lava/db`, `lava/validate`, `lava/view` and `lava/http-client`
+  each declare `repositories: {"lava/core": {"type": "path", "url": "../core"}}`.
+  A consumer has no `../core`, and Composer fails the install outright rather
+  than falling back to Packagist (`packages/app/README.md` says the same about
+  the skeleton).
+- Those same five require `lava/core: @dev` — an unbound constraint, which is
+  what a path repository needs during development and what a published package
+  must not declare.
+
+`lava/core` is the exception: no path repository, no `lava/*` dependency, only
+real Packagist requirements — so it is publishable as it stands. A real release
+needs the other five in distribution shape first: either a published split with
+the path repositories removed and `@dev` replaced by a version constraint, or a
+decision that only `lava/core` ships this round. That is a packaging decision
+rather than a mechanical one, and it has not been made.
+
 ## What is deliberately not part of a release
 
 - **No `composer.lock` is committed** for any pack or app, and the omission is
@@ -132,3 +152,9 @@ implies everything was verified is worse than one that lists what was not.
   untested against Packagist. The skeleton is verified by copy-and-install
   (step 5) instead. Registering the packages is the step that would make the
   pushed tag mean what "release" usually means; see "The tag" above.
+- **Five of the six manifests cannot be published as they stand.** The path
+  repositories and `lava/core: @dev` constraints that make this monorepo work
+  during development are exactly what break a consumer's install, so
+  registration alone would not produce a working `composer require`. The detail
+  and the two available resolutions are in "The tag" above. `lava/core` is the
+  one package that could ship today.

@@ -3423,3 +3423,39 @@ for after anything that exercises the demo.
     published *once something is listening*. This is the honest answer to "is it
     released?", and it is no: `0.1.0` exists, and `composer require lava/core`
     still fails.
+
+228. **The packages are not in publishable shape, and registering them would
+    not fix that.** Found by reading the manifests after entry 224 replaced "the
+    push publishes" with "registration publishes" — the replacement was still
+    too optimistic, because registration is necessary and not sufficient. Five
+    of the six manifests are in monorepo development shape:
+
+    | Manifest | `repositories` | requires `lava/core` |
+    |---|---|---|
+    | `lava/core` | *(none)* | *(nothing `lava/*`)* |
+    | `lava/app` | `{"lava/core": {"type": "path", "url": "../core"}}` | `@dev` |
+    | `lava/db` | same | `@dev` |
+    | `lava/validate` | same | `@dev` |
+    | `lava/view` | same | `@dev` |
+    | `lava/http-client` | same | `@dev` |
+
+    Both halves break a consumer independently. A path repository pointing at
+    `../core` is correct inside this checkout and resolves to nothing in someone
+    else's project, and Composer fails the install outright rather than falling
+    back to Packagist — the failure mode `packages/app/README.md` already
+    describes for the skeleton. And `@dev` is an unbound constraint, which is
+    what a path repository needs during development and what a published
+    package must not declare; CI's own `isolated-install` job comments on it
+    (`ci.yml:83`). `lava/core` is the one clean package: no path repository, no
+    `lava/*` requirement, only real Packagist dependencies. So `lava/core` could
+    ship today and the other five could not.
+
+    **The resolution is a packaging decision and it is deliberately not made
+    here.** Two shapes are available — publish per-package splits with the path
+    repositories stripped and `@dev` replaced by a version constraint, or decide
+    that only `lava/core` ships in the 0.1.x line — and they lead to different
+    repositories, different CI, and different consumer stories. Choosing one is
+    a product decision, so the finding is recorded and the choice is left to the
+    user; `docs/releasing.md` now states the blocker in "The tag" and in "Known
+    gaps" so the next person to attempt a release meets it before Packagist
+    rather than after.
