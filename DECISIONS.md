@@ -3169,10 +3169,6 @@ class.
   machine. It says so rather than failing obscurely, but a machine with no
   docker cannot run it — which is why it is not in `verify`, and why the 8.3
   matrix job remains the authority.
-- **`lava serve` on a real app on 8.3 is untested here.** The fix is reasoned
-  from the fixture/app difference (a real app has its own autoloader) and the
-  fixtures now prove the mechanism, but the only 8.3 serve exercised is a
-  fixture's.
 - **`git push origin main` will be non-fast-forward.** The org repository's
   `main` and `dev` hold an unrelated 2024 prototype (`decec6a`, `bb5492b`) and
   have never been touched by this work. Landing on `main` therefore means either
@@ -3208,8 +3204,35 @@ writes a line in the worker logged `ran pid=7 env='/probe/path'` under
 while `variables_order` (`EGPCS`) and `getenv()`'s contents were identical on
 both — which is what ruled out the environment and left the SAPI behaviour.
 
-And CI, on `1ad17a8`: **`gh run view 34653678933` reports all seven jobs
-`success`** — `demo`, `skeleton`, `isolated-install`, `test (8.5)`,
-`test (8.4)`, `test (8.3)`, `coverage`. The first run of this workflow ever to
-finish green, and the first time the `^8.3` floor has been checked by anything
-other than the manifest that declares it.
+And CI: **`gh run view 34653678933` reports all seven jobs `success`** on
+`1ad17a8` — `demo`, `skeleton`, `isolated-install`, `test (8.5)`,
+`test (8.4)`, `test (8.3)`, `coverage`. The docs commit that recorded it
+(`ca351c6`, run `34653771104`) is green on all seven as well. The first green
+runs of this workflow, and the first time the `^8.3` floor has been checked by
+anything other than the manifest that declares it.
+
+**Serving a REAL app on 8.3 was then run, not reasoned** — the last claim in
+this section that had been inference. `apps/demo` (which has its own installed
+`vendor/`, so it gets `App\` from its own composer autoloader the way any real
+app does) was migrated and served under `php:8.3-cli`:
+
+| Request | Result |
+|---|---|
+| `lava db:migrate --json` | `lava.db.migrate/1`, 1 migration applied, batch 1 |
+| the serve envelope | `lava.serve/1`, `"booted": true` |
+| `GET /tasks` | **200** `{"tasks":[]}` — controller, middleware and the database all resolved |
+| `GET /upstream/health` | **502** `transport_failed` — nothing listening on :8080, which is the correct diagnosis rather than a symptom |
+| `GET /nope` | **404** `route_not_found`, with its `lava routes --json` fix hint |
+| `"does not exist"` in the server log | **0** |
+
+That last row is the one that matters: it is the exact string the fixture
+failures were made of, and its absence is what shows the 8.3 breakage was a
+property of the FIXTURE HARNESS and not of the framework. The asymmetry entry
+212 asserted — real apps fine, fixtures broken — is now measured on both sides.
+It also closes the objection that the fixtures' fix might have been papering
+over a real 8.3 defect in `lava serve`: it was not, because on 8.3 `lava serve`
+serves a real app correctly with no fixture scaffolding at all.
+
+The repository was left untouched by that run (the database went to `/tmp`, and
+`git status` is clean afterwards), which is the check `docs/releasing.md` asks
+for after anything that exercises the demo.
