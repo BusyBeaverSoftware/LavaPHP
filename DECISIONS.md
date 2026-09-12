@@ -3236,3 +3236,119 @@ serves a real app correctly with no fixture scaffolding at all.
 The repository was left untouched by that run (the database went to `/tmp`, and
 `git status` is clean afterwards), which is the check `docs/releasing.md` asks
 for after anything that exercises the demo.
+
+## 2026-09-12 — the remote named after this project now contains this project
+
+216. **`origin` held an unrelated 2024 prototype, and the name it occupied was
+    the name this project needed.** `BusyBeaverSoftware/LavaPHP` was a private
+    org repo whose `main` was `decec6a` ("working on the router and dispatcher
+    for simple api framework", 2024-05-01) and whose `dev` was `bb5492b`
+    ("first code commit :)") — a three-commit prototype with **no common
+    ancestor** with this work. So the repository bearing this project's name
+    contained none of it, while the branch that *is* this project lived on a
+    branch of a repo whose default branch pointed at something else entirely.
+    Replaced by user decision, in the order "rename first, delete last":
+    rename, create, push, verify, and only then delete.
+
+217. **"Rename first, delete last" rather than delete-then-create.** The
+    ordering is not caution theatre; it is the difference between a plan that
+    can fail safely and one that cannot. Renaming frees the name while leaving
+    the prototype intact, so every later step — creating the new repo, pushing
+    `main`, watching CI — can fail and be retried with nothing lost, and the
+    delete happens last, when the thing that replaces it is already proven.
+    Delete-first would have destroyed the only remote copy of the prototype
+    before knowing whether the replacement could be pushed at all.
+
+218. **GitHub leaves a redirect after a rename, so `origin` was re-pointed
+    BEFORE the new repo existed.** `git remote rename origin archive-2024` plus
+    an explicit URL update means that for the whole window between the rename
+    and the new remote, there was no remote that could accept a push — a push
+    to the old URL would have followed GitHub's rename redirect into
+    `LavaPHP-archive-2024` and landed silently in the archive. The remote is
+    now gone entirely; `origin` is the only one left.
+
+219. **`main` was fast-forwarded to include the four floor fixes.** Local `main`
+    was `ffd751a`, four behind `m9-post-release`; `git merge --ff-only` moved it
+    to `cdc75ee` with no rewrite. The reason is the audience: `main` is what a
+    visitor clones from a public repo, and `ffd751a` is the commit whose 8.3 job
+    failed (entries 206–208). A default branch that does not compile on a PHP
+    version the manifest claims to support is the worst possible first
+    impression, and the fix already existed four commits up.
+
+220. **The 2024 prototype was preserved locally before the archive was
+    deleted.** `2024-prototype-main` → `decec6a` and `2024-prototype-dev` →
+    `bb5492b`. The archive's third branch, `m9-post-release` → `cdc75ee`, was
+    this project's own work and needed no preservation — it is now the new
+    repo's `main`. Deletion came only after all four conditions held: the new
+    repo existed, `main` was pushed and confirmed at `cdc75ee` by `ls-remote`
+    (not merely by a local push that reported success), all seven CI jobs were
+    green on it, and the archive was confirmed to hold 0 issues, 0 pull
+    requests, 0 releases and 0 tags. Those preserved copies are local-only, and
+    that is an acceptable place for them to live: the prototype is three commits
+    on `main` and one on `dev`, it is unrelated to this project's history, and
+    the user's decision was to delete it.
+
+221. **`0.1.0` was re-cut onto `cdc75ee`, and is still not pushed.** The tag had
+    been cut at `ffd751a` *before* the floor violations were known — which made
+    it a tag on the very commit whose 8.3 job went red, contradicting
+    `docs/releasing.md` step 7 ("CI is green on the tag commit"). Once run
+    `34696518049` returned seven green jobs on `cdc75ee`, the tag was moved:
+    **was `ffd751a`, now `cdc75ee`**. That SHA is recorded here rather than left
+    to `git reflog` because a moved tag is normally a thing to distrust, and the
+    reader is owed the reason this one is safe: it is local-only
+    (`git ls-remote --tags origin` → 0 refs), so no consumer has ever resolved
+    it, and moving it rewrites no published history. Pushing it remains a
+    stop-and-ask action and was not done.
+
+222. **The first CI run under the repository's own name is green on all seven
+    jobs, `coverage` included.** Run
+    `34696518049` on `cdc75ee`, 2026-09-12. The `coverage` job passing is the
+    first green coverage run this project has had on GitHub, which converts the
+    `pcov`-through-`PHP_INI_SCAN_DIR` mechanism from something reasoned about
+    locally into something observed (entry 215 recorded the same result on a
+    branch of the old repo; this is the first on the new one). It is one run,
+    not a pattern — the jobs re-run on every push.
+
+223. **Docs were corrected where this work made them false.**
+    `docs/releasing.md`'s "Known gaps at 0.1.0" opened with the CI coverage job
+    having "never had a green run on GitHub, because this checkout has no
+    remote" and closed with "PHP 8.3 and 8.4 are CI-only" — the first is now
+    false and the second is now half false, since `composer check:floor` lints
+    the floor locally through docker even though the *suite* on 8.3/8.4 remains
+    CI-only. Both were rewritten to the observed state. Separately, "The five
+    jobs are the authority" was wrong — there are seven — and a comment in
+    `packages/db/tests/Query/QueryBuilderTest.php` pointed the reader at
+    `tools/php-version-check.php`, a filename that never existed, while claiming
+    the floor is "parsed" locally: the exact mechanism entries 209–210 measured
+    as impossible, since a version-targeted php-parser accepts 8.4 grammar
+    silently. Corrected to `composer check:floor` /
+    `tools/php-floor-check.php`, and "parsed" to "linted".
+
+### Verified by running
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| The rename took | `gh repo view …-archive-2024 --json name,visibility` | `LavaPHP-archive-2024`, still `PRIVATE`, `main` intact |
+| The push landed on the NEW repo, not the archive | `gh api repos/BusyBeaverSoftware/LavaPHP/commits/main` | `cdc75ee` on the new public repo |
+| The archive was not touched by the push | `gh api repos/…-archive-2024/commits/main` | still `decec6a`, the 2024 prototype |
+| `origin` holds exactly what was intended | `git ls-remote --heads origin` | one ref, `refs/heads/main` = `cdc75ee` |
+| `main` fast-forwarded, not rewritten | `git merge --ff-only`, then SHA comparison | `main` == `m9-post-release` == `cdc75ee` |
+| CI green on the new repo | `gh run watch … --exit-status` | exit 0; `jobs: 7, green: 7` |
+| `test (8.3)` specifically, the job that failed before | `gh run view --json jobs` | `success` |
+| Archive held nothing but its branches | `gh api` for issues/pulls/releases/tags | 0, 0, 0, 0 |
+| Every archive branch is accounted for | `git ls-remote archive-2024` before deletion | `main`/`dev` preserved as tags; `m9-post-release` is our own `cdc75ee` |
+| The archive is gone | `gh repo view …-archive-2024` | `Could not resolve to a Repository` |
+| The tag is not published | `git ls-remote --tags origin \\| wc -l` | `0` |
+
+### What is still not verified
+
+- **The `0.1.0` tag is not pushed, by design.** Pushing it is a stop-and-ask
+  action; until then `lava/app`'s `composer create-project` path is untested
+  against Packagist, as `docs/releasing.md` says.
+- **The 2024 prototype now exists only as two local tags on this machine.** The
+  archive that held it has been deleted, by the user's decision. If those tags
+  are ever wanted elsewhere, `git push <remote> 2024-prototype-main` from this
+  checkout is the whole recovery procedure — but it is worth knowing that the
+  remote copy is gone before the laptop is.
+- **One green CI run is not a pattern.** It is the authority for `cdc75ee` and
+  nothing else; any commit that moves the tag has to earn its own green.

@@ -52,7 +52,7 @@ are the claims the gate cannot make on its own.
    `http-client`, each copied out with only `core` beside it, `composer install`
    then `composer validate`. This is the decoupling claim: a pack that has grown
    an undeclared dependency on a sibling fails here and nowhere else.
-7. **CI is green on the tag commit.** The five jobs are the authority on PHP
+7. **CI is green on the tag commit.** The seven jobs are the authority on PHP
    8.3, 8.4 and 8.5, on a machine that is not this one. Push a branch, watch the
    jobs go green, and only then cut the tag — a tag on a commit CI has not seen
    is a tag that may have to move, and a tag that moves is worse than a late
@@ -92,16 +92,23 @@ Packagist picks it up from the push.
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
-- **The CI coverage job has never had a green run on GitHub, because this
-  checkout has no remote.** The mechanism is proven locally — `pcov.directory`
-  set to the repository, the ini reaching child processes through
-  `PHP_INI_SCAN_DIR` — but setup-php's image is not this machine, and the job
-  must be observed green once before the gate can be called verified. Same for
-  the other four jobs, and for the `skeleton` job's `lava map --check` step,
-  which is what would have caught the stale map this repository shipped for two
-  milestones (see DECISIONS.md 170).
-- **PHP 8.3 and 8.4 are CI-only.** Development here is on 8.5.4. The floor is
-  enforced by the CI matrix, not by anything runnable on this machine.
+- **CI has been observed green, once, on the tag commit.** All seven jobs passed
+  on the public repository for run
+  [34696518049](https://github.com/BusyBeaverSoftware/LavaPHP/actions/runs/34696518049),
+  on 2026-09-12 and on `cdc75ee` — the same commit `main` points at. That run is
+  also the first green `coverage` job this project has had on GitHub, so the
+  `pcov`-through-`PHP_INI_SCAN_DIR` mechanism is now observed rather than only
+  reasoned about, and the `skeleton` job's `lava map --check` step — the one that
+  would have caught the stale map this repository shipped for two milestones
+  (DECISIONS.md 170) — has run for real. One green run is not a pattern: the
+  jobs are re-run on every push, and any push that moves the tag commit has to
+  earn its own green.
+- **PHP 8.3 and 8.4 are exercised by CI, and the floor is now checkable
+  locally too.** Development here is on 8.5.4. The CI matrix is what runs the
+  suite on 8.3 and 8.4; locally, `composer check:floor` (step 3) lints every
+  tracked file against a real 8.3 through docker. What is still CI-only is the
+  *suite* on those versions — a local 8.3 or 8.4 run means mounting the
+  repository into `php:8.3-cli` and running PHPUnit there by hand.
 - **No release has been published.** Until a tag is pushed, `lava/app`'s
   `composer create-project` path is untested against Packagist — the skeleton is
-  verified by copy-and-install (step 4) instead.
+  verified by copy-and-install (step 5) instead.
