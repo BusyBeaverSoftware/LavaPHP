@@ -107,52 +107,84 @@ push with no `tags:` filter and no job branches on `github.ref`; it is
 redundant but harmless. And the tagged commit is whatever the tag points at:
 move the tag to the commit whose record should ship, not to a convenient one.
 
-**Registering the packages is not enough either — and the reason is structural.**
-Packagist reads `composer.json` **only at the root of a repository**: it serves
-GitHub's whole-repo archive rather than a subdirectory of it, so it cannot
-publish `packages/db` out of this monorepo, and this repo's root manifest is
-`lava/lava`, the monorepo project itself. Publishing any one of the six packages
-therefore requires a **split mirror** — a repository containing just that
-directory — which is what Symfony and Laravel do and what `splitsh-lite` exists
-for. There is no single-repo path to Packagist, which is what makes "ship only
-`lava/core` this round" the same machinery as shipping all six rather than a
-cheaper alternative to it.
+**Registering needs something to register.** Packagist reads `composer.json`
+only at the root of a repository, and this repository's root is the monorepo, so
+each package is published from a read-only mirror of its own directory — see
+[Publishing](#publishing). The tag is still the release act: the split workflow
+pushes it to every mirror, and Packagist learns of it there.
 
-On top of that, five of the six manifests carry a development arrangement that
-distribution cannot keep:
+Cross-package constraints are lockstep: `^0.1.0` appears in the five packages
+that depend on core, so a minor release bumps them together or the packs
+resolve to a core older than the one they were tested against.
 
-- Each of `lava/db`, `lava/validate`, `lava/view`, `lava/http-client` and
-  `lava/app` declares `repositories: {"lava/core": {"type": "path", "url":
-  "../core"}}`. Measured 2026-09-12: this is **ignored when the package is a
-  dependency** — Composer reads `repositories` only from the root package, and a
-  consumer installs these as dependencies — so `composer require lava/db` is
-  unaffected by it. It is fatal only where the package *is* the root:
-  `composer create-project lava/app` (the app skeleton is the root in its own
-  `create-project`), and cloning a split mirror and installing there. A missing
-  path repository is a hard error, not a silent fallback
-  (`PathRepository.php:163`: *"The `url` supplied for the path (../core)
-  repository does not exist"*), which is the failure `packages/app/README.md`
-  describes.
-- Those same five declare `lava/core: ^0.1.0`, resolved during development from
-  the path repository's `options.versions` pin. This is the shape a published
-  package needs: a real constraint rather than `@dev`, which Composer calls
-  unbound and `validate --strict` rejects. The path repository is what the split
-  still has to strip; the constraint itself is already correct, because a
-  published `lava/core` at `0.1.0` satisfies `^0.1.0` from Packagist exactly as
-  the pinned path repository satisfies it here.
+## Publishing
 
-`lava/core` is the exception and the easy case: no path repository, no `lava/*`
-dependency, only real Packagist requirements — publishable verbatim, and the
-right package to prove a split pipeline on. The other five need the path
-repository and its `options.versions` pin stripped **in the split**
-(`splitsh-lite` is a pure prefix split and rewrites nothing, so this is a
-post-processing step); their `require` blocks need no edit. Which set ships, and
-how the mirrors are pushed, is a packaging decision rather than a mechanical
-one; see DECISIONS.md 228–232.
+Six packages are published, each from a read-only mirror of its directory:
 
-One maintenance consequence of the tightened constraints: `^0.1.0` now appears
-in six manifests, so a release bumps them together or the packs resolve to a
-core older than the one they were tested against.
+| Directory | Package | Mirror |
+|---|---|---|
+| `packages/core` | `lava/core` | `BusyBeaverSoftware/lava-core` |
+| `packages/db` | `lava/db` | `BusyBeaverSoftware/lava-db` |
+| `packages/validate` | `lava/validate` | `BusyBeaverSoftware/lava-validate` |
+| `packages/view` | `lava/view` | `BusyBeaverSoftware/lava-view` |
+| `packages/http-client` | `lava/http-client` | `BusyBeaverSoftware/lava-http-client` |
+| `packages/app` | `lava/app` | `BusyBeaverSoftware/lava-app` |
+
+The mirror names are set once, at the top of `.github/workflows/split.yml`. A
+package's name comes from its `composer.json`, never from its mirror.
+
+**Every manifest under `packages/` is publishable as it sits.** None carries a
+`repositories` block: in a published package that block is ignored when the
+package is a dependency and fatal when it is the root, and `composer
+create-project lava/app` makes the skeleton the root (DECISIONS.md 229). So the
+split is a pure prefix split that rewrites nothing, and the manifest CI tested
+is the one a consumer gets. Inside this repository the packages still resolve
+each other from the working tree — the root `composer.json` and each app under
+`apps/` declare path repositories — and a package installed on its own is given
+them by `tools/install-check.php`, in a scratch copy, never in its own file.
+
+`.github/workflows/split.yml` does the pushing. On a push to `main` it runs
+`git subtree split --prefix=packages/<name>` for each package and pushes the
+result to that mirror's `main`; on a tag, it pushes the tag. It refuses a split
+whose `composer.json` declares `repositories`, never forces a push, and pushes
+nothing at all until the `SPLIT_TOKEN` secret exists.
+
+### Before the first publish
+
+These steps create public repositories and publish packages, so a maintainer
+does them once, by hand:
+
+1. Create six **empty** public repositories under `BusyBeaverSoftware`, named as
+   in the table — no README, license or `.gitignore`, so the first push is not
+   refused as unrelated history.
+2. Create a fine-grained personal access token with **Contents: read and write**
+   on those six repositories only, and add it to this repository as the Actions
+   secret `SPLIT_TOKEN`.
+3. Push `main`. Check that each mirror now has `composer.json` at its root and
+   the history of its own directory.
+4. Sign in to packagist.org with GitHub and submit each mirror's URL. Set up
+   Packagist's GitHub integration (or its webhook) for each, so pushes and tags
+   reach it without a manual update.
+5. Tag the release here — `git tag -a 0.1.1 -m "0.1.1"`, then push the tag. The
+   workflow pushes it to every mirror, and Packagist publishes it. `0.1.0` is not
+   published: its manifests still carry path repositories.
+
+### Rehearsing it locally
+
+- `composer check:install` copies every package and app out of the working tree
+  as a fresh clone has it, and installs each for real: `composer validate
+  --strict` on the manifest as published, then `lava map --check` and `lava
+  check --strict` for the skeleton, the demo and the blog. Name targets to run
+  fewer: `composer check:install -- db app`. CI's `isolated-install` and
+  `skeleton` jobs run the same script.
+- `composer check:split` turns each package into a local git repository — a
+  mirror — and has a consumer that knows only those mirrors run `composer
+  create-project lava/app`, `composer require` for every pack, and `lava check
+  --strict`; every `lava/*` package in its lock must come from a mirror. It
+  builds the mirrors from the working tree, so it rehearses manifests before
+  they are committed. CI's `publish-rehearsal` job runs it too.
+
+Neither pushes or publishes anything, and neither can show Packagist itself.
 
 ## What is deliberately not part of a release
 
@@ -196,18 +228,13 @@ implies everything was verified is worse than one that lists what was not.
   untested against Packagist. The skeleton is verified by copy-and-install
   (step 5) instead. Registering the packages is the step that would make the
   pushed tag mean what "release" usually means; see "The tag" above.
-- **None of the six manifests can be published without a split.** Packagist
-  reads `composer.json` only at a repository root, and this repository's root is
-  the monorepo, so each package needs a split mirror before registration is even
-  possible. Five of the six additionally declare a `../core` path repository
-  that is monorepo-local and has to be stripped in the split — the *constraint*
-  half of that problem is fixed as of 2026-09-12, when they moved from the
-  unbound `lava/core: @dev` to `^0.1.0` resolved from a version-pinned path
-  repository. `lava/core` is the one package that could ship verbatim. The
-  detail, including what is and is not fatal for a consumer, is in "The tag"
-  above.
+- **The mirrors do not exist yet.** Every manifest is publishable as it sits and
+  the split workflow is in place, but nothing is pushed until the six mirror
+  repositories and the `SPLIT_TOKEN` secret exist — the one-time setup under
+  [Publishing](#publishing). `composer check:split` rehearses the whole path
+  locally, Packagist excepted.
 - **The first publishable split cannot come from `0.1.0`.** The manifests at the
   pushed tag still declare `@dev` against unpinned path repositories, and a
   pushed tag is immutable — so whatever Packagist is first pointed at has to be
-  a later tag (0.1.1 or beyond), cut from a commit whose manifests have been
-  through the split.
+  a later tag (0.1.1 or beyond), cut from a commit whose manifests carry no
+  path repositories.

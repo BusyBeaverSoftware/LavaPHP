@@ -10,6 +10,7 @@ use Lava\Core\Boot\BootStep;
 use Lava\Core\Config\Config;
 use Lava\Core\Container\Container;
 use Lava\Core\Features\Features;
+use Lava\Core\Features\FeatureScope;
 use Lava\Core\Log\LineLogger;
 use Lava\Core\Problem\InvalidConfig;
 use Psr\Log\LoggerInterface;
@@ -37,7 +38,18 @@ final class RegisterCoreServices implements BootStep
         $container = new Container();
         $container->value('app.dir', $ctx->appDir);
         $container->value('app.env', $ctx->env);
-        $container->singleton(Features::class, static fn (): Features => $features);
+        // `Features` is resolved through the scope, so whoever asks during a
+        // request — a handler parameter, a factory — gets the resolver bound to
+        // that request's subject, and whoever asks outside one gets boot's. As a
+        // singleton it handed every handler the anonymous resolver it was built
+        // with, and an audience flag read `off` in every handler and template
+        // while the router, which is given the bound one, read it `on`.
+        $container->factory(Features::class, static function (Container $c) use ($features): Features {
+            $scope = $c->get(FeatureScope::class);
+
+            return $scope instanceof FeatureScope ? $scope->current() : $features;
+        });
+        $container->singleton(FeatureScope::class, static fn (): FeatureScope => new FeatureScope($features));
 
         $level = $config->string('logging.level', $ctx->env === 'prod' ? 'info' : 'debug');
         if (!isset(LineLogger::LEVELS[$level])) {

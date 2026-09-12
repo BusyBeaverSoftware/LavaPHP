@@ -173,7 +173,11 @@ final class FrameworkReference
                 'file' => 'app/Commands.php',
                 'lang' => 'php',
                 'note' => 'Returns a callable that registers the app\'s own commands. A name a core '
-                    . 'command already uses is fatal — `lava routes` means the same thing in every app.',
+                    . 'command already uses is fatal — `lava routes` means the same thing in every app. '
+                    . 'A command that needs the app\'s services extends '
+                    . '`Lava\Core\Console\Commands\AppCommand`, which boots the app and hands `inspect()` '
+                    . 'the booted App. `Lava\Core\Testing\TestConsole` runs any command in a test and '
+                    . 'returns its exit code and envelope.',
                 'code' => <<<'PHP'
                     use Lava\Core\Console\CommandRegistry;
 
@@ -234,7 +238,9 @@ final class FrameworkReference
                 'file' => 'tests/HealthTest.php',
                 'lang' => 'php',
                 'note' => 'The harness boots the app in-process — no server, no network — and dispatches '
-                    . 'PSR-7 requests through the same handler the HTTP entry point uses.',
+                    . 'PSR-7 requests through the same handler the HTTP entry point uses. A client keeps '
+                    . 'cookies between requests the way a browser does, so a test can sign in and stay '
+                    . 'signed in; each new TestClient is a new visitor.',
                 'code' => <<<'PHP'
                     namespace App\Tests;
 

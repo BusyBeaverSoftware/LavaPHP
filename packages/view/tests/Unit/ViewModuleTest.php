@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\View\Tests\Unit;
 
+use Lava\Core\Features\FeatureScope;
 use Lava\Core\Boot\AppContext;
 use Lava\Core\Config\Config;
 use Lava\Core\Container\Container;
@@ -71,6 +72,9 @@ final class ViewModuleTest extends TestCase
 
         $container = new Container();
         $container->singleton(UrlGenerator::class, static fn (): UrlGenerator => new UrlGenerator($router));
+        // Core registers the flag scope before any module runs; the renderer
+        // reads it when it is built, so this stand-in registers it as well.
+        $container->singleton(FeatureScope::class, static fn (): FeatureScope => new FeatureScope(Flags::of()));
 
         (new ViewModule())->register(
             $container,

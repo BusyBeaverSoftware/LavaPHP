@@ -18,7 +18,7 @@ use Lava\Validate\Validation\Rules\RequiredRule;
  *
  * $input = $validator->validate($request->getParsedBody() ?? []);
  * if ($input->failed()) {
- *     return HttpErrors::forReport($input->report(), $request, $this->env);
+ *     return HttpErrors::forReport($input->report(), $request);
  * }
  * ```
  *

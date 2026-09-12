@@ -1,0 +1,31 @@
+{% extends 'layout.twig' %}
+
+{% block title %}Posts{% endblock %}
+
+{% block content %}
+  <h1>Posts</h1>
+
+  {# `{% for %}…{% else %}` runs the else branch for an empty sequence, so there
+     is one branch per state and no separate emptiness check to drift from it. #}
+  {% for post in posts %}
+    <article>
+      <h2><a href="{{ url('posts.show', {id: post.id}) }}">{{ post.title }}</a></h2>
+      <p class="muted">
+        {{ post.authorName }}
+        {%- if post.createdAt %} · {{ post.createdAt }}{% endif %}
+        {%- if not post.published %} · <strong class="draft">draft</strong>{% endif %}
+      </p>
+
+      {# Truncated for the list. A draft appears here only for its own author —
+         the filter is in PostRepository::visibleTo(), not in this template. #}
+      <div class="body">{{ post.body|length > 240 ? post.body|slice(0, 240) ~ '…' : post.body }}</div>
+    </article>
+  {% else %}
+    <p class="muted">Nothing published yet.</p>
+    {% if user %}
+      <p><a href="{{ url('posts.new') }}">Write the first post.</a></p>
+    {% else %}
+      <p class="muted"><a href="{{ url('register') }}">Register</a> to write one.</p>
+    {% endif %}
+  {% endfor %}
+{% endblock %}

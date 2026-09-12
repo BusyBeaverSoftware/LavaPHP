@@ -1,0 +1,88 @@
+name: split
+
+# Publishes each package under packages/ to a read-only repository of its own —
+# the only shape Packagist can read, because it takes composer.json from the root
+# of a repository (DECISIONS.md 229). Every manifest under packages/ is kept
+# publishable exactly as it sits in this repository, so this is a pure prefix
+# split: nothing is rewritten on the way out, and what CI tested is what ships.
+#
+# Nothing is pushed until the SPLIT_TOKEN secret exists. The one-time setup — six
+# empty repositories, a token that can write to them, and Packagist — is in
+# docs/releasing.md, "Publishing".
+
+on:
+  push:
+    branches: [main]
+    tags: ['*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  # One split per ref at a time: two pushes racing to one mirror would make the
+  # second a non-fast-forward.
+  group: split-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SPLIT_OWNER: BusyBeaverSoftware
+  SPLIT_PREFIX: lava-
+
+jobs:
+  split:
+    name: packages/${{ matrix.package }}
+    runs-on: ubuntu-latest
+    # A fork has neither the secret nor the mirrors; it should not try.
+    if: github.repository == 'BusyBeaverSoftware/LavaPHP'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [core, db, validate, view, http-client, app]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `git subtree split` walks the prefix's whole history; a shallow clone
+          # would publish a history that begins at this commit.
+          fetch-depth: 0
+          # checkout's stored credential is sent to every github.com remote, and
+          # it cannot write to the mirrors. Without this, the token in the push
+          # URL below would never be used.
+          persist-credentials: false
+
+      - name: Split packages/${{ matrix.package }}
+        id: split
+        run: |
+          sha=$(git subtree split --prefix="packages/${{ matrix.package }}")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "packages/${{ matrix.package }} splits to $sha"
+
+      - name: Refuse a manifest that only works inside this repository
+        # A `repositories` block in a published package is ignored when the
+        # package is a dependency and fatal when it is the root — and
+        # `composer create-project lava/app` makes the skeleton the root
+        # (DECISIONS.md 229). A split that carries one is not published.
+        run: |
+          git show "${{ steps.split.outputs.sha }}:composer.json" > "$RUNNER_TEMP/split-composer.json"
+          if jq -e 'has("repositories")' "$RUNNER_TEMP/split-composer.json" > /dev/null; then
+            echo "::error::packages/${{ matrix.package }}/composer.json declares repositories; a published package cannot."
+            exit 1
+          fi
+
+      - name: Push to the mirror
+        env:
+          SPLIT_TOKEN: ${{ secrets.SPLIT_TOKEN }}
+          PACKAGE: ${{ matrix.package }}
+          SHA: ${{ steps.split.outputs.sha }}
+        run: |
+          if [ -z "$SPLIT_TOKEN" ]; then
+            echo "::notice::SPLIT_TOKEN is not set, so nothing was published. See docs/releasing.md, \"Publishing\"."
+            exit 0
+          fi
+          remote="https://x-access-token:${SPLIT_TOKEN}@github.com/${SPLIT_OWNER}/${SPLIT_PREFIX}${PACKAGE}.git"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # Never forced. A mirror that already has this tag refuses the push,
+            # which is "a pushed tag is immutable" enforced where Packagist reads.
+            git push "$remote" "$SHA:refs/tags/$GITHUB_REF_NAME"
+          else
+            git push "$remote" "$SHA:refs/heads/main"
+          fi

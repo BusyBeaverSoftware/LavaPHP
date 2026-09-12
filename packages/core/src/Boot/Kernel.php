@@ -52,6 +52,7 @@ final class Kernel
         'app.dir',
         'app.env',
         \Lava\Core\Features\Features::class,
+        \Lava\Core\Features\FeatureScope::class,
         \Lava\Core\Log\LineLogger::class,
         \Psr\Log\LoggerInterface::class,
     ];

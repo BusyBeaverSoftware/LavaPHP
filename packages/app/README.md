@@ -12,12 +12,12 @@ composer create-project lava/app my-app
 cd my-app
 ```
 
-**This does not work yet.** `lava/app` is not registered on Packagist, so today
-that command 404s — see [the release checklist](../../docs/releasing.md#the-tag)
-for why a pushed tag does not change this on its own. Until the packages are
-registered, the working path is to copy `packages/app` next to a checkout of
-`packages/core` and run `composer install` there; that is what CI's `skeleton`
-job does, and it is the arrangement the rest of this file describes.
+**This does not work yet.** `lava/app` reaches Packagist through a mirror
+repository that does not exist until the one-time setup under
+[Publishing](../../docs/releasing.md#publishing) is done. Until then, work from a
+checkout of the monorepo: `composer check:install -- app`, from its root, copies
+this skeleton beside `packages/core`, installs it and checks it — the same thing
+CI's `skeleton` job runs.
 
 ## Run it
 
@@ -69,13 +69,15 @@ than failing at request time.
 
 ## Working on this skeleton inside the monorepo
 
-`composer.json` declares a **path repository** for `lava/core` pointing at
-`../core`. That is the monorepo's development arrangement: it is what makes
-`cd packages/app && composer install` resolve the in-tree core instead of going
-to the network.
+`composer.json` carries no `repositories` block, and must not: it is the file
+`composer create-project lava/app` hands a consumer, and a path repository there
+would point at a `../core` that does not exist in their project. Composer fails
+a root package's install outright rather than falling back to Packagist.
 
-A published `lava/app` must not carry that entry, since `../core` does not exist
-in a `create-project` target — Composer fails the install outright rather than
-falling back to packagist. Resolving `lava/core` from packagist is a release-time
-concern; until then the skeleton is verified by copying it next to a checkout of
-`core` and running a real `composer install` there.
+So inside the monorepo the skeleton is installed the way CI installs it — copied
+next to the packages it needs, and given path repositories to them in the copy.
+From the repository root:
+
+```sh
+composer check:install -- app
+```

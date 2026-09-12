@@ -10,6 +10,7 @@ use Lava\Core\Console\CommandRegistry;
 use Lava\Core\Container\Container;
 use Lava\Core\Features\FlagSubjectResolver;
 use Lava\Core\Features\Features;
+use Lava\Core\Features\FeatureScope;
 use Lava\Core\Http\HttpErrors;
 use Lava\Core\Http\RequestBody;
 use Lava\Core\Modules\ModuleRef;
@@ -30,6 +31,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * A PSR-15 request handler, so the whole app composes with any middleware —
  * dispatch is match → gate → pipeline → invoke, and every problem on that
  * path renders through the same media (JSON/diagnostics) as boot problems.
+ * A request no handler answers still passes through the global middleware:
+ * see {@see unrouted()}.
  */
 final class App implements RequestHandlerInterface
 {
@@ -141,14 +144,19 @@ final class App implements RequestHandlerInterface
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        // The body first, before routing: whether the client sent something
+        // The environment first, because every renderer below may need it and
+        // a handler has no easy way to learn it: recorded once, here, so
+        // `HttpErrors::forReport($report, $request)` renders prod as prod.
+        $request = $request->withAttribute(HttpErrors::ENV_ATTRIBUTE, $this->env);
+
+        // The body next, before routing: whether the client sent something
         // readable is a fact about the request, not about any route, and a
         // body that declares itself JSON and is not gets a 400 here rather
         // than reaching a handler as `null`.
         try {
             $request = RequestBody::parsed($request);
         } catch (LavaProblem $problem) {
-            return HttpErrors::toResponse($problem, $request, $this->env);
+            return $this->unrouted($request, $problem);
         }
 
         // Audience flags decide per request: when the app registered a
@@ -173,11 +181,19 @@ final class App implements RequestHandlerInterface
             $features = $features->forSubject($resolver->subjectFor($request));
         }
 
+        // Everything from here answers for this subject: the router, a handler
+        // that takes `Features`, and a template's `feature()` all read the one
+        // bound resolver — see FeatureScope.
+        return $this->scoped($features, fn (): ResponseInterface => $this->dispatch($request, $features));
+    }
+
+    private function dispatch(ServerRequestInterface $request, Features $features): ResponseInterface
+    {
         $result = $this->router->match($request->getMethod(), $request->getUri()->getPath(), $features);
         if (!$result instanceof Matched) {
             // RouteNotFound | MethodNotAllowed — both are problems, rendered
             // like every other problem, with the fix in the body.
-            return HttpErrors::toResponse($result, $request, $this->env);
+            return $this->unrouted($request, $result);
         }
 
         $route = $result->route;
@@ -201,6 +217,57 @@ final class App implements RequestHandlerInterface
             );
         } catch (\Lava\Core\Problem\LavaProblem $problem) {
             return HttpErrors::toResponse($problem, $request, $this->env);
+        }
+    }
+
+    /**
+     * Run a dispatch with `$features` current in the app's {@see FeatureScope}.
+     *
+     * An App built by hand around a bare container — tests do this — has no
+     * scope to set. Dispatch still works there; an injected `Features` is simply
+     * whatever that container holds.
+     *
+     * @template T
+     * @param \Closure(): T $work
+     * @return T
+     */
+    private function scoped(Features $features, \Closure $work): mixed
+    {
+        $scope = $this->container->has(FeatureScope::class) ? $this->container->get(FeatureScope::class) : null;
+
+        return $scope instanceof FeatureScope ? $scope->during($features, $work) : $work();
+    }
+
+    /**
+     * A request that reached no handler — no route matched, the method was
+     * wrong, or the body did not parse — answered through the global middleware
+     * all the same.
+     *
+     * The problem is thrown from where the handler would have been, so each
+     * global layer meets it exactly as it meets a handler's problem: a layer
+     * that catches it can answer — an app with an HTML face renders its own 404
+     * for a mistyped URL, not only for a missing record — and a layer that
+     * answers before calling inward still does, so a sign-in gate redirects an
+     * anonymous visitor before telling them whether a path exists. A layer that
+     * only decorates the response it gets back gets none, exactly as for a
+     * handler's problem. Built before the pipeline, as these three once were,
+     * they were the only requests no middleware could see.
+     *
+     * Route middleware does not run: there is no route to have declared any.
+     * A body that did not parse reaches the layers unparsed. What escapes them
+     * renders exactly as before, in the same media as every other problem and
+     * with the 405's `Allow` header.
+     */
+    private function unrouted(ServerRequestInterface $request, LavaProblem $problem): ResponseInterface
+    {
+        try {
+            return (new MiddlewarePipeline($this->container))->run(
+                $request,
+                $this->globalMiddleware,
+                static fn (ServerRequestInterface $unrouted): ResponseInterface => throw $problem,
+            );
+        } catch (LavaProblem $escaped) {
+            return HttpErrors::toResponse($escaped, $request, $this->env);
         }
     }
 }

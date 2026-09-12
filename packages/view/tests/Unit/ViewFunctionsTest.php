@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\View\Tests\Unit;
 
+use Lava\Core\Features\FeatureScope;
 use Lava\Core\Features\Features;
 use Lava\Core\Features\Flag;
 use Lava\Core\Problem\LavaProblem;
@@ -43,7 +44,7 @@ final class ViewFunctionsTest extends TestCase
 
     private function callable(string $name): callable
     {
-        foreach (ViewFunctions::registry($this->url, $this->features) as $function) {
+        foreach (ViewFunctions::registry($this->url, new FeatureScope($this->features)) as $function) {
             if ($function->getName() === $name) {
                 /** @var callable $callable */
                 $callable = $function->getCallable();
@@ -53,6 +54,30 @@ final class ViewFunctionsTest extends TestCase
         }
 
         self::fail("no template function named '{$name}' is registered");
+    }
+
+    public function testFeatureAnswersFromTheScopeAtCallTimeNotAtRegistration(): void
+    {
+        // The registry is built once, with the renderer. If `feature()` held the
+        // resolver it was registered with, an audience flag would answer for
+        // nobody on every request; it has to ask the scope each time it is
+        // called. Two resolvers with different settings stand in for "boot" and
+        // "bound to this request's subject".
+        $boot = Flags::of(['beta_banner' => Flag::off()]);
+        $bound = Flags::of(['beta_banner' => Flag::on()]);
+        $scope = new FeatureScope($boot);
+
+        $feature = null;
+        foreach (ViewFunctions::registry($this->url, $scope) as $function) {
+            if ($function->getName() === 'feature') {
+                $feature = $function->getCallable();
+            }
+        }
+        self::assertIsCallable($feature);
+
+        self::assertFalse($feature('beta_banner'));
+        self::assertTrue($scope->during($bound, static fn (): bool => $feature('beta_banner')));
+        self::assertFalse($feature('beta_banner'), 'the scope was restored, so the answer is boot\'s again');
     }
 
     /** @return array<string, mixed> */
@@ -75,7 +100,7 @@ final class ViewFunctionsTest extends TestCase
         // notice, so it asserts the names and their order rather than a count.
         $names = array_map(
             static fn (TwigFunction $f): string => $f->getName(),
-            ViewFunctions::registry($this->url, $this->features),
+            ViewFunctions::registry($this->url, new FeatureScope($this->features)),
         );
 
         self::assertSame(['url', 'feature'], $names);
@@ -103,7 +128,7 @@ final class ViewFunctionsTest extends TestCase
         $router->finalize(new ProblemReport());
 
         $call = null;
-        foreach (ViewFunctions::registry(new UrlGenerator($router), $this->features) as $function) {
+        foreach (ViewFunctions::registry(new UrlGenerator($router), new FeatureScope($this->features)) as $function) {
             if ($function->getName() === 'url') {
                 /** @var callable $call */
                 $call = $function->getCallable();

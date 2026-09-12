@@ -408,7 +408,12 @@ final class KernelBootTest extends TestCase
 
         self::assertInstanceOf(BootFailure::class, $result);
         $codes = array_map(static fn (LavaProblem $p): string => $p->code(), $result->problems->problems());
+        // Two codes, not three: `Welcome` depends on the broken `Greeter`, so
+        // the sweep resolves Greeter's factory twice and it throws twice. One
+        // diagnosis, reported once — every inspection command prints this
+        // report, and only `lava check` used to deduplicate it.
         self::assertSame(['service_not_registered', 'unexpected_failure'], $codes);
+
 
         // The missing id is attributed to the factory's own wiring line — the
         // container names the registration whose factory asked for it, so the

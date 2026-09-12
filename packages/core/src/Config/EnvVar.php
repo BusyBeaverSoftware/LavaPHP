@@ -27,6 +27,12 @@ final readonly class EnvVar
     ) {
     }
 
+    /**
+     * A variable the app needs. Declaring it lists it in `lava env`, and an unset
+     * one is a `lava check` warning and a failure under `lava check --strict`,
+     * which is the build's gate. Boot does not consult declarations, so code that
+     * cannot run without the value should also refuse where it reads it.
+     */
     public static function required(string $name, string $description = '', bool $secret = false): self
     {
         return new self($name, true, $description, $secret);

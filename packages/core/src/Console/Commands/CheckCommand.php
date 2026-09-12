@@ -65,6 +65,15 @@ final class CheckCommand extends AppCommand
     /** The order sections are reported in — the order an app is built in. */
     private const ORDER = ['boot', 'config', 'wiring', 'routes', 'features', 'env', 'commands', 'map', 'tests'];
 
+    /**
+     * Sections whose every check is a sweep `--quick` skips, so under `--quick`
+     * they say `skipped` rather than an `ok` for a check that never ran. `env`
+     * is the env audit and `map` the freshness check; neither has a code boot
+     * can raise. `features` is not here: boot validates every definition, and
+     * only the per-flag resolution sweep is skipped.
+     */
+    private const SWEEPS = ['env', 'map'];
+
     public function name(): string
     {
         return 'check';
@@ -172,7 +181,7 @@ final class CheckCommand extends AppCommand
             'middleware' => count($app->globalMiddleware),
         ];
 
-        $sections = self::sections($report, $tests, $skipReason, $args->bool('strict'));
+        $sections = self::sections($report, $tests, $skipReason, $args->bool('strict'), $args->bool('quick'));
         $ordered = self::fixFirst($report);
         $strictFail = $args->bool('strict') && !$report->isEmpty();
 
@@ -294,24 +303,16 @@ final class CheckCommand extends AppCommand
     /** Adds unless an identical problem (same code AND same context) is present. */
     private static function add(ProblemReport $report, LavaProblem $problem): void
     {
-        $key = self::key($problem);
-        foreach ($report->problems() as $existing) {
-            if (self::key($existing) === $key) {
-                return;
-            }
+        if (!$report->includes($problem)) {
+            $report->add($problem);
         }
-        $report->add($problem);
     }
 
-    private static function key(LavaProblem $problem): string
-    {
-        return $problem->code() . '|' . json_encode($problem->context);
-    }
 
     /**
      * @return list<array{name: string, status: string, problems: int, detail: string}>
      */
-    private static function sections(ProblemReport $report, ?TestRun $tests, ?string $skipReason, bool $strict): array
+    private static function sections(ProblemReport $report, ?TestRun $tests, ?string $skipReason, bool $strict, bool $quick): array
     {
         $bySection = [];
         foreach ($report->problems() as $problem) {
@@ -323,6 +324,10 @@ final class CheckCommand extends AppCommand
             $problems = $bySection[$name] ?? [];
             if ($name === 'tests') {
                 $sections[] = self::testSection($tests, $skipReason, $problems, $strict);
+                continue;
+            }
+            if ($quick && in_array($name, self::SWEEPS, true)) {
+                $sections[] = ['name' => $name, 'status' => 'skipped', 'problems' => 0, 'detail' => '--quick'];
                 continue;
             }
             $fatals = array_filter($problems, static fn (LavaProblem $p): bool => $p->severity() === Severity::Fatal);

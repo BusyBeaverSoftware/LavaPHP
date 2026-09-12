@@ -148,9 +148,13 @@ every other description gets a commented template, and the payload says so via
 to users" and guessing which column, of which type, with which default is how a
 generator writes a migration nobody asked for.
 
-An existing file is refused, never overwritten. The only way to collide is to
-generate two migrations inside the same second, and the file already there may
-be someone's half-written work.
+**Generation order is run order.** A migration generated in the same second as
+the newest one on disk — or while this machine's clock is behind it — takes the
+next second instead, so `create_monitors_table` then `create_checks_table` can
+never sort `checks` first. That matters beyond SQLite: a foreign key to a table
+that does not exist yet is an error on MySQL and PostgreSQL that SQLite never
+raises. An existing file is still refused, never overwritten — it may be
+someone's half-written work.
 
 ## Migrations
 

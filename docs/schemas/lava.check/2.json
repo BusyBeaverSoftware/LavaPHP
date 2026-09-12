@@ -25,7 +25,7 @@
                   },
                   "status": {
                     "enum": ["ok", "failed", "skipped"],
-                    "description": "skipped only ever applies to `tests`. Under --strict a warn makes its section failed."
+                    "description": "skipped applies to `tests` when no suite ran, and to `env` and `map` under --quick, whose checks are sweeps --quick does not run. Under --strict a warn makes its section failed."
                   },
                   "problems": { "type": "integer", "minimum": 0 },
                   "detail": {

@@ -39,12 +39,12 @@ vendor/bin/lava map --check     # is AGENTS.md still an accurate map of this app
 | `GET\|HEAD` | `/health` | liveness; the app's one unauthenticated route |
 | `GET` | `/tasks` | list, newest first; `?done=done` or `?done=open` to filter |
 | `POST` | `/tasks` | create; `title` required, `due_on` optional |
-| `GET` | `/tasks/{id}` | one task, or a `task_not_found` 404 |
-| `POST` | `/tasks/{id}/complete` | mark done, idempotently |
-| `DELETE` | `/tasks/{id}` | delete |
+| `GET` | `/tasks/{id:int}` | one task, or a `task_not_found` 404 |
+| `POST` | `/tasks/{id:int}/complete` | mark done, idempotently |
+| `DELETE` | `/tasks/{id:int}` | delete |
 | `GET` | `/tasks/export` | CSV download — **gated** by `tasks_csv_export` |
 | `GET` | `/` | the task board, as HTML |
-| `GET` | `/tasks/{id}/view` | one task, as HTML |
+| `GET` | `/tasks/{id:int}/view` | one task, as HTML |
 | `GET` | `/upstream/health` | the upstream's health, fetched with `lava/http-client` |
 
 `GET /tasks/export` is gated so the demo has a flag that does something visible.

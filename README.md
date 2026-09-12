@@ -21,6 +21,7 @@ packages/view        lava/view        — Twig integration
 packages/http-client lava/http-client — small HTTP client (ext-curl)
 packages/app         lava/app         — application skeleton (composer create-project target)
 apps/demo            — dogfood demo app, the canonical example
+apps/blog            — a blog with sign-in, built the way a consumer builds one
 docs/                — conventions, per-pack docs, stable JSON schemas for every CLI command
 ```
 
@@ -48,12 +49,13 @@ and the monorepo's install fills only the root `vendor/`, so `apps/demo/vendor`
 does not exist until you run it — and it must be the demo's own install, because
 the app's `App\` namespace and its pack wiring are only in *its* autoloader.
 
-The per-package commands this will eventually support — `composer require
-lava/db`, `composer create-project lava/app my-app` — **do not work yet.** None
-of the six packages is on Packagist, and each needs a **split mirror** before it
-can be: Packagist reads `composer.json` only at a repository root, and this
-repository's root is the monorepo. [docs/releasing.md](docs/releasing.md#the-tag)
-records exactly where that stands and what it would take.
+The per-package commands — `composer require lava/db`, `composer create-project
+lava/app my-app` — **do not work yet.** Each package is published from a
+read-only mirror of its directory, because Packagist reads `composer.json` only
+at a repository root. The manifests and the split workflow are ready; creating
+the mirrors and registering them on Packagist is a one-time maintainer step
+([docs/releasing.md](docs/releasing.md#publishing)). `composer check:split`
+rehearses the whole path locally.
 
 ## Development
 

@@ -1,0 +1,39 @@
+{% extends 'layout.twig' %}
+
+{% block title %}{{ post ? 'Edit post' : 'New post' }}{% endblock %}
+
+{% block content %}
+  <h1>{{ post ? 'Edit post' : 'New post' }}</h1>
+
+  {# `errors._form` is where a problem that belongs to no single field lands —
+     a mismatched CSRF token, or a field-level error `FormErrors` could not
+     attach. `is defined` rather than a truthiness test: strict_variables is on,
+     so an unguarded missing key is a render error, not a blank. #}
+  {% if errors._form is defined %}
+    <p class="error">{{ errors._form }}</p>
+  {% endif %}
+
+  {# The action is chosen by whether a post was handed in, which is the only
+     difference between the two forms — the fields, the rules and the context
+     keys are shared, so store and update cannot drift apart in the template
+     either. The update route is the same path with a POST. #}
+  <form method="post" action="{{ post ? url('posts.update', {id: post.id}) : url('posts.store') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+
+    <label for="title">Title</label>
+    <input id="title" type="text" name="title" value="{{ values.title }}" maxlength="200" required>
+    {% if errors.title is defined %}<p class="error">{{ errors.title }}</p>{% endif %}
+
+    <label for="body">Body</label>
+    <textarea id="body" name="body" rows="14">{{ values.body }}</textarea>
+    {% if errors.body is defined %}<p class="error">{{ errors.body }}</p>{% endif %}
+
+    <label class="check" for="published">
+      <input id="published" type="checkbox" name="published" value="1"
+             {{ values.published ? 'checked' : '' }}>
+      Published — unchecking this saves a draft only you can see
+    </label>
+
+    <button type="submit">Save</button>
+  </form>
+{% endblock %}

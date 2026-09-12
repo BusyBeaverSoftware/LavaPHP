@@ -139,6 +139,21 @@ complaint rather than `preg_last_error_msg()`'s "Internal error". A pattern with
 no delimiters is refused separately, because anchoring it first would make PCRE
 complain about a `$` the author never typed.
 
+**A URL is a `->custom()` rule.** There is no built-in URL rule. `filter_var`
+does the parsing, and the predicate says which schemes the app accepts — the
+part only the app can decide:
+
+```php
+'url' => Field::str()->required()->max(2048)->custom(
+    name: 'http_url',
+    check: static fn (mixed $url): bool => is_string($url)
+        && filter_var($url, FILTER_VALIDATE_URL) !== false
+        && in_array(parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true),
+    message: "'{field}' must be an absolute http or https URL.",
+    fix: "Send '{field}' as a URL starting with http:// or https://, e.g. https://example.com/health.",
+),
+```
+
 ## Reading the result
 
 ```php

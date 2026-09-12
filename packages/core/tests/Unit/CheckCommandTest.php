@@ -47,7 +47,7 @@ final class CheckCommandTest extends CommandTestCase
         // asserted rather than derived because this test's job is to notice a
         // count that changed without anyone deciding it should.
         self::assertSame(
-            ['routes' => 4, 'services' => 12, 'features' => 1, 'commands' => 12, 'middleware' => 1],
+            ['routes' => 4, 'services' => 13, 'features' => 1, 'commands' => 12, 'middleware' => 1],
             $envelope['data']['counts'],
         );
     }
@@ -130,6 +130,17 @@ final class CheckCommandTest extends CommandTestCase
         self::assertNull($envelope['data']['tests']);
         self::assertSame('--quick', $this->section($envelope, 'tests')['detail']);
         self::assertSame([], $envelope['problems']);
+
+        // env-app declares a required variable nothing sets, so a full check
+        // reports it. --quick did not look, and must say so rather than `ok`:
+        // every check in `env` and `map` is a sweep it skipped.
+        foreach (['env', 'map'] as $swept) {
+            self::assertSame('skipped', $this->section($envelope, $swept)['status'], "{$swept} was not checked");
+            self::assertSame('--quick', $this->section($envelope, $swept)['detail']);
+        }
+        // `features` is still checked at boot — every definition is validated
+        // there — so it keeps an honest `ok`.
+        self::assertSame('ok', $this->section($envelope, 'features')['status']);
     }
 
     public function testNoTestsSkipsOnlyTheSuite(): void
@@ -215,7 +226,7 @@ final class CheckCommandTest extends CommandTestCase
 
         self::assertStringContainsString('routes', $text);
         self::assertStringContainsString('tests', $text);
-        self::assertStringContainsString('routes: 4  services: 12  features: 1  commands: 12', $text);
+        self::assertStringContainsString('routes: 4  services: 13  features: 1  commands: 12', $text);
     }
 
     /**

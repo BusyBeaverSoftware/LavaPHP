@@ -182,8 +182,10 @@ The fix for the second one is to guard the link, not to change the field:
 
 Answers whether a flag is on, from the same resolver a route's `->when()` uses —
 so a gated button and a gated route cannot disagree, because there is only one
-answer. A typo'd name is `unknown_feature` with the nearest real name, not a
-silently hidden button.
+answer. That holds for audience flags too (`Flag::users`, `Flag::rollout`):
+during a request, `feature()` reads the resolver `App::handle()` bound to that
+request's subject. A typo'd name is `unknown_feature` with the nearest real
+name, not a silently hidden button.
 
 ## What a failure looks like
 

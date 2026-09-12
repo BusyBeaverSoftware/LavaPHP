@@ -195,6 +195,20 @@ final class Field
      * The message and fix are required and are written by the same person as
      * the predicate — see {@see CustomRule} for why there is no default.
      *
+     * **A rule that compares against another field closes over the payload.**
+     * The predicate is handed only this field's value, so "must match
+     * `password`" is written with the input in scope — and it passes when the
+     * other field is unreadable, because that field's own rules report it:
+     *
+     * ```php
+     * 'password_confirm' => Field::str()->required()->custom(
+     *     'matches_password',
+     *     fn (mixed $value): bool => !is_string($input['password'] ?? null) || $value === $input['password'],
+     *     'The two passwords do not match.',
+     *     "Send the same value in 'password' and '{field}'.",
+     * ),
+     * ```
+     *
      * @param \Closure(mixed): bool $check
      * @throws InvalidRule at validation time, if the predicate throws.
      */

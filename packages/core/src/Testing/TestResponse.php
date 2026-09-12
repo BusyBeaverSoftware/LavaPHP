@@ -28,6 +28,21 @@ final class TestResponse
         return $this->response->getHeaderLine($name);
     }
 
+    /**
+     * Every value of a header, one entry per line as the response sent them.
+     *
+     * `header()` joins repeated lines with a comma, which is right for most
+     * headers and wrong for `Set-Cookie`: a response that sets two cookies sends
+     * two lines, and an `Expires` date already contains a comma, so the joined
+     * form cannot be split back apart.
+     *
+     * @return list<string>
+     */
+    public function headers(string $name): array
+    {
+        return array_values($this->response->getHeader($name));
+    }
+
     public function hasHeader(string $name): bool
     {
         return $this->response->hasHeader($name);

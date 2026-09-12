@@ -29,13 +29,17 @@ final class ValidateWiring implements BootStep
         $container = $ctx->container;
 
         foreach ($container->ids() as $id) {
+            // Never fail-fast: the next registration still gets its turn. But a
+            // failing singleton is not cached, so every service that depends on
+            // it re-runs its factory and re-throws the same problem — once per
+            // dependent. The sweep reports the diagnosis once; the second
+            // resolution adds nothing a reader can act on.
             try {
                 $container->get($id);
             } catch (LavaProblem $problem) {
-                // Never fail-fast: the next registration still gets its turn.
-                $ctx->problems->add($problem);
+                self::report($ctx, $problem);
             } catch (\Throwable $throwable) {
-                $ctx->problems->add(UnexpectedFailure::of(self::class, $throwable));
+                self::report($ctx, UnexpectedFailure::of(self::class, $throwable));
             }
         }
 
@@ -59,6 +63,13 @@ final class ValidateWiring implements BootStep
             } catch (\Throwable) {
                 // The sweep above already reported this registration's failure.
             }
+        }
+    }
+
+    private static function report(BootCtx $ctx, LavaProblem $problem): void
+    {
+        if (!$ctx->problems->includes($problem)) {
+            $ctx->problems->add($problem);
         }
     }
 }

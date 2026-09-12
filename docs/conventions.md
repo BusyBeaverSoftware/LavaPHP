@@ -127,6 +127,13 @@ hand-edited: change the app and run `lava map`.
   every audience flag then resolves off for every request (fail-closed).
   Anonymous requests (resolver returns null) always resolve audience flags
   OFF — no anonymous bucketing, by documented policy.
+- **A flag read during a request answers for that request's subject.**
+  `App::handle()` binds the resolver to the subject and makes it current in
+  `FeatureScope` for the whole dispatch, so a handler's `Features` parameter, a
+  template's `feature()` and the router's `->when()` give one answer. Code built
+  once — a singleton service, middleware — takes `FeatureScope` and calls
+  `current()` when it runs; a `Features` taken in a constructor is boot's
+  anonymous resolver.
 
 ## The reflection boundary
 
@@ -156,6 +163,13 @@ container is explicit registrations only.
 Middleware: PSR-15 class-strings, resolved from the container at request time
 (register them in `app/Services.php`, validated at boot). Lists are
 outermost-first: `app/Middleware.php` (global) wraps route middleware.
+
+Global middleware also wraps a request no route answers — an unknown path
+(404), a known path with the wrong method (405), a body that does not parse
+(400). The problem is thrown from where the handler would have been, so a
+global layer can catch it and answer, exactly as it can a handler's problem;
+what no layer catches renders as it always did. Route middleware runs only once
+a route has matched.
 
 ## Route paths
 

@@ -1,0 +1,85 @@
+{#
+  The shell every page extends.
+
+  Two things here come from lava/view rather than a bare Twig install, and both
+  are visible from this file:
+
+   - `url('home')` and `url('posts.show', {id: …})` take a route NAME. A
+     hardcoded `/posts/7` breaks silently when a route changes — the page still
+     renders and the link 404s. Through the router, a bad link is impossible: an
+     unknown name is an `unknown_route` problem naming the route.
+
+   - `feature('signups_open')` answers from the same resolver the router uses for
+     `->when('signups_open')`. So the Register link and the /register route
+     disappear together, and the page cannot advertise a 404.
+
+  Escaping is not configured here because it is not configurable: the pack sets
+  `autoescape` to html always, so every `{{ … }}` below is escaped whether or not
+  the file is named `.twig`. `strict_variables` is on too, which is why missing
+  keys are guarded with `is defined` rather than silently reading as empty.
+
+  `user` and `csrf` arrive on every render — see App\Http\Page, which exists
+  precisely because this pack exposes two functions and no way to add a global.
+#}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Lava Blog{% endblock %}</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 42rem; margin: 0 auto; padding: 1.5rem; }
+    header { display: flex; flex-wrap: wrap; gap: 1rem; align-items: baseline; border-bottom: 1px solid #8884; padding-bottom: .75rem; }
+    header .brand { text-decoration: none; font-weight: 700; }
+    nav { display: flex; gap: 1rem; align-items: baseline; font-size: .9rem; }
+    nav .who { color: #888; }
+    form.inline { display: inline; }
+    form.inline button { all: unset; cursor: pointer; font: inherit; font-size: .9rem; color: inherit; text-decoration: underline; }
+    article { border-bottom: 1px solid #8884; padding: 1rem 0; }
+    article h1, article h2 { margin: 0 0 .25rem; }
+    article h2 a { text-decoration: none; }
+    .body { white-space: pre-wrap; }
+    .muted { color: #888; font-size: .9rem; }
+    .draft { color: #b60; }
+    .error { color: #c33; font-size: .9rem; margin: .25rem 0 .75rem; }
+    label { display: block; margin-top: 1rem; font-weight: 600; font-size: .9rem; }
+    input[type=text], input[type=email], input[type=password], textarea {
+      width: 100%; box-sizing: border-box; font: inherit; padding: .4rem;
+    }
+    label.check { font-weight: 400; display: flex; gap: .5rem; align-items: center; }
+    label.check input { width: auto; }
+    button[type=submit] { margin-top: 1rem; font: inherit; padding: .4rem 1rem; cursor: pointer; }
+    footer { margin-top: 2.5rem; border-top: 1px solid #8884; padding-top: .75rem; }
+    code { font-size: .875em; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="{{ url('home') }}">Lava Blog</a>
+    <nav>
+      {% if user %}
+        <a href="{{ url('posts.new') }}">New post</a>
+        <span class="who">{{ user.displayName }}</span>
+        {# Signing out is a POST with a CSRF token: a GET logout is fireable by
+           any `<img src>` on any page on the internet. #}
+        <form class="inline" method="post" action="{{ url('logout') }}">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button type="submit">Sign out</button>
+        </form>
+      {% else %}
+        <a href="{{ url('login') }}">Sign in</a>
+        {% if feature('signups_open') %}
+          <a href="{{ url('register') }}">Register</a>
+        {% endif %}
+      {% endif %}
+    </nav>
+  </header>
+
+  <main>{% block content %}{% endblock %}</main>
+
+  <footer class="muted">
+    Rendered by <code>lava/view</code>; every value on this page is escaped.
+  </footer>
+</body>
+</html>

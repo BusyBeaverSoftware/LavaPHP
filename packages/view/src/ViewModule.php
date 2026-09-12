@@ -6,6 +6,7 @@ namespace Lava\View;
 
 use Lava\Core\Boot\AppContext;
 use Lava\Core\Container\Container;
+use Lava\Core\Features\FeatureScope;
 use Lava\Core\Modules\Module;
 use Lava\Core\Modules\PackInfo;
 use Lava\Core\Problem\InvalidConfig;
@@ -77,18 +78,24 @@ final class ViewModule implements Module
             throw ViewDirMissing::of($templateDir, 'view.path', $ctx->appDir);
         }
 
-        $features = $ctx->features;
-
         $container->singleton(
             ViewRenderer::class,
-            static function (Container $c) use ($templateDir, $cacheDir, $debug, $features): ViewRenderer {
+            static function (Container $c) use ($templateDir, $cacheDir, $debug): ViewRenderer {
                 $url = $c->get(UrlGenerator::class);
                 if (!$url instanceof UrlGenerator) {
                     throw InvalidConfig::wrongService(UrlGenerator::class, UrlGenerator::class, $url);
                 }
 
+                // The scope, not a `Features`: the renderer is built once, and
+                // `feature()` must answer for the request being rendered, which
+                // only the scope knows at call time.
+                $scope = $c->get(FeatureScope::class);
+                if (!$scope instanceof FeatureScope) {
+                    throw InvalidConfig::wrongService(FeatureScope::class, FeatureScope::class, $scope);
+                }
+
                 $twig = TwigFactory::of($templateDir, $cacheDir, $debug);
-                foreach (ViewFunctions::registry($url, $features) as $function) {
+                foreach (ViewFunctions::registry($url, $scope) as $function) {
                     $twig->addFunction($function);
                 }
 

@@ -13,10 +13,21 @@ use Psr\Http\Message\ServerRequestInterface;
  * Problems → HTTP responses, identical content in both media:
  * JSON `{"problems": […]}` for API clients, the hand-escaped diagnostics
  * page for browsers. `curl` (no useful Accept) gets JSON — agents first.
+ *
+ * **The environment that renders the page comes from the request** when the
+ * caller does not pass one. `App::handle()` records it as {@see ENV_ATTRIBUTE} on
+ * every request, so `HttpErrors::forReport($input->report(), $request)` — the
+ * pattern the docs show, in a handler that has no easy way to learn the
+ * environment — renders the production page in production. With no environment
+ * passed and none recorded, the page is the production one: the default that
+ * shows less is the one that cannot put a submitted value in front of a browser.
  */
 final class HttpErrors
 {
-    public static function toResponse(LavaProblem $problem, ?ServerRequestInterface $request = null, string $env = 'dev'): ResponseInterface
+    /** The request attribute `App::handle()` records the app's environment under. */
+    public const ENV_ATTRIBUTE = 'lava.env';
+
+    public static function toResponse(LavaProblem $problem, ?ServerRequestInterface $request = null, ?string $env = null): ResponseInterface
     {
         $report = new ProblemReport();
         $report->add($problem);
@@ -75,7 +86,7 @@ final class HttpErrors
     public static function forReport(
         ProblemReport $report,
         ?ServerRequestInterface $request = null,
-        string $env = 'dev',
+        ?string $env = null,
     ): ResponseInterface {
         $first = $report->problems()[0] ?? null;
         if (!$first instanceof LavaProblem) {
@@ -93,12 +104,20 @@ final class HttpErrors
         ProblemReport $report,
         int $status,
         ?ServerRequestInterface $request = null,
-        string $env = 'dev',
+        ?string $env = null,
     ): ResponseInterface {
         if (self::wantsJson($request)) {
             return Responses::json(['problems' => $report->json()], $status);
         }
-        return Responses::html(DiagnosticsPage::render($report, $env), $status);
+        return Responses::html(DiagnosticsPage::render($report, $env ?? self::envOf($request)), $status);
+    }
+
+    /** The environment the request was answered in, or `prod` when nothing recorded one. */
+    private static function envOf(?ServerRequestInterface $request): string
+    {
+        $env = $request?->getAttribute(self::ENV_ATTRIBUTE);
+
+        return is_string($env) && $env !== '' ? $env : 'prod';
     }
 
     /**

@@ -1,0 +1,36 @@
+{% extends 'layout.twig' %}
+
+{% block title %}{{ post.title }}{% endblock %}
+
+{% block content %}
+  <article>
+    <h1>{{ post.title }}</h1>
+    <p class="muted">
+      {{ post.authorName }}
+      {%- if post.createdAt %} · {{ post.createdAt }}{% endif %}
+      {%- if not post.published %} · <strong class="draft">draft</strong>{% endif %}
+    </p>
+
+    {# A post body is arbitrary text from whoever wrote it. It is escaped here
+       like everything else, and `white-space: pre-wrap` is what preserves the
+       line breaks the author typed — `|raw` would preserve them by making every
+       post an XSS hole. #}
+    <div class="body">{{ post.body }}</div>
+  </article>
+
+  {# The ownership test is `post.authorId == user.id`, and it is a display
+     decision only: BlogController::update() re-checks it server-side against
+     the row, because a form that is hidden is not a form that is refused. #}
+  {% if user and post.authorId == user.id %}
+    <p>
+      <a href="{{ url('posts.edit', {id: post.id}) }}">Edit</a>
+      <form class="inline" method="post" action="{{ url('posts.destroy', {id: post.id}) }}"
+            onsubmit="return confirm('Delete this post?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">Delete</button>
+      </form>
+    </p>
+  {% endif %}
+
+  <p class="muted"><a href="{{ url('home') }}">← All posts</a></p>
+{% endblock %}

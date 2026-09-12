@@ -44,22 +44,7 @@ final class TestApp
         $appDir = rtrim($appDir, '/');
         self::autoloadFor($appDir);
 
-        $envBefore = $_ENV;
-        $serverBefore = $_SERVER;
-        $realBefore = getenv();
-
-        self::clearLavaEnv();
-        foreach ($env as $name => $value) {
-            $_ENV[$name] = $value;
-            $_SERVER[$name] = $value;
-            putenv("{$name}={$value}");
-        }
-
-        try {
-            return Kernel::boot($appDir);
-        } finally {
-            self::restoreEnv($envBefore, $serverBefore, $realBefore);
-        }
+        return IsolatedEnvironment::run($env, static fn (): App|BootFailure => Kernel::boot($appDir));
     }
 
     /**
@@ -110,54 +95,5 @@ final class TestApp
                 require_once $file;
             }
         });
-    }
-
-    /** Clears LAVA_ENV and every LAVA_FEATURE_* from all three environment sources. */
-    private static function clearLavaEnv(): void
-    {
-        foreach ([&$_ENV, &$_SERVER] as &$source) {
-            foreach (array_keys($source) as $key) {
-                if (is_string($key) && self::isLavaVar($key)) {
-                    unset($source[$key]);
-                }
-            }
-        }
-        unset($source);
-        // getenv() with no arguments is always an array — no false case to guard.
-        foreach (array_keys(getenv()) as $key) {
-            if (self::isLavaVar($key)) {
-                putenv($key); // putenv('NAME') unsets
-            }
-        }
-    }
-
-    /**
-     * Puts the three environment sources back exactly as they were.
-     *
-     * `array<mixed>`, not `array<string, string>`: these two are verbatim
-     * snapshots of `$_ENV` and `$_SERVER` — whatever PHP's SAPI put in them —
-     * and this method's only job is to put them back. A narrower claim would be
-     * a promise nothing here keeps, and the analyser is right to reject it:
-     * `$_SERVER` genuinely may hold a non-string (`argv`, a nested array under
-     * a SAPI that sets one), and the restore is a straight assignment.
-     *
-     * @param array<mixed> $envBefore
-     * @param array<mixed> $serverBefore
-     * @param array<string, string> $realBefore
-     */
-    private static function restoreEnv(array $envBefore, array $serverBefore, array $realBefore): void
-    {
-        $_ENV = $envBefore;
-        $_SERVER = $serverBefore;
-        foreach (getenv() as $name => $value) {
-            if (!array_key_exists($name, $realBefore) || $realBefore[$name] !== $value) {
-                putenv(array_key_exists($name, $realBefore) ? "{$name}={$realBefore[$name]}" : $name);
-            }
-        }
-    }
-
-    private static function isLavaVar(string $key): bool
-    {
-        return $key === 'LAVA_ENV' || str_starts_with($key, 'LAVA_FEATURE_');
     }
 }

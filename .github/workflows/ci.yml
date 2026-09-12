@@ -78,25 +78,14 @@ jobs:
         with:
           php-version: '8.5'
           coverage: none
-      - name: Each pack installs with only its own declared dependencies
-        # `composer validate --strict`, and it passes. It could not while every
-        # pack required `lava/core: @dev`: composer calls that an unbound
-        # constraint and `--strict` turns it into a non-zero exit, so this step
-        # ran plain `validate` — which would NOT have caught an unbound or
-        # unsatisfiable constraint, the very thing it looks like it checks. The
-        # packs now declare `lava/core: ^0.1.0` resolved from a version-pinned
-        # path repository, so the strict gate is back on.
-        run: |
-          for pkg in db validate view http-client; do
-            rm -rf /tmp/iso && mkdir -p /tmp/iso/packages
-            cp -r packages/core "packages/$pkg" /tmp/iso/packages/
-            (
-              cd "/tmp/iso/packages/$pkg" \
-                && composer install --no-interaction --no-progress \
-                && composer validate --strict \
-                && echo "OK: lava/$pkg installed standalone"
-            )
-          done
+      - name: Each package installs on its own, from the manifest a consumer receives
+        # The same script `composer check:install` runs locally, so this green
+        # can be had before a push. Each package is copied out as a fresh clone
+        # has it, `composer validate --strict` runs on the manifest AS
+        # PUBLISHED, and only then is the copy given path repositories to its
+        # siblings — the packages carry none, because a published package
+        # cannot (DECISIONS.md 229) — and installed.
+        run: php tools/install-check.php core db validate view http-client
 
   skeleton:
     name: Prove lava/app boots green from a fresh install
@@ -107,27 +96,33 @@ jobs:
         with:
           php-version: '8.5'
           coverage: none
-      - name: Fresh copy of the skeleton, beside core, installed for real
-        # The layout matters: `vendor/lava/core` is a SYMLINK to the sibling
-        # core, which is what every path-repo install looks like. That symlink is
-        # what made the binary load the monorepo's autoloader instead of the
-        # app's, so this job fails if that regression ever comes back.
-        run: |
-          rm -rf /tmp/skeleton && mkdir -p /tmp/skeleton/packages
-          cp -r packages/core packages/app /tmp/skeleton/packages/
-          rm -rf /tmp/skeleton/packages/app/vendor /tmp/skeleton/packages/app/composer.lock
-          cd /tmp/skeleton/packages/app
-          composer install --no-interaction --no-progress
-          # The create-project target's manifest is the one consumers receive,
-          # so it is held to the strict gate too. It declares `lava/core:
-          # ^0.1.0` against a version-pinned path repository rather than the
-          # unbound `@dev` that `--strict` rejects.
-          composer validate --strict
-          # R2: the skeleton ships a pre-generated AGENTS.md that is accurate
-          # from the moment of `composer install` — no chicken-and-egg with
-          # `lava map`, so this passes on a fresh checkout with no map run.
-          ./vendor/bin/lava map --check
-          ./vendor/bin/lava check --strict
+      - name: Fresh copy of the skeleton, installed for real, then mapped and checked
+        # The skeleton's manifest is the file `composer create-project lava/app`
+        # hands a consumer, so it is validated strictly as published and carries
+        # no path repository; the copy is given one to its sibling core.
+        # `vendor/lava/core` is still a SYMLINK to that sibling — the layout that
+        # once made the binary load the monorepo's autoloader instead of the
+        # app's — so this still fails if that regression comes back. R2: the
+        # skeleton ships a pre-generated AGENTS.md, so `lava map --check` passes
+        # with no map run.
+        run: php tools/install-check.php app
+
+  publish-rehearsal:
+    name: Rehearse publishing — mirrors, create-project, require, check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - name: Each package as its own repository, consumed the way Packagist serves it
+        # Local git repositories stand in for the mirrors split.yml pushes, and a
+        # Composer home listing them stands in for Packagist. The consumer runs
+        # the documented commands verbatim — create-project, require, check —
+        # and every lava/* package it locks must come from a mirror. Nothing is
+        # pushed or published. `composer check:split` runs the same locally.
+        run: php tools/split-check.php
 
   demo:
     name: Prove apps/demo boots, migrates and passes green
@@ -218,6 +213,80 @@ jobs:
             || { echo "the self-fetch did not come back ok"; exit 1; }
       - name: Verify the app the way its README says to
         working-directory: /tmp/demo/apps/demo
+        run: |
+          ./vendor/bin/lava map --check
+          ./vendor/bin/lava check --strict
+
+  blog:
+    name: Prove apps/blog boots, signs a visitor up over a socket and passes green
+    runs-on: ubuntu-latest
+    env:
+      # The blog refuses to boot without a session secret — a cookie signed with
+      # an empty key is forgeable — so every step that boots it needs one. A
+      # literal is right here: it signs cookies inside one throwaway job.
+      SESSION_SECRET: ci-only-session-secret-not-a-real-one
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - name: Fresh copy of the blog, beside the packs it loads, installed for real
+        # The same shape as the demo job, for the same reasons: a real install
+        # symlinks `vendor/lava/*` to sibling checkouts, and every pack
+        # `apps/blog/composer.json` requires must be copied or the install fails
+        # on a path repository that is not on disk. This list and that manifest
+        # move together.
+        run: |
+          rm -rf /tmp/blog && mkdir -p /tmp/blog/packages /tmp/blog/apps
+          cp -r packages/core packages/db packages/validate packages/view /tmp/blog/packages/
+          cp -r apps/blog /tmp/blog/apps/blog
+          rm -rf /tmp/blog/apps/blog/vendor /tmp/blog/apps/blog/composer.lock
+          cd /tmp/blog/apps/blog
+          composer install --no-interaction --no-progress
+          composer validate --strict
+      - name: Sign a visitor up over a real socket
+        # `TestClient` never opens a socket, so this is the one place the session
+        # cookie crosses a real HTTP boundary: the CSRF token read off the form, a
+        # register POST carrying the cookie that token belongs to, and a page
+        # that knows who is signed in afterwards. Then the one claim that
+        # needs the global middleware to see unrouted requests: a mistyped URL
+        # is the blog's own page, not the framework's.
+        #
+        # The server is stopped on every exit path; see the demo job for why.
+        working-directory: /tmp/blog/apps/blog
+        run: |
+          ./vendor/bin/lava db:migrate
+          ./vendor/bin/lava serve >/tmp/blog-serve.log 2>&1 &
+          serve_pid=$!
+          trap 'kill "$serve_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8080/health >/dev/null && break
+            sleep 0.25
+          done
+
+          jar=$(mktemp)
+          token=$(curl -sf -c "$jar" -b "$jar" http://127.0.0.1:8080/register \
+            | sed -n 's/.*name="csrf" value="\([^"]*\)".*/\1/p' | head -n 1)
+          test -n "$token" || { echo "no CSRF token on /register"; exit 1; }
+
+          status=$(curl -s -o /dev/null -w '%{http_code}' -c "$jar" -b "$jar" \
+            --data-urlencode "csrf=$token" \
+            --data-urlencode 'email=ci@example.com' \
+            --data-urlencode 'display_name=CI' \
+            --data-urlencode 'password=a-long-enough-password' \
+            --data-urlencode 'password_confirm=a-long-enough-password' \
+            http://127.0.0.1:8080/register)
+          test "$status" = 303 || { echo "register answered $status"; exit 1; }
+
+          curl -sf -c "$jar" -b "$jar" http://127.0.0.1:8080/ | grep -q 'Sign out' \
+            || { echo "the visitor was not signed in after registering"; exit 1; }
+
+          curl -s -H 'Accept: text/html' http://127.0.0.1:8080/no/such/page | grep -q 'Lava Blog' \
+            || { echo "an unrouted 404 was not the blog's own page"; exit 1; }
+      - name: Verify the app the way its README says to
+        working-directory: /tmp/blog/apps/blog
         run: |
           ./vendor/bin/lava map --check
           ./vendor/bin/lava check --strict

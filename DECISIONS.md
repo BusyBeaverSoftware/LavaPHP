@@ -3639,3 +3639,376 @@ for after anything that exercises the demo.
     remote, merged — it is the only place the pre-merge review state is
     recorded, and deleting it would discard the one artifact a reviewer of this
     decision would want.
+
+## 2026-09-12 — a website built from outside the repository, and what it changed
+
+The user asked for LavaPHP to be used the way a consumer would use it: a blog
+with user authentication, in a new directory outside this repository
+(`/home/randy/projects/lava-test-blog`), against the `0.1.0` packs through path
+repositories and with no framework changes. The build produced a friction report
+(`FRICTION.md` in that directory). The user then asked for improvements and for
+an example site. This section records the report's review against the source,
+the framework changes that survived it, and the blog's move into `apps/blog`.
+
+234. **Most of the report's limitations were already answered in the source.**
+    Every finding was re-checked against the code, and where a claim was about
+    behaviour, measured:
+
+    | § | The report said | Verdict | Evidence |
+    |---|---|---|---|
+    | 1 | the packs cannot be installed from Packagist | holds | release mechanics — entries 228–229 |
+    | 2 | there is no way to start an app outside the monorepo | overstated | `docs/packs/lava-view.md` and `lava-db.md` document each config file key by key, the DSN's deliberate lack of a default included; `view_dir_missing` prints its own fix |
+    | 3 | routing failures never reach middleware | holds | entry 235 |
+    | 4 | `TestClient` has no cookie jar | holds | entry 236 |
+    | 5 | cookie params are empty under test | holds | `new ServerRequest()` leaves them empty — entry 236 |
+    | 6 | `EnvVar::required` is not a gate | wrong | with the variable unset, `lava check` prints `env ok missing_env_var` and the warning, and `--strict` fails (entry 11); the run the report quoted had the secret set |
+    | 7 | there is no cross-field validation | wrong | the `Validator` docblock and entry 34 give the idiom: `custom()` closing over the payload |
+    | 8 | there is no way to add a Twig global | wrong as stated | `ViewRenderer::environment()` exposes Twig; a global is still the wrong home for request state on a singleton |
+    | 9 | `forReport()` puts JSON in a browser tab | wrong | `reportToResponse()` negotiates to `DiagnosticsPage` |
+    | 10 | smaller things | mixed | the demo README's route table did say `{id}` (now `{id:int}`); `Validated::bool()` and `defaultExpression()` exist |
+
+    Recorded rather than quietly corrected, because the wrong claims share a
+    cause worth acting on: each came from reading a *signature* without the
+    prose beside it. `Field::custom(\Closure(mixed): bool)` looks as though it
+    cannot see another field; `EnvVar::required` reads like a gate; `ViewRenderer`
+    lists no `addGlobal`. The answers were one docblock away, which makes this a
+    discoverability finding — entry 240 acts on it. The report in its own
+    directory now carries the same verdicts.
+
+235. **A request no route answers passes through the global middleware.**
+    `App::handle()` returned the 404, the 405 and the malformed-body 400 before
+    it built the pipeline, so they were the only responses no middleware could
+    see: an app with an HTML face rendered its own page for a missing record and
+    the framework's diagnostics page for a mistyped URL, and had no way to change
+    it. The three are now thrown from where the handler would have been
+    (`App::unrouted()`), so a global layer meets them exactly as it meets a
+    handler's problem. Decided alongside:
+
+    - **Thrown, not rendered and passed outward.** A layer that catches the
+      problem — an app's error page, the reason for the change — can answer it;
+      a 404 *response* would reach that layer indistinguishable from a 404 a
+      handler built on purpose. Handler problems already travel as exceptions.
+    - **Route middleware does not run.** No route matched, so nothing a route
+      declared applies. `UnroutedRequestTest` registers recorders under ok-app's
+      ids: the control GET to `/users/42` records `['global', 'route']`, the
+      wrong-method POST records `['global']`.
+    - **A layer that only decorates the response it gets back sees nothing**, as
+      for a handler's problem. The first version of the test asserted ok-app's
+      `X-Timing` header on a 404 and failed: that header is added to a returned
+      response, and a thrown problem returns none. The assumption was wrong, not
+      the change — and a sentence built on the same assumption had reached
+      `App`'s docblock. Both were corrected; the test now records invocations.
+    - **No injectable error renderer.** It would be a second rendering mechanism
+      beside middleware, with its own container id to document, when the pipeline
+      was already the seam for handler problems and only had to see these three.
+    - **The `FlagSubjectResolver` misconfiguration response stays direct.**
+      `ValidateWiring` reports that registration at boot; the check in `handle()`
+      is defense in depth for a state a green boot cannot reach.
+
+    This is a behaviour change for any 0.1.x app with a global layer that answers
+    early: a sign-in gate now answers unrouted requests too. That is the better
+    behaviour — it stops telling a stranger which paths exist — but it is new.
+    Against the unchanged `App.php`, four of the six tests fail; the two that pass
+    are the no-change controls.
+
+236. **`TestClient` keeps cookies between requests, by default.** Every
+    `Set-Cookie` a response sends goes into a `CookieJar` and is carried on later
+    requests from the same client, in the `Cookie` header and in
+    `getCookieParams()` — decoded with `urldecode`, as PHP decodes `$_COOKIE`.
+    Removal (`Max-Age` ≤ 0, a past `Expires`), `Path` scoping and RFC 6265's
+    default path are honoured. `Domain`, `HttpOnly`, `SameSite` and `Secure` are
+    ignored on purpose: one app, no script, no TLS — and a session cookie marked
+    `Secure` for production must not silently vanish from its own suite. A
+    `Cookie` header the test passes joins the jar's cookies and wins per name.
+    `TestResponse::headers()` returns each line of a header, because `header()`'s
+    comma-joined form cannot be split back once an `Expires` date is in it.
+
+    On by default, not opt-in, because the friction was that the obvious test —
+    sign in, then request a page — silently did not work, and an opt-in keeps that
+    true for everyone who does not know to opt in. Each `new TestClient($app)` is
+    a new visitor, so a test that builds its own client per request is unaffected;
+    `cookies()` returns the jar to inspect, seed or clear. The `cookie-app` fixture
+    sets, scopes and removes cookies, and every assertion reads what the handler
+    saw rather than what the jar holds.
+
+237. **A failing service is reported once, not once per service that depends on
+    it.** Found by booting the blog with `SESSION_SECRET` unset: `lava about`,
+    `routes`, `services`, `config`, `features`, `env`, `describe` and
+    `map --check` each printed `missing_session_secret` twice. A singleton whose
+    factory throws is never cached, so `ValidateWiring`'s sweep re-ran the factory
+    for `SessionMiddleware`, which depends on it. `lava check` never showed the
+    duplicate because it deduplicated privately by code and context; that rule
+    moved to `ProblemReport::includes()`, and the sweep and `check` both use it.
+    `broken-wiring-app` gained a `Welcome` service depending on its broken
+    `Greeter`, which makes the existing `['service_not_registered',
+    'unexpected_failure']` assertion the regression test. Against the old sweep it
+    failed, with the code at indexes 0 and 2.
+
+238. **The map lists declared environment variables only.** Found when
+    `lava check --strict` called the blog's `AGENTS.md` stale minutes after
+    `lava map` wrote it; the only change in between was a local `config/.env`.
+    Reproduced on `apps/demo` without touching its code: current as committed,
+    stale after `cp config/.env.example config/.env` — the instruction on the
+    first line of its own `.env.example` — and current again once the file was
+    deleted. `ProjectMap` took its env section from `App::envVars()`, which
+    appends names found only in `config/.env` so that `lava env` can show them.
+    Such a name declares nothing (entry 42) and lives in a gitignored file, so
+    the map now leaves it out and `lava env` still shows it.
+    `testALocalDotEnvDoesNotMoveTheFingerprint` boots two copies of `env-app`,
+    one with its `.env` deleted, and requires one fingerprint; it fails against
+    the old `ProjectMap`. The count invariant in
+    `testTheCountsAreTheAppsOwnRegistries` now counts declared entries.
+
+239. **`apps/blog` is the second example app.** The demo is the framework's
+    dogfood: every pack, an API first, the app acceptance runs use. The blog is
+    the other shape a consumer brings — an HTML website with sessions, forms and
+    error pages of its own — and it was written from outside the repository
+    first. Moving it in removed three workarounds and added tests that were not
+    possible before:
+
+    - deleted: its own cookie jar (`tests/Support/Browser.php` now only knows the
+      app's forms), the `Cookie`-header fallback in `SessionCookie`, and its
+      `PasswordMismatch` problem, replaced by the `custom()` idiom;
+    - `ErrorPageMiddleware` now covers unrouted requests, and re-adds the 405
+      `Allow` header that its page replaces;
+    - new page tests pin a mistyped URL as the blog's 404 for a browser and
+      `route_not_found` for an agent, and `GET /logout` as a 405 with
+      `Allow: POST`.
+
+    It is analysed by the same level-8 run as the demo. The two apps declare the
+    same `App\Tests\PagesTest` and `App\Http\health`, which looked like a reason
+    for a separate config; measured first, one run over both apps reported
+    exactly the six errors the blog reported alone, so the paths joined
+    `phpstan.neon`. The six were real — the blog had never been analysed — and
+    were fixed structurally: value types on two form helpers' arrays, a null
+    check on `SessionData::$userId` where `authenticated()` hid the type from the
+    analyser, `preg_match` checked with `!== 1` before `$matches[1]` is read, and
+    `SessionData::fromJson()` taking `array<mixed>` in place of an inline `@var`.
+    The blog suite's assertion count fell from 274 to 218 in that change without
+    losing a check: `assertSame(1, preg_match(…))` counted once per CSRF-token
+    read, and `fail()` on a miss is not counted.
+
+    CI gains a `blog` job shaped like `demo`'s: a fresh copy installed beside the
+    four packs; a real-socket sign-up (the CSRF token read off `/register`, a POST
+    carrying the cookie that token belongs to, `Sign out` on the next page); a
+    mistyped URL asserted to be the blog's own page; then `lava map --check` and
+    `lava check --strict`. `SESSION_SECRET` is a literal in the job — the app does
+    not boot without one, and this one signs cookies inside a throwaway job.
+
+    The hand-written authentication is a maintained liability `apps/demo` does
+    not carry. It is an example of the framework's seams, not an auth library;
+    `apps/blog/DECISIONS.md` D1 records that trade.
+
+240. **Three docblocks now answer the three misreadings.** `Field::custom()`
+    shows the cross-field idiom beside the signature that suggested it was
+    impossible; `EnvVar::required()` says what an unset variable does in
+    `lava check`, under `--strict`, and at boot; `ViewRenderer::environment()`
+    says a global added there holds for every render the process performs, so
+    request state belongs in the context. A sentence about cookies in
+    `FrameworkReference`'s test artifact changed the rendered `AGENTS.md` of
+    `apps/demo` and `packages/app` by two lines each and neither fingerprint,
+    which is entry 42 working as intended.
+
+241. **What was verified, on this machine, and what was not.** Nothing here is
+    committed or pushed, so none of it has run in CI — the new `blog` job
+    included.
+
+    - Every pack suite: **1010 tests, 5436 assertions, 0 skipped** with the
+      pdo_sqlite/pcov shim, up from 992 and 5382; the 18 new tests are the whole
+      difference.
+    - phpstan: level 8 over every pack, both apps and `tools`, and core at
+      `max` — no errors.
+    - Each regression test was run against the unfixed code first, and failed
+      there: the wiring sweep (the code at indexes 0 and 2), four of the six
+      unrouted-request tests (the other two are the no-change controls), and the
+      `.env` fingerprint test.
+    - `lava check --strict`: green on `apps/blog` (36 tests), `apps/demo` (24)
+      and `packages/app` (5).
+    - `composer check:floor`: 505 files parse on PHP 8.3.
+    - `composer coverage`: every pack at or above its floor — core 88.68%
+      (88.58% before this change), db 88.90%, http-client 96.69%, validate
+      98.29%, view 97.73%.
+    - Over a real socket, against `lava serve`: a sign-up (303), a signed-in page
+      after it, a post written (303 to `/posts/1`) and listed at `/api/posts`, a
+      mistyped URL as the blog's 404 for a browser and `route_not_found` for
+      `curl`, `GET /logout` as a 405 carrying `Allow: POST`, and an unparsable
+      JSON body as the blog's 400 page.
+    - The CI `blog` job, replayed on a fresh copy of the working tree — tracked
+      and new files only, so no `vendor/`, `config/.env` or database — with
+      `curl --retry` standing in for the job's `sleep` loop: install,
+      `composer validate --strict`, the socket sign-up, `lava map --check` and
+      `lava check --strict`, all green.
+
+    Not verified: the CI run itself, which only a push starts.
+
+## 2026-09-12 — the second consumer run's fix list, and packages publishable as they sit
+
+A fresh agent that knew only the public docs built Pulse, an uptime monitor, outside
+this repository (`/home/randy/projects/lava-test-pulse`). Its eleven findings were
+each reproduced or confirmed against the source before anything was changed, and
+all eleven held. The user then asked for the fix list to be implemented on
+`feat/consumer-findings` and for the repository structure to be updated. This
+section records both.
+
+242. **A flag read during a request answers for that request's subject.** (Pulse
+    B1.) `Features` was a core singleton holding boot's resolver, which has no
+    subject, and `lava/view` captured that same object for `feature()`. Only the
+    router was handed the resolver `App::handle()` binds per request. So an audience
+    flag was `on` for a route's `->when()` and `off` in the handler behind it and in
+    its template — measured on `subject-app` as user `u1`: the gated route 200, the
+    injected `Features->on()` false, `forSubject(u1)->on()` true — which is exactly
+    what `lava-view.md` promised could not happen.
+
+    `FeatureScope`, a new core service, now holds the bound resolver for exactly one
+    dispatch: `App::handle()` runs everything after resolving the subject inside
+    `during()`, which restores the previous resolver in a `finally`. `Features::class`
+    is a factory that returns the scope's current resolver, and
+    `ViewFunctions::registry()` takes the scope and asks it at call time. Rejected:
+    a request attribute that the invoker special-cases (templates have no request, so
+    they would still disagree); a request argument on `ViewRenderer::render()` (every
+    call site changes, and the one that forgets brings the bug back silently); a Twig
+    global (request state on a singleton, which leaks between requests — the blog's
+    D7).
+
+    What it costs. The container now holds one piece of request state, bounded by
+    `during()`; `FeatureScopeTest` pins restoration on return, on a throw, and when
+    bindings nest. A singleton that takes `Features` in its constructor still gets
+    boot's resolver, so `conventions.md` now says code built once takes
+    `FeatureScope`. `CORE_SERVICES` gained an entry, so every app's service count rose
+    by one and the committed maps of `apps/demo`, `apps/blog` and `packages/app` were
+    regenerated. `ViewFunctions::registry()` changed signature, a pack API change
+    inside 0.1.x. A body that fails to parse is answered before the subject is
+    resolved, so its 400 is dispatched unbound.
+
+243. **A problem page renders in the environment of the request that caused it.**
+    (Pulse P5.) `HttpErrors::forReport()` and `toResponse()` defaulted to `dev`. The
+    documented handler pattern, `lava-validate.md` and `apps/demo` all omit the
+    argument, and a handler cannot inject the environment because `app.env` is a
+    string id — so a browser in production got the verbose page, context and
+    submitted values included. `App::handle()` now records the environment as
+    `HttpErrors::ENV_ATTRIBUTE` (`lava.env`) before anything else, and a render given
+    no environment reads it, falling back to `prod`. `prod` because the default that
+    shows less is the one that cannot leak; JSON is unaffected, since the envelope
+    carries context in every environment by design. Rejected: an injectable
+    environment object, which would leave every existing call site — the documented
+    one included — wrong until someone edits it.
+
+244. **`service_not_registered` for a class that does not exist names the import.**
+    (Pulse P3.) An unimported parameter type got "register it in app/Services.php:
+    `new App\Http\FlagSubjectResolver(…)`" — a class that does not exist. When the id
+    is a namespaced name with no class, interface or enum behind it, the message now
+    says so, and the fix says to add the `use` import; `HandlerInvoker` passes the
+    registered ids that share the short name, so the fix can read "Add
+    `use Lava\Core\Features\FlagSubjectResolver;`". The context gains `type_exists`
+    and `candidates`. The code stays `service_not_registered`: it is the same
+    diagnosis with a better fix, and a new code would have been a contract change for
+    no new information.
+
+245. **`lava check --quick` says `skipped` for what it did not check.** (Pulse P2.)
+    `env` holds only `missing_env_var` and `map` only `stale_map`, both raised by
+    sweeps `--quick` skips, so both sections printed `ok` for checks that never ran —
+    `map ok` over a stale `AGENTS.md`. Under `--quick` they now report `skipped` with
+    the detail `--quick`. `features` keeps its `ok`, because boot validates every
+    definition. `lava.check/2` is not bumped: `skipped` was already in the enum, only
+    the description widened, and a `/2` consumer already handles the value (entry 46
+    bumped for an enum *addition*, which this is not).
+
+246. **`db:new` never reuses a second.** (Pulse P1.) Two migrations generated in
+    one second shared a stamp, and sorted by description: `create_checks_table`
+    before `create_monitors_table`, whose table it references — an error on MySQL and
+    PostgreSQL that SQLite never raises. The stamp is now the later of now and one
+    second past the newest migration on disk, read from file names alone: loading
+    every migration would make `db:new` fail on a half-written one. `now` is cut to
+    whole seconds first, because a `now` with microseconds compares later than a
+    stamp from the same second and would skip the bump. The future-stamped-file test
+    fails against the old command; the back-to-back test cannot fail
+    deterministically without the fix (two subprocesses may straddle a second) and
+    is kept for the property it documents, not as the proof.
+
+247. **An app's commands can be tested in-process: `TestConsole`.** (Pulse P6, D3.)
+    The framework's own `CommandTestCase` lives under `tests/Support`, which is
+    `autoload-dev` and never reaches a consumer. `Lava\Core\Testing\TestConsole`
+    runs any command — an app's own included — through `Console`, and returns a
+    `CommandResult` (exit code, both streams, the decoded envelope, its data and
+    problem codes). `IsolatedEnvironment` was extracted from `TestApp`, so both keep
+    the same hermetic promise. Not added: replacing a service inside a booted app.
+    Entry 89 puts HTTP fakes at construction through PSR-18, and a container override
+    would be a second mechanism with its own failure modes; `TestConsole`'s docblock
+    says to test outward-facing logic against an injected fake and the command's
+    contract through the console. `AppCommand` and `TestConsole` are now named in
+    `FrameworkReference`'s commands artifact, and `conventions.md` documents the scope
+    that replaces `forSubject()` in handlers (Pulse D1).
+
+248. **Every manifest under `packages/` is publishable as it sits.** The repository
+    structure the user asked for. Packagist needs a split mirror per package (entry
+    229), and the five manifests that depended on core carried a `../core` path
+    repository that a published package cannot keep. Two ways to get rid of it:
+    rewrite each split after splitting, or never put it in the manifest. The second
+    was taken. A split then rewrites nothing, so the manifest CI tested is the
+    manifest a consumer gets; the mirrors' history stays a pure function of this
+    repository's, so they never need a forced push; and `composer create-project
+    lava/app`'s failure (Pulse B2) is removed at its source.
+
+    Development inside the repository does not change. The root `composer.json` and
+    each app declare path repositories, and a dependency's `repositories` are ignored
+    anyway (entry 229). A package installed on its own gets sibling path
+    repositories in a scratch copy from `tools/install-check.php` — the
+    `composer check:install` entry 232 offered and nobody wrote — and CI's
+    `isolated-install` and `skeleton` jobs now run that script, so their green can
+    be reproduced before a push. The five library packages gained `export-ignore`
+    for their tests and PHPUnit config; the skeleton did not, since its tests belong
+    to the app it creates.
+
+249. **`split.yml` pushes the mirrors, and nothing is published until a maintainer
+    creates them.** On a push to `main` the workflow runs `git subtree split
+    --prefix=packages/<name>` for each package and pushes to
+    `BusyBeaverSoftware/lava-<name>`; on a tag it pushes the tag. `git subtree` over
+    `splitsh-lite`, because it ships with git and keeps a third-party binary out of
+    the release path; measured on a throwaway clone, splitting `packages/core` twice
+    gave the same SHA with 19 commits of history. Three details are load-bearing:
+    `persist-credentials: false`, since checkout's stored credential would otherwise
+    be sent to every github.com remote in place of the token; a guard that refuses a
+    split whose `composer.json` declares `repositories` (on that clone it refused
+    `db`, whose committed manifest still had one, and passed `core`); and tags are
+    never forced. With no `SPLIT_TOKEN` the workflow prints a notice and succeeds.
+
+    `tools/split-check.php` (`composer check:split`, CI job `publish-rehearsal`)
+    rehearses the rest. Each package becomes a local git repository tagged with the
+    next patch, a `COMPOSER_HOME` that lists them stands in for Packagist, and a
+    consumer runs `composer create-project lava/app`, `composer require` for every
+    pack and `lava check --strict` verbatim. Every `lava/*` package in its lock must
+    come from a mirror. Not done, deliberately: creating the six repositories, the
+    token, the first push, Packagist registration and the `0.1.1` tag. Each is
+    outward-facing and hard to reverse, so they are left to the user, as steps in
+    `docs/releasing.md` under "Publishing".
+
+250. **What was verified, on this machine, and what was not.** Nothing here is
+    committed or pushed, so neither CI — the new `publish-rehearsal` job included —
+    nor `split.yml` has run.
+
+    - Every pack suite: **1029 tests, 5549 assertions, 0 skipped**, up from 1010 and
+      5436 at entry 241.
+    - phpstan: level 8 over every pack, both apps and `tools` — the two new tools
+      included — and core at `max`: no errors. The tools' first draft had three,
+      fixed structurally: typed functions in place of closures whose `@param`
+      docblocks the analyser does not attach, and command output appended to a file
+      in place of a `redirect` pipe descriptor, which also removes a deadlock when a
+      child fills the stream nobody is reading.
+    - Each fix's test was run against the unfixed code and failed there: B1's handler
+      test, P2's `--quick` test, P3's two import tests (its other two pin behaviour
+      that did not change), P1's future-stamp test, and P5's production-default test.
+    - `composer coverage`: every pack at or above its floor — core 88.97% (88.68%
+      at entry 241), db 88.89%, http-client 96.69%, validate 98.29%, view 97.19%.
+    - `composer check:floor`: 517 files parse on PHP 8.3.
+    - `composer check:install`: all eight targets installed fresh and passed.
+      `composer check:split`: six mirrors tagged `0.1.1`; the consumer's
+      `create-project`, `require` and `lava check --strict` all succeeded, with every
+      `lava/*` package locked from a mirror. Both ran twice — the second time after
+      the process runner was rewritten — and left nothing in the temp directory.
+    - The URL rule now documented in `lava-validate.md` (Pulse P4) was executed: it
+      accepts `http` and `https` URLs and refuses `ftp://…`, a non-URL, a bare host
+      and an absent field.
+
+    Not verified: CI; `split.yml` against GitHub, which needs the mirrors and the
+    token; Packagist itself; and the suite on PHP 8.3 and 8.4, which only CI's
+    matrix runs — the floor check covers syntax alone.

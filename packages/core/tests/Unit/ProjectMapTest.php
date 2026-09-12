@@ -56,7 +56,9 @@ final class ProjectMapTest extends TestCase
             'commands' => count($app->commands()->all()),
             'middleware' => count($app->globalMiddleware),
             'modules' => count($app->moduleRefs),
-            'env' => count($app->envVars()),
+            // Declared variables: a name that exists only in config/.env is one
+            // machine's setting, not part of the app, and the map leaves it out.
+            'env' => count(array_filter($app->envVars(), static fn (array $entry): bool => $entry['var'] !== null)),
         ], $map->counts());
 
         // And the concrete numbers, so a fixture that quietly lost a route is a
@@ -148,6 +150,40 @@ final class ProjectMapTest extends TestCase
             ProjectMap::of($prod)->fingerprint(),
         );
         self::assertSame(ProjectMap::of($dev)->sections(), ProjectMap::of($prod)->sections());
+    }
+
+    public function testALocalDotEnvDoesNotMoveTheFingerprint(): void
+    {
+        // config/.env is gitignored: one machine's settings, not part of the
+        // app. A name found only there declares nothing, so it cannot be in the
+        // map — or `cp config/.env.example config/.env`, the first step an app
+        // documents, makes a committed AGENTS.md stale on that machine alone.
+        // env-app's .env holds one undeclared name (UNCLAIMED) beside a value
+        // for a declared one (APP_REGION), and the app has no classes, so two
+        // copies of it can boot in one process.
+        $withDotEnv = $this->tempDir();
+        $withoutDotEnv = $this->tempDir();
+        self::copyTree(TestApp::fixturePath('env-app'), $withDotEnv);
+        self::copyTree(TestApp::fixturePath('env-app'), $withoutDotEnv);
+        unlink($withoutDotEnv . '/config/.env');
+
+        $with = TestApp::boot($withDotEnv);
+        $without = TestApp::boot($withoutDotEnv);
+        self::assertInstanceOf(App::class, $with, self::describe($with));
+        self::assertInstanceOf(App::class, $without, self::describe($without));
+
+        // The premise, checked: the local file really does add a name, and
+        // `lava env` — which reads App::envVars() — still shows it.
+        self::assertContains('UNCLAIMED', array_column($with->envVars(), 'name'));
+        self::assertNotContains('UNCLAIMED', array_column($without->envVars(), 'name'));
+
+        self::assertSame(ProjectMap::of($without)->fingerprint(), ProjectMap::of($with)->fingerprint());
+
+        $mapped = array_column(ProjectMap::of($with)->sections()['env'], 'name');
+        self::assertNotContains('UNCLAIMED', $mapped);
+        // A declared variable stays in the map whether or not this machine sets it.
+        self::assertContains('APP_REGION', $mapped);
+        self::assertContains('APP_REGION', array_column(ProjectMap::of($without)->sections()['env'], 'name'));
     }
 
     public function testEveryPathInTheDocumentIsPortable(): void
@@ -350,6 +386,22 @@ final class ProjectMapTest extends TestCase
             static fn ($problem): string => $problem->code(),
             $app->problems->problems(),
         ));
+    }
+
+    private static function copyTree(string $from, string $to): void
+    {
+        $walk = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($from, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST,
+        );
+        foreach ($walk as $item) {
+            $target = $to . substr($item->getPathname(), strlen($from));
+            if ($item->isDir()) {
+                is_dir($target) || mkdir($target, 0o755, true);
+                continue;
+            }
+            copy($item->getPathname(), $target);
+        }
     }
 
     private function tempDir(): string

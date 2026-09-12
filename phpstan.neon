@@ -13,6 +13,14 @@ parameters:
         # an example that can still teach a type error.
         - apps/demo/app
         - apps/demo/tests
+        # The second example, held to the same bar. It is the app with
+        # hand-written authentication, which is the last code that should be
+        # allowed to teach a type error. Both apps declare `App\` classes and
+        # even share names (`App\Tests\PagesTest`, `App\Http\health`); analysed
+        # together they report exactly the errors each reports alone, so one
+        # run is honest and a second config would be ceremony.
+        - apps/blog/app
+        - apps/blog/tests
         # The tools that verify the repository are code too. This one is a
         # single script, but it reads two formats, merges them and reports a
         # number people will act on: a type error in it does not crash, it

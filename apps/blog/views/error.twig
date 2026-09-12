@@ -1,0 +1,17 @@
+{% extends 'layout.twig' %}
+
+{# The page a browser gets when a handler throws a problem. Rendered by
+   App\Http\ErrorPageMiddleware, which only takes over for HTML requests and
+   only for 4xx — a 5xx is this app's bug and gets the framework's page with the
+   file and line, which is the more useful answer to a bug.
+
+   `message` is the problem's own text. The `fix` is deliberately not here: it
+   is written for whoever maintains the app and reads as noise to a visitor. #}
+
+{% block title %}{{ heading }}{% endblock %}
+
+{% block content %}
+  <h1>{{ heading }}</h1>
+  <p>{{ message }}</p>
+  <p class="muted"><a href="{{ url('home') }}">← All posts</a></p>
+{% endblock %}

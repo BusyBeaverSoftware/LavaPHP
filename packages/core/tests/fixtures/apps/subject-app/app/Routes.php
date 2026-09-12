@@ -20,4 +20,8 @@ return function (Router $r): void {
     $r->get('/early', 'early.features')
         ->handler([\App\Http\BoardController::class, 'show'])
         ->when('slow_rollout');
+
+    // Ungated: the handler reads both audience flags itself, so the response
+    // says what a handler sees for this request's subject.
+    $r->get('/flags', 'flags')->handler([\App\Http\SubjectFlagsController::class, 'show']);
 };

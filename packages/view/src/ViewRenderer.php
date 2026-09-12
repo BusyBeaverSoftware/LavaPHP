@@ -155,7 +155,15 @@ final class ViewRenderer
         return $this->templateDir;
     }
 
-    /** The Twig environment, for an app that needs to add a filter of its own. */
+    /**
+     * The Twig environment, for an app that needs to add a filter of its own.
+     *
+     * The renderer is a singleton, so what is added here holds for every render
+     * the process performs. A constant is safe to add as a global; request state
+     * is not — a global holding the signed-in user would still hold it for the
+     * next visitor a long-running worker serves. Pass request state in the
+     * render context instead.
+     */
     public function environment(): Environment
     {
         return $this->twig;

@@ -71,6 +71,14 @@
         "check:floor": [
             "Composer\\Config::disableProcessTimeout",
             "@php tools/php-floor-check.php"
+        ],
+        "check:install": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php tools/install-check.php"
+        ],
+        "check:split": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php tools/split-check.php"
         ]
     },
     "config": {

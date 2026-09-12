@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lava\View;
 
 use Lava\Core\Features\Features;
+use Lava\Core\Features\FeatureScope;
 use Lava\Core\Routing\UrlGenerator;
 use Lava\View\Problem\BadViewCall;
 use Twig\TwigFunction;
@@ -32,7 +33,10 @@ use Twig\TwigFunction;
  *    both at render time with the route named.
  *  - `feature()` answers whether a flag is on. This is what makes gated UI
  *    honest — the template hides the button the same way the router 404s the
- *    route, from the same resolver and the same config. A typo'd flag name is
+ *    route, from the same resolver and the same config. It reads the
+ *    {@see FeatureScope} when the template calls it, so an audience flag
+ *    answers for the request being rendered — the resolver the router matched
+ *    with, not the anonymous one that existed when the pack was wired. A typo'd flag name is
  *    `unknown_feature` with the nearest real name, not a silently hidden
  *    button.
  *
@@ -49,7 +53,7 @@ final class ViewFunctions
      *
      * @return list<TwigFunction>
      */
-    public static function registry(UrlGenerator $url, Features $features): array
+    public static function registry(UrlGenerator $url, FeatureScope $features): array
     {
         return [
             new TwigFunction(
@@ -62,7 +66,7 @@ final class ViewFunctions
             ),
             new TwigFunction(
                 'feature',
-                static fn (mixed $name): bool => self::feature($features, $name),
+                static fn (mixed $name): bool => self::feature($features->current(), $name),
             ),
         ];
     }

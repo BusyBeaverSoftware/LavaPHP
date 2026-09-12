@@ -120,15 +120,25 @@ final readonly class ProjectMap
             ];
         }
 
+        // Declared variables only. `App::envVars()` also lists names that exist
+        // only in config/.env, because `lava env` is exactly where an undeclared
+        // value has to be visible. But `.env` is one machine's gitignored file,
+        // and a name found only there declares nothing about the app (decision
+        // 42). Mapping it made a committed AGENTS.md stale on any machine whose
+        // `.env` held a line nothing declared — `cp config/.env.example
+        // config/.env`, the first step the demo documents, was enough.
         $env = [];
         foreach ($app->envVars() as $entry) {
             $var = $entry['var'];
+            if ($var === null) {
+                continue;
+            }
             $env[] = [
                 'name' => $entry['name'],
-                'required' => $var !== null && $var->required,
-                'secret' => $var !== null && $var->secret,
+                'required' => $var->required,
+                'secret' => $var->secret,
                 'declared_by' => $entry['by'],
-                'description' => $var !== null ? $var->description : '',
+                'description' => $var->description,
             ];
         }
 

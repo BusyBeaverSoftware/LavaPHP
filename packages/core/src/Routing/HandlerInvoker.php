@@ -212,6 +212,32 @@ final class HandlerInvoker
         );
     }
 
+    /**
+     * Registered ids whose last segment is this type's — what an unqualified
+     * parameter type with a missing `use` import almost always meant.
+     *
+     * @return list<string>
+     */
+    private function sameShortName(string $type): array
+    {
+        $short = strtolower(self::lastSegment($type));
+        $matches = [];
+        foreach ($this->container->ids() as $id) {
+            if ($id !== $type && strtolower(self::lastSegment($id)) === $short) {
+                $matches[] = $id;
+            }
+        }
+
+        return $matches;
+    }
+
+    private static function lastSegment(string $name): string
+    {
+        $at = strrpos($name, '\\');
+
+        return $at === false ? $name : substr($name, $at + 1);
+    }
+
     /** @return array{kind: 'request'|'args'|'service', type: string, name: string} */
     private function planParameter(string $describe, \ReflectionParameter $param): array
     {
@@ -246,7 +272,12 @@ final class HandlerInvoker
             );
         }
         if (!$this->container->has($typeName)) {
-            throw ServiceNotRegistered::of($typeName, $describe, 'the handler needs it as an injected parameter');
+            throw ServiceNotRegistered::of(
+                $typeName,
+                $describe,
+                'the handler needs it as an injected parameter',
+                $this->sameShortName($typeName),
+            );
         }
         return ['kind' => 'service', 'type' => $typeName, 'name' => $name];
     }

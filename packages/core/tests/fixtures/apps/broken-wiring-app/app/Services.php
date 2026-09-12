@@ -15,4 +15,12 @@ return function (Container $c, AppContext $ctx): void {
     // A constructor that throws a plain exception: still a structured
     // unexpected_failure in the report, never a white screen.
     $c->singleton(\App\Wiring\Boom::class, fn (Container $c) => new \App\Wiring\Boom());
+
+    // Resolves the broken Greeter a second time. The boot report must still
+    // name Greeter's missing id ONCE: the diagnosis and its fix are the same
+    // however many services reach it.
+    $c->singleton(\App\Wiring\Welcome::class, fn (Container $c) => new \App\Wiring\Welcome(
+        $c->get(\App\Wiring\Greeter::class),
+    ));
+
 };

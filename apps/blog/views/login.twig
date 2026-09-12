@@ -1,0 +1,34 @@
+{% extends 'layout.twig' %}
+
+{% block title %}Sign in{% endblock %}
+
+{% block content %}
+  <h1>Sign in</h1>
+
+  {% if errors._form is defined %}
+    <p class="error">{{ errors._form }}</p>
+  {% endif %}
+
+  <form method="post" action="{{ url('login.submit') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+
+    {# Where to go afterwards. Carried through the form rather than left in the
+       URL so it survives the POST, and re-validated by Redirects::safeNext on
+       the way back out — an unvalidated `next` is an open redirect. #}
+    <input type="hidden" name="next" value="{{ values.next }}">
+
+    <label for="email">Email</label>
+    <input id="email" type="email" name="email" value="{{ values.email }}" required>
+    {% if errors.email is defined %}<p class="error">{{ errors.email }}</p>{% endif %}
+
+    <label for="password">Password</label>
+    <input id="password" type="password" name="password" required>
+    {% if errors.password is defined %}<p class="error">{{ errors.password }}</p>{% endif %}
+
+    <button type="submit">Sign in</button>
+  </form>
+
+  {% if feature('signups_open') %}
+    <p class="muted">No account? <a href="{{ url('register') }}">Register</a>.</p>
+  {% endif %}
+{% endblock %}
