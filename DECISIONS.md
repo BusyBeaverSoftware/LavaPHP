@@ -3402,3 +3402,24 @@ for after anything that exercises the demo.
     would recurse forever, each move needing a verification that needs a move.
     The tag therefore stays where 225 put it, and later commits on `main` pass
     it by. That is what a release commit is: a fixed point, not a tip.
+
+227. **The tag push was verified, and it published to nobody.** Every
+    prediction in 224 and 225 was checked against the live services rather than
+    inferred from the configuration:
+
+    | Claim | How it was checked | Result |
+    |---|---|---|
+    | The tag reached the remote | `git ls-remote --tags origin` | `refs/tags/0.1.0` = `60b92b7` (annotated tag object) |
+    | It points at the release commit | the peeled ref | `refs/tags/0.1.0^{}` = `ad8d5b1` |
+    | The push really does cost a duplicate run | `gh run list` after the push | **two** runs on `ad8d5b1`: `34697665025` on ref `0.1.0` and `34697664011` on ref `main` |
+    | Both are green | `gh run view --json jobs` | 7 jobs, 7 green, each |
+    | No GitHub Release appeared | `gh release list` | `0` |
+    | Nothing reached Packagist | `packagist.org/packages/{lava/core,lava/app}.json` | **`404`**, unchanged by the push |
+
+    The last two rows are the ones worth having measured. A pushed tag is a
+    GitHub-local act: it creates a ref, and nothing else follows from it.
+    Packagist's `404` after the push is the empirical form of 224's argument —
+    registration is what publishes, and a tag is only the thing that gets
+    published *once something is listening*. This is the honest answer to "is it
+    released?", and it is no: `0.1.0` exists, and `composer require lava/core`
+    still fails.
