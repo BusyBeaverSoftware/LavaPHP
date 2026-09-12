@@ -24,6 +24,37 @@ apps/demo            — dogfood demo app, the canonical example
 docs/                — conventions, per-pack docs, stable JSON schemas for every CLI command
 ```
 
+## Installing
+
+There is no Packagist release yet, so clone the repository:
+
+```sh
+git clone https://github.com/BusyBeaverSoftware/LavaPHP.git
+cd LavaPHP
+composer install            # the monorepo: every pack, plus the test suite
+```
+
+To watch the framework verify itself, run the demo — the canonical app, and the
+one place the packs are exercised together:
+
+```sh
+cd apps/demo
+composer install            # the demo is an APP: it gets its own vendor/
+./vendor/bin/lava check
+```
+
+The second `composer install` is not optional. `apps/*/vendor/` is gitignored
+and the monorepo's install fills only the root `vendor/`, so `apps/demo/vendor`
+does not exist until you run it — and it must be the demo's own install, because
+the app's `App\` namespace and its pack wiring are only in *its* autoloader.
+
+The per-package commands this will eventually support — `composer require
+lava/db`, `composer create-project lava/app my-app` — **do not work yet.** None
+of the six packages is on Packagist, and each needs a **split mirror** before it
+can be: Packagist reads `composer.json` only at a repository root, and this
+repository's root is the monorepo. [docs/releasing.md](docs/releasing.md#the-tag)
+records exactly where that stands and what it would take.
+
 ## Development
 
 ```

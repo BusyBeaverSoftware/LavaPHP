@@ -79,12 +79,13 @@ jobs:
           php-version: '8.5'
           coverage: none
       - name: Each pack installs with only its own declared dependencies
-        # `composer validate`, NOT `--strict`. Every pack requires `lava/core:
-        # @dev`, which is what a path repository needs before the packs are on
-        # packagist; composer calls that an unbound constraint and `--strict`
-        # turns the warning into a non-zero exit, so `--strict` here failed the
-        # build on every pack. Plain `validate` still fails on a real error in
-        # the file, which is what this step is actually checking.
+        # `composer validate --strict`, and it passes. It could not while every
+        # pack required `lava/core: @dev`: composer calls that an unbound
+        # constraint and `--strict` turns it into a non-zero exit, so this step
+        # ran plain `validate` — which would NOT have caught an unbound or
+        # unsatisfiable constraint, the very thing it looks like it checks. The
+        # packs now declare `lava/core: ^0.1.0` resolved from a version-pinned
+        # path repository, so the strict gate is back on.
         run: |
           for pkg in db validate view http-client; do
             rm -rf /tmp/iso && mkdir -p /tmp/iso/packages
@@ -92,7 +93,7 @@ jobs:
             (
               cd "/tmp/iso/packages/$pkg" \
                 && composer install --no-interaction --no-progress \
-                && composer validate \
+                && composer validate --strict \
                 && echo "OK: lava/$pkg installed standalone"
             )
           done
@@ -117,6 +118,11 @@ jobs:
           rm -rf /tmp/skeleton/packages/app/vendor /tmp/skeleton/packages/app/composer.lock
           cd /tmp/skeleton/packages/app
           composer install --no-interaction --no-progress
+          # The create-project target's manifest is the one consumers receive,
+          # so it is held to the strict gate too. It declares `lava/core:
+          # ^0.1.0` against a version-pinned path repository rather than the
+          # unbound `@dev` that `--strict` rejects.
+          composer validate --strict
           # R2: the skeleton ships a pre-generated AGENTS.md that is accurate
           # from the moment of `composer install` — no chicken-and-egg with
           # `lava map`, so this passes on a fresh checkout with no map run.
@@ -152,6 +158,14 @@ jobs:
           rm -rf /tmp/demo/apps/demo/vendor /tmp/demo/apps/demo/composer.lock
           cd /tmp/demo/apps/demo
           composer install --no-interaction --no-progress
+          # The demo's constraints have to stay concrete. The packs declare
+          # `lava/core: ^0.1.0`, so a `@dev` in this manifest resolves to
+          # `dev-main` and the install above dies on a core that cannot satisfy
+          # them — which is exactly how this was found, and the install alone
+          # does not say so clearly. This is not a publishability claim about an
+          # app that is never published; it is the invariant that keeps the
+          # demo's requirements resolvable against the packs it dogfoods.
+          composer validate --strict
       - name: The quick start in the README, run for real
         # A committed AGENTS.md is only trustworthy if something checks it on
         # every change, and the migration path is only trustworthy if it runs

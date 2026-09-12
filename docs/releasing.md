@@ -29,6 +29,18 @@ worth stating exactly, because "pre-1.0" is otherwise read as "no promises":
 Run these from a clean checkout. The first three are the whole gate; the rest
 are the claims the gate cannot make on its own.
 
+A clean checkout needs three installs, and the last two are the ones that are
+easy to forget: `apps/*/vendor/` and `packages/*/vendor/` are gitignored, and the
+root install fills only the root `vendor/`. Running step 4 or 5 without its own
+install fails with `./vendor/bin/lava: No such file or directory` — which is a
+missing prerequisite, not a broken release.
+
+```sh
+composer install                      # steps 1–3, the monorepo
+(cd apps/demo && composer install)    # step 4
+(cd packages/app && composer install) # step 5
+```
+
 1. **`composer verify`** — the suite, PHPStan at level 8 across every pack's
    `src`, `apps/demo/app`, `apps/demo/tests` and `tools`, and `lava/core` alone
    at level `max`. Expect `[OK] No errors` twice and a green suite.
@@ -50,8 +62,13 @@ are the claims the gate cannot make on its own.
    `AGENTS.md` is accurate from a fresh install, with no `lava map` run first.
 6. **Each pack installs standalone** — `db`, `validate`, `view` and
    `http-client`, each copied out with only `core` beside it, `composer install`
-   then `composer validate`. This is the decoupling claim: a pack that has grown
-   an undeclared dependency on a sibling fails here and nowhere else.
+   then `composer validate --strict`. This is the decoupling claim: a pack that
+   has grown an undeclared dependency on a sibling fails here and nowhere else.
+   The `--strict` is the point of the step rather than a flourish: a pack that
+   requires `lava/core: @dev` installs happily and fails `--strict`, and it is
+   also the pack that could not be published. The four declare `lava/core:
+   ^0.1.0` against a version-pinned `../core` path repository, so the gate can
+   be strict without either half being a lie.
 7. **CI is green on the tag commit.** The seven jobs are the authority on PHP
    8.3, 8.4 and 8.5, on a machine that is not this one. Push a branch, watch the
    jobs go green, and only then cut the tag — a tag on a commit CI has not seen
@@ -116,19 +133,26 @@ distribution cannot keep:
   (`PathRepository.php:163`: *"The `url` supplied for the path (../core)
   repository does not exist"*), which is the failure `packages/app/README.md`
   describes.
-- Those same five require `lava/core: @dev`, which a path repository needs
-  during development and a published package should not declare — Composer
-  flags it as unbound under `validate --strict`. A real constraint such as
-  `^0.1.0` resolves correctly, both from Packagist and from a version-pinned
-  path repository (`options.versions`), both measured.
+- Those same five declare `lava/core: ^0.1.0`, resolved during development from
+  the path repository's `options.versions` pin. This is the shape a published
+  package needs: a real constraint rather than `@dev`, which Composer calls
+  unbound and `validate --strict` rejects. The path repository is what the split
+  still has to strip; the constraint itself is already correct, because a
+  published `lava/core` at `0.1.0` satisfies `^0.1.0` from Packagist exactly as
+  the pinned path repository satisfies it here.
 
 `lava/core` is the exception and the easy case: no path repository, no `lava/*`
 dependency, only real Packagist requirements — publishable verbatim, and the
-right package to prove a split pipeline on. The others need the path
-repositories stripped **in the split** (`splitsh-lite` is a pure prefix split
-and rewrites nothing, so this is a post-processing step) plus `@dev` replaced by
-a version constraint. Which set ships, and how the mirrors are pushed, is a
-packaging decision rather than a mechanical one; see DECISIONS.md 228–229.
+right package to prove a split pipeline on. The other five need the path
+repository and its `options.versions` pin stripped **in the split**
+(`splitsh-lite` is a pure prefix split and rewrites nothing, so this is a
+post-processing step); their `require` blocks need no edit. Which set ships, and
+how the mirrors are pushed, is a packaging decision rather than a mechanical
+one; see DECISIONS.md 228–232.
+
+One maintenance consequence of the tightened constraints: `^0.1.0` now appears
+in six manifests, so a release bumps them together or the packs resolve to a
+core older than the one they were tested against.
 
 ## What is deliberately not part of a release
 
@@ -172,11 +196,18 @@ implies everything was verified is worse than one that lists what was not.
   untested against Packagist. The skeleton is verified by copy-and-install
   (step 5) instead. Registering the packages is the step that would make the
   pushed tag mean what "release" usually means; see "The tag" above.
-- **Five of the six manifests cannot be published as they stand, and none of
-  the six can be published without a split.** Packagist reads `composer.json`
-  only at a repository root, and this repository's root is the monorepo, so
-  each package needs a split mirror before registration is even possible —
-  after which the path repositories and `lava/core: @dev` constraints still have
-  to be dealt with for five of them. The detail, including what is and is not
-  fatal for a consumer, is in "The tag" above. `lava/core` is the one package
-  that could ship verbatim.
+- **None of the six manifests can be published without a split.** Packagist
+  reads `composer.json` only at a repository root, and this repository's root is
+  the monorepo, so each package needs a split mirror before registration is even
+  possible. Five of the six additionally declare a `../core` path repository
+  that is monorepo-local and has to be stripped in the split — the *constraint*
+  half of that problem is fixed as of 2026-09-12, when they moved from the
+  unbound `lava/core: @dev` to `^0.1.0` resolved from a version-pinned path
+  repository. `lava/core` is the one package that could ship verbatim. The
+  detail, including what is and is not fatal for a consumer, is in "The tag"
+  above.
+- **The first publishable split cannot come from `0.1.0`.** The manifests at the
+  pushed tag still declare `@dev` against unpinned path repositories, and a
+  pushed tag is immutable — so whatever Packagist is first pointed at has to be
+  a later tag (0.1.1 or beyond), cut from a commit whose manifests have been
+  through the split.

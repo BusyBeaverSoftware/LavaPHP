@@ -3508,3 +3508,110 @@ for after anything that exercises the demo.
     Corrected in `docs/releasing.md` ("The tag" and "Known gaps"). A
     recommendation was given to the user on the basis of this measurement and
     the packaging decision itself is left to them.
+
+## 2026-09-12 — Stage 0 and Stage 1: the manifests say what they mean, and three false greens
+
+230. **The parts of the packaging question that needed no decision are done.**
+    Entry 229 left the decision itself with the user and separated out the work
+    that is the same under every answer: a manifest should not declare an
+    unbound constraint or a repository a consumer cannot reach, and the install
+    gates should be strict enough to say so. That work:
+
+    | Change | Before | After |
+    |---|---|---|
+    | Five packs, `require` on core | `lava/core: @dev` | `lava/core: ^0.1.0` |
+    | Five packs, `repositories` | `{"type": "path", "url": "../core"}` | same, plus an `options.versions` pin at `0.1.0` |
+    | Five packs, `minimum-stability` | `dev` | *(dropped)* |
+    | Root `require-dev` | `lava/*: @dev` | `lava/*: ^0.1.0`, repositories pinned the same way |
+    | `apps/demo`, require + repositories | `@dev`, unpinned | `^0.1.0`, pinned |
+    | `apps/demo`, `minimum-stability` | `dev` | *(dropped)* |
+    | `ci.yml` `isolated-install` | `composer validate` | `composer validate --strict` |
+    | `ci.yml` `skeleton` | *(no validation)* | `composer validate --strict` |
+    | `ci.yml` `demo` | *(no validation)* | `composer validate --strict` |
+
+    `@dev` is the reason `isolated-install` ran a loosened gate. Composer calls
+    it an unbound constraint and `--strict` turns that into a non-zero exit, so
+    `ci.yml:83` had been downgraded to plain `validate` — a check that could not
+    fail on the very thing it looked like it was checking. A real constraint
+    against a version-pinned path repository removes the reason, so all three
+    install jobs now carry the strict gate. The root keeps
+    `minimum-stability: dev` deliberately: the root is a project, never
+    published, and dropping it would rewrite the lock for no consumer's benefit.
+
+    `apps/demo`'s `^0.1.0` is a **resolution invariant, not a publishability
+    claim**: the demo is `type: project`, lives inside this checkout, and will
+    not be published, so `--strict` there is about whether its requirements can
+    be satisfied by the packs it dogfoods. The CI step says that in the comment
+    above it, because the asymmetry with the five packs is otherwise
+    indistinguishable from an oversight.
+
+231. **Stage 0 is the README, and writing it produced the first of three false
+    greens.** A framework whose only install path is `git clone` should say so,
+    so `README.md` gained an "Installing" section. Every command in it was then
+    run against a **faithful fresh clone** — the working-tree content of every
+    tracked file, with no gitignored artifacts: `git ls-files -z | tar --null -T
+    - -cf - | (cd /tmp/fresh && tar xf -)`, 526 files, zero vendor directories.
+    All three false greens have the same shape — **the code was current and the
+    resolved graph or the artifact was not**:
+
+    | What looked green | Why it was green | What the rebuild showed |
+    |---|---|---|
+    | `cd apps/demo && ./vendor/bin/lava check`, exit 0 | it ran against `apps/demo/vendor` installed **before** the manifest change — the new tree, the old resolution graph | the demo cannot install at all: its own `lava/core` path repo is unpinned, so it offers `dev-main`, and the packs now require `^0.1.0` of it. Four hard failures (`Problem 1..4`), no `vendor/lava/core` created |
+    | `isolated-install` for `lava/view` and `lava/http-client` | `packages/*/composer.lock` is gitignored, so **CI never has one** — but my disk did, left over from my own earlier verification | those locks pinned `lava/core` at `dev-main`: *"Required package `lava/core` is in the lock file as `dev-main` but that does not satisfy your constraint `^0.1.0`."* Exactly two of four packs failed, matching exactly the two that had a lock on disk |
+    | the README's own demo command | `apps/demo/vendor` existed on my disk | after only the root `composer install`, `apps/demo/vendor/bin/lava` does not exist — `apps/*/vendor/` is gitignored and the root install fills only the root. `/bin/bash: ./vendor/bin/lava: No such file or directory` |
+
+    The first row is the one that matters, because it is the failure mode
+    CLAUDE.md's verification rule exists for: the in-tree `lava check` is the
+    repo's one-command loop and it cannot see a resolution problem, since
+    resolution already happened when `vendor/` was built. Each of the three was
+    found by rebuilding an artifact rather than by reading the change. The
+    second row is also the `.gitignore` comments proving themselves: those
+    entries exist because a lock generated here pins `lava/*` to a path
+    repository "no consumer has" — and a stale copy of one does not merely sit
+    there, it *constrains resolution* and turns a valid manifest
+    unsatisfiable. The demo's stale lock and this checkout's stale one were
+    deleted; neither is a tracked artifact.
+
+    The README now documents the second install it turned out to need, with the
+    reason attached: `apps/*/vendor/` is gitignored, and it has to be the demo's
+    own install because the `App\` namespace and the demo's pack wiring are in
+    *its* autoloader — the property CI's `skeleton` job calls load-bearing when
+    it asserts `vendor/lava/core` is a symlink to the sibling checkout.
+
+232. **What was verified, and the gate that still does not exist.** Every claim
+    above is a command that was run against a rebuilt artifact, not an inference
+    from the diff:
+
+    | Check | Command | Result |
+    |---|---|---|
+    | Root, fresh clone | `composer install && composer verify` | 992 tests, **5382 assertions, 0 skipped**; both PHPStan passes (`level 8`, core at `max`) `[OK] No errors` |
+    | Root manifest + lock in sync | `composer validate --strict` | `./composer.json is valid` |
+    | PHP floor | `composer check:floor` | 448/448 files parse on `php:8.3-cli` (host is 8.5.4) |
+    | Four packs standalone (`isolated-install`) | fresh copy, `composer install && composer validate --strict` | `OK: lava/{db,validate,view,http-client} installed standalone` |
+    | Skeleton (`skeleton`) | fresh copy, install + `map --check` + `check --strict` | AGENTS.md current, all sections ok |
+    | Demo (`demo`) | fresh copy, install + `db:migrate` + `app:seed` + `app:stats --json` + `map --check` + `check --strict` | 1 migration, 4 seeded rows, `status: ok`, map current, tests 24 / assertions 99 / 0 skipped, exit 0 |
+
+    Two honest caveats. The demo's DB steps needed the local extension shim
+    (`PHP_INI_SCAN_DIR=":/tmp/lava-php-conf"`) because this host has no
+    `pdo_sqlite` in its base ini — CI's image does, so the job needs nothing
+    there; without the shim the failure is `could not find driver`, which is a
+    host fact and not a manifest one. And **the `0 skipped` is the number to
+    read, not the `OK`** — the same command without the shim reported 38 skipped
+    and 5026 assertions earlier in this session, the identical word "OK".
+
+    The gap this episode exposes is that **nothing local reproduces CI's three
+    install jobs.** `composer verify` runs against whatever `vendor/` is already
+    on disk, which is exactly why all three false greens were possible; the only
+    thing that catches them today is a push. A `composer check:install` doing
+    the copy-install-validate loop for the four packs, the skeleton and the demo
+    would make the rebuild one command instead of a thing to remember — and
+    Stage 2 will need it, since split mirrors are verified by fresh installs or
+    not at all. Offered to the user and not written here, to keep this changeset
+    to release prep.
+
+    Two consequences to carry forward. Cross-package constraints are now
+    **lockstep**: `^0.1.0` appears in six manifests and every release has to bump
+    them together. And the first *publishable* split cannot come from `0.1.0` —
+    the manifests at the pushed tag still declare `@dev`, and a pushed tag is
+    treated as immutable, so the first thing Packagist can ever serve is a later
+    tag (0.1.1+).

@@ -4,21 +4,41 @@
     "type": "project",
     "license": "MIT",
     "repositories": {
-        "lava/core": { "type": "path", "url": "packages/core" },
-        "lava/db": { "type": "path", "url": "packages/db" },
-        "lava/validate": { "type": "path", "url": "packages/validate" },
-        "lava/view": { "type": "path", "url": "packages/view" },
-        "lava/http-client": { "type": "path", "url": "packages/http-client" }
+        "lava/core": {
+            "type": "path",
+            "url": "packages/core",
+            "options": { "versions": { "lava/core": "0.1.0" } }
+        },
+        "lava/db": {
+            "type": "path",
+            "url": "packages/db",
+            "options": { "versions": { "lava/db": "0.1.0" } }
+        },
+        "lava/validate": {
+            "type": "path",
+            "url": "packages/validate",
+            "options": { "versions": { "lava/validate": "0.1.0" } }
+        },
+        "lava/view": {
+            "type": "path",
+            "url": "packages/view",
+            "options": { "versions": { "lava/view": "0.1.0" } }
+        },
+        "lava/http-client": {
+            "type": "path",
+            "url": "packages/http-client",
+            "options": { "versions": { "lava/http-client": "0.1.0" } }
+        }
     },
     "require": {
         "php": "^8.3"
     },
     "require-dev": {
-        "lava/core": "@dev",
-        "lava/db": "@dev",
-        "lava/http-client": "@dev",
-        "lava/validate": "@dev",
-        "lava/view": "@dev",
+        "lava/core": "^0.1.0",
+        "lava/db": "^0.1.0",
+        "lava/http-client": "^0.1.0",
+        "lava/validate": "^0.1.0",
+        "lava/view": "^0.1.0",
         "opis/json-schema": "^2.6",
         "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^12.5"
