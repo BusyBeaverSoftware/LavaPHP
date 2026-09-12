@@ -4012,3 +4012,37 @@ section records both.
     Not verified: CI; `split.yml` against GitHub, which needs the mirrors and the
     token; Packagist itself; and the suite on PHP 8.3 and 8.4, which only CI's
     matrix runs — the floor check covers syntax alone.
+
+## 2026-09-12 — publishing: the split mirrors, and 0.1.1
+
+251. **`f3db427` passed CI on all nine jobs, and each mirror is pushed with its own
+    deploy key instead of a token.** Run `34723166280` on `feat/consumer-findings`
+    was green throughout: the suite on PHP 8.3, 8.4 and 8.5, coverage, the
+    tool-driven `isolated-install` and `skeleton` jobs, `demo`, and the first runs
+    of `blog` and `publish-rehearsal`. `split.yml` did not run, as intended on a
+    branch. That confirms entry 250's local verification on a machine that is not
+    this one — including the suite on 8.3 and 8.4, which entry 250 could not run —
+    and it is the first CI evidence that an app built from mirrors alone installs
+    and checks green.
+
+    The user then asked for all of it: record the run, merge, and the one-time
+    publishing setup. Entry 249 pushed with a fine-grained personal access token,
+    and that step cannot be automated — GitHub has no API to create one — while
+    the one token at hand, the maintainer's own `gh` login, can do far more than
+    push six mirrors and does not belong in an Actions secret. So `split.yml` now
+    pushes over SSH with one deploy key per mirror: the public half attached to
+    that mirror with write access, the private half stored as `SPLIT_KEY_<NAME>`.
+    One key per mirror is forced, since GitHub will not attach a deploy key to two
+    repositories, and it is also the point: a leaked key publishes one package and
+    nothing else, and no person's credential is involved. GitHub's SSH host keys
+    come from `api.github.com/meta` over TLS rather than from `ssh-keyscan`, which
+    would trust whoever answered the scan. A mirror whose key is missing is
+    skipped with a notice, as a missing token was. The keys were generated for
+    this run and destroyed locally once stored; nothing here or on any machine
+    holds a copy outside the secrets.
+
+    The release checklist also had to change. Its steps 4–6 installed
+    `packages/app` in place and each pack beside a `../core` path repository,
+    neither of which works since entry 248 stripped those repositories. Steps 4
+    and 5 are now `composer check:install` and `composer check:split`, and step 6
+    is CI on the tag commit, which now has nine jobs.

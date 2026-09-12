@@ -29,16 +29,12 @@ worth stating exactly, because "pre-1.0" is otherwise read as "no promises":
 Run these from a clean checkout. The first three are the whole gate; the rest
 are the claims the gate cannot make on its own.
 
-A clean checkout needs three installs, and the last two are the ones that are
-easy to forget: `apps/*/vendor/` and `packages/*/vendor/` are gitignored, and the
-root install fills only the root `vendor/`. Running step 4 or 5 without its own
-install fails with `./vendor/bin/lava: No such file or directory` — which is a
-missing prerequisite, not a broken release.
+A clean checkout needs one install. Steps 4 and 5 make their own, in scratch
+copies of the tree, because installing from a fresh copy is exactly what they
+check:
 
 ```sh
-composer install                      # steps 1–3, the monorepo
-(cd apps/demo && composer install)    # step 4
-(cd packages/app && composer install) # step 5
+composer install    # the monorepo, for steps 1–3
 ```
 
 1. **`composer verify`** — the suite, PHPStan at level 8 across every pack's
@@ -54,22 +50,23 @@ composer install                      # steps 1–3, the monorepo
    restatement of step 1: `verify` runs on whatever PHP you have, and a
    construct 8.4 added parses happily there while being a parse error — which
    is fatal to the whole file, not to one statement — on 8.3.
-4. **`lava check --strict` on `apps/demo`** — the canonical app boots, its map is
-   current, and its suite is green, with warnings promoted to failures. This is
-   the end-to-end proof that the packs still work together in an app that
-   actually uses them.
-5. **`lava map --check` on `packages/app`** — the skeleton's committed
-   `AGENTS.md` is accurate from a fresh install, with no `lava map` run first.
-6. **Each pack installs standalone** — `db`, `validate`, `view` and
-   `http-client`, each copied out with only `core` beside it, `composer install`
-   then `composer validate --strict`. This is the decoupling claim: a pack that
-   has grown an undeclared dependency on a sibling fails here and nowhere else.
-   The `--strict` is the point of the step rather than a flourish: a pack that
-   requires `lava/core: @dev` installs happily and fails `--strict`, and it is
-   also the pack that could not be published. The four declare `lava/core:
-   ^0.1.0` against a version-pinned `../core` path repository, so the gate can
-   be strict without either half being a lie.
-7. **CI is green on the tag commit.** The seven jobs are the authority on PHP
+4. **`composer check:install`** — every package and app copied out of the
+   working tree as a fresh clone has it, and installed for real. Each package
+   gets `composer validate --strict` on its manifest *as published* — no
+   `repositories` block, a real `lava/core` constraint — and then an install;
+   the skeleton, `apps/demo` and `apps/blog` are then mapped and checked with
+   `lava map --check` and `lava check --strict`. One command carries the
+   decoupling claim (a pack that has grown an undeclared dependency on a sibling
+   fails to install on its own), the skeleton's claim (its committed `AGENTS.md`
+   is current from a fresh install), and the apps' end-to-end claim. CI's
+   `isolated-install` and `skeleton` jobs run the same script. Expect `every
+   target installed fresh and passed`.
+5. **`composer check:split`** — each package as its own git repository, and an
+   app built from those repositories alone with `composer create-project`,
+   `composer require` and `lava check --strict`. It is the release rehearsed
+   before anything is pushed. Expect `an app built from the mirrors alone
+   installs and checks green`.
+6. **CI is green on the tag commit.** The nine jobs are the authority on PHP
    8.3, 8.4 and 8.5, on a machine that is not this one. Push a branch, watch the
    jobs go green, and only then cut the tag — a tag on a commit CI has not seen
    is a tag that may have to move, and a tag that moves is worse than a late
@@ -146,8 +143,8 @@ them by `tools/install-check.php`, in a scratch copy, never in its own file.
 `.github/workflows/split.yml` does the pushing. On a push to `main` it runs
 `git subtree split --prefix=packages/<name>` for each package and pushes the
 result to that mirror's `main`; on a tag, it pushes the tag. It refuses a split
-whose `composer.json` declares `repositories`, never forces a push, and pushes
-nothing at all until the `SPLIT_TOKEN` secret exists.
+whose `composer.json` declares `repositories`, never forces a push, and skips a
+mirror whose deploy key is not configured.
 
 ### Before the first publish
 
@@ -157,9 +154,13 @@ does them once, by hand:
 1. Create six **empty** public repositories under `BusyBeaverSoftware`, named as
    in the table — no README, license or `.gitignore`, so the first push is not
    refused as unrelated history.
-2. Create a fine-grained personal access token with **Contents: read and write**
-   on those six repositories only, and add it to this repository as the Actions
-   secret `SPLIT_TOKEN`.
+2. For each mirror, generate an SSH key pair. Add the public half to the mirror
+   as a deploy key **with write access**, and the private half to this
+   repository as the Actions secret `SPLIT_KEY_<NAME>`: `SPLIT_KEY_CORE`,
+   `SPLIT_KEY_DB`, `SPLIT_KEY_VALIDATE`, `SPLIT_KEY_VIEW`,
+   `SPLIT_KEY_HTTP_CLIENT`, `SPLIT_KEY_APP`. One key per mirror, because GitHub
+   will not attach one deploy key to two repositories, and because a leaked key
+   should publish one package rather than six.
 3. Push `main`. Check that each mirror now has `composer.json` at its root and
    the history of its own directory.
 4. Sign in to packagist.org with GitHub and submit each mirror's URL. Set up
@@ -226,11 +227,11 @@ implies everything was verified is worse than one that lists what was not.
   webhook exists for Packagist to learn about it from — `composer require
   lava/core` still 404s and `lava/app`'s `composer create-project` path is still
   untested against Packagist. The skeleton is verified by copy-and-install
-  (step 5) instead. Registering the packages is the step that would make the
+  (step 4) instead. Registering the packages is the step that would make the
   pushed tag mean what "release" usually means; see "The tag" above.
 - **The mirrors do not exist yet.** Every manifest is publishable as it sits and
   the split workflow is in place, but nothing is pushed until the six mirror
-  repositories and the `SPLIT_TOKEN` secret exist — the one-time setup under
+  repositories and their deploy keys exist — the one-time setup under
   [Publishing](#publishing). `composer check:split` rehearses the whole path
   locally, Packagist excepted.
 - **The first publishable split cannot come from `0.1.0`.** The manifests at the

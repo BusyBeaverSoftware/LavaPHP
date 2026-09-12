@@ -6,8 +6,8 @@ name: split
 # publishable exactly as it sits in this repository, so this is a pure prefix
 # split: nothing is rewritten on the way out, and what CI tested is what ships.
 #
-# Nothing is pushed until the SPLIT_TOKEN secret exists. The one-time setup — six
-# empty repositories, a token that can write to them, and Packagist — is in
+# Each mirror is pushed with its own deploy key (DECISIONS.md 251). A mirror whose
+# key secret does not exist is skipped with a notice. The one-time setup is in
 # docs/releasing.md, "Publishing".
 
 on:
@@ -32,21 +32,26 @@ jobs:
   split:
     name: packages/${{ matrix.package }}
     runs-on: ubuntu-latest
-    # A fork has neither the secret nor the mirrors; it should not try.
+    # A fork has neither the secrets nor the mirrors; it should not try.
     if: github.repository == 'BusyBeaverSoftware/LavaPHP'
     strategy:
       fail-fast: false
       matrix:
-        package: [core, db, validate, view, http-client, app]
+        include:
+          - { package: core, secret: SPLIT_KEY_CORE }
+          - { package: db, secret: SPLIT_KEY_DB }
+          - { package: validate, secret: SPLIT_KEY_VALIDATE }
+          - { package: view, secret: SPLIT_KEY_VIEW }
+          - { package: http-client, secret: SPLIT_KEY_HTTP_CLIENT }
+          - { package: app, secret: SPLIT_KEY_APP }
     steps:
       - uses: actions/checkout@v4
         with:
           # `git subtree split` walks the prefix's whole history; a shallow clone
           # would publish a history that begins at this commit.
           fetch-depth: 0
-          # checkout's stored credential is sent to every github.com remote, and
-          # it cannot write to the mirrors. Without this, the token in the push
-          # URL below would never be used.
+          # The push below authenticates with the mirror's own key. Nothing needs
+          # checkout's token left behind in the git config.
           persist-credentials: false
 
       - name: Split packages/${{ matrix.package }}
@@ -70,15 +75,28 @@ jobs:
 
       - name: Push to the mirror
         env:
-          SPLIT_TOKEN: ${{ secrets.SPLIT_TOKEN }}
+          # One deploy key per mirror, able to write to that repository and no
+          # other: a leaked key publishes one package rather than six, and no
+          # person's credential is involved.
+          SPLIT_KEY: ${{ secrets[matrix.secret] }}
+          SECRET_NAME: ${{ matrix.secret }}
           PACKAGE: ${{ matrix.package }}
           SHA: ${{ steps.split.outputs.sha }}
         run: |
-          if [ -z "$SPLIT_TOKEN" ]; then
-            echo "::notice::SPLIT_TOKEN is not set, so nothing was published. See docs/releasing.md, \"Publishing\"."
+          if [ -z "$SPLIT_KEY" ]; then
+            echo "::notice::$SECRET_NAME is not set, so packages/$PACKAGE was not published. See docs/releasing.md, \"Publishing\"."
             exit 0
           fi
-          remote="https://x-access-token:${SPLIT_TOKEN}@github.com/${SPLIT_OWNER}/${SPLIT_PREFIX}${PACKAGE}.git"
+
+          ssh_dir="$RUNNER_TEMP/split-ssh"
+          mkdir -p "$ssh_dir" && chmod 700 "$ssh_dir"
+          printf '%s\n' "$SPLIT_KEY" > "$ssh_dir/key" && chmod 600 "$ssh_dir/key"
+          # GitHub's host keys, from its API over TLS rather than ssh-keyscan: a
+          # key scanned at push time trusts whoever answered the scan.
+          curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
+
+          remote="git@github.com:${SPLIT_OWNER}/${SPLIT_PREFIX}${PACKAGE}.git"
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             # Never forced. A mirror that already has this tag refuses the push,
             # which is "a pushed tag is immutable" enforced where Packagist reads.
