@@ -1,4 +1,4 @@
-# `phpstan.neon` at `max` — for `lava/core` alone.
+# `phpstan.neon` at `max` — for `lavaphp/core` alone.
 #
 # Two levels, one repository, and that is a deliberate split rather than an
 # unfinished job. `phpstan.neon` holds the level everything must clear (8, all

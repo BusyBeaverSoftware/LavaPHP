@@ -4,7 +4,7 @@ Written as the app was built, under a standing instruction to choose reasonably
 and record the reasoning rather than stop and ask. Each entry is a decision that
 had more than one defensible answer, the answer chosen, and what it traded away.
 Where a decision was forced by a framework limitation, the limitation is named —
-those are the entries that double as feedback for `lava/core` and its packs.
+those are the entries that double as feedback for `lavaphp/core` and its packs.
 
 ## D1 — Authentication is hand-written rather than a dependency
 
@@ -87,7 +87,7 @@ requests are re-thrown so `/api/*` and `curl` keep their `{"problems": […]}`
 envelope. It narrows nothing; it adds a page for the one audience the default
 renderer cannot serve well.
 
-**It covers the requests no route answers, too.** `lava/core` throws an unknown
+**It covers the requests no route answers, too.** `lavaphp/core` throws an unknown
 path (404), a wrong method (405) and an unparsable body (400) through the global
 middleware, so a mistyped URL gets the same page as a missing post. A page
 rendered here instead of by the framework has to re-add the 405's `Allow`
@@ -113,7 +113,7 @@ must not be overridable, or the guarantee is worth nothing.
 **Chosen:** `password_confirm` carries `custom('matches_password', …)`, whose
 closure reads `password` from the form payload it closes over.
 
-A `lava/validate` rule is handed only its own field's value, so a cross-field
+A `lavaphp/validate` rule is handed only its own field's value, so a cross-field
 rule is a closure over the payload — the pattern the validator's own
 documentation gives for "the end date is after the start date". The closure
 passes when `password` is not a string, because that field's own rules already
@@ -130,7 +130,7 @@ could; the idiom was documented and missed.
 and the form rendered it to the person who had just mistyped their confirmation
 field. `LavaProblem` has three fields for three audiences (`problem` → the user,
 `fix` → the maintainer, `context` → data), and blurring them is easy. `AuthTest`
-still asserts that the string `lava/validate` never appears on a form.
+still asserts that the string `lavaphp/validate` never appears on a form.
 
 ## D9 — Sessions are revoked by epoch, not by deleting rows
 

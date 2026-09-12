@@ -25,7 +25,7 @@ return [
     'base_url' => 'http://localhost:8080',
 
     // What `GET /upstream/health` fetches. The default is this app's own
-    // `/health`, so the demo exercises `lava/http-client` against something
+    // `/health`, so the demo exercises `lavaphp/http-client` against something
     // that is genuinely running — `lava serve` in one terminal is the whole
     // setup — instead of against the internet, which would make the demo's own
     // test suite fail offline and flake online.

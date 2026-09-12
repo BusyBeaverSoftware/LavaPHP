@@ -18,7 +18,7 @@ declare(strict_types=1);
  *
  *     DATABASE_DSN=mysql:host=127.0.0.1;dbname=tasks
  *
- * The three keys are the whole contract with `lava/db`; `lava env` lists the
+ * The three keys are the whole contract with `lavaphp/db`; `lava env` lists the
  * variables that shadow them. An empty string counts as unset, not as "connect
  * to nothing" — so blanking `dsn` here gets `db_not_configured` naming
  * `DATABASE_DSN`, rather than a driver error about the scheme `''`.

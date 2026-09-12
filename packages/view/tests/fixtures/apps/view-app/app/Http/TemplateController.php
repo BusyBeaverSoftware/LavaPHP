@@ -12,7 +12,7 @@ use Psr\Http\Message\ResponseInterface;
  * Every way a template reaches a response, and every way it can fail.
  *
  * The handler contract again: no constructor, dependencies as typed method
- * parameters. `ViewRenderer` is a registered container id (lava/view registers
+ * parameters. `ViewRenderer` is a registered container id (lavaphp/view registers
  * it), so it is injectable by type like any other service — which is the point
  * of the pack registering one id rather than shipping static helpers.
  */

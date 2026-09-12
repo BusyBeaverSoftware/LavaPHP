@@ -9,7 +9,7 @@ namespace App\Tests\Support;
  *
  * The route the demo exercises leaves the process, so the test cannot fake it
  * with an in-process dispatcher: `TestClient` never touches a socket, and the
- * whole point of `lava/http-client` is what happens on one. So this is the
+ * whole point of `lavaphp/http-client` is what happens on one. So this is the
  * smallest thing that works — `php -S`, a router script in `tests/fixtures/`,
  * and a free port.
  *
@@ -20,7 +20,7 @@ namespace App\Tests\Support;
  * interfere. The shutdown function is what keeps a failed run from leaving an
  * orphaned server behind.
  *
- * The same harness exists in `lava/http-client`'s own tests, and the duplication
+ * The same harness exists in `lavaphp/http-client`'s own tests, and the duplication
  * is deliberate rather than overlooked. That copy exists so the pack can prove
  * its standalone claim with nothing but its own dependencies; this one exists so
  * the demo can prove the pack composes in a real app. Sharing either would make

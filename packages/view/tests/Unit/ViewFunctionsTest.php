@@ -195,7 +195,7 @@ final class ViewFunctionsTest extends TestCase
 
     public function testNoValueEverReachesTheProblem(): void
     {
-        // The non-disclosure rule lava/validate follows for a submitted value,
+        // The non-disclosure rule lavaphp/validate follows for a submitted value,
         // applied here to a template's context: a route param can be anything
         // an app put in its model, and a problem message is a page and a log
         // line. The type is what the fix is about; the value is never needed.

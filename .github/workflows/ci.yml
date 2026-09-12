@@ -88,7 +88,7 @@ jobs:
         run: php tools/install-check.php core db validate view http-client
 
   skeleton:
-    name: Prove lava/app boots green from a fresh install
+    name: Prove lavaphp/app boots green from a fresh install
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,10 +97,10 @@ jobs:
           php-version: '8.5'
           coverage: none
       - name: Fresh copy of the skeleton, installed for real, then mapped and checked
-        # The skeleton's manifest is the file `composer create-project lava/app`
+        # The skeleton's manifest is the file `composer create-project lavaphp/app`
         # hands a consumer, so it is validated strictly as published and carries
         # no path repository; the copy is given one to its sibling core.
-        # `vendor/lava/core` is still a SYMLINK to that sibling — the layout that
+        # `vendor/lavaphp/core` is still a SYMLINK to that sibling — the layout that
         # once made the binary load the monorepo's autoloader instead of the
         # app's — so this still fails if that regression comes back. R2: the
         # skeleton ships a pre-generated AGENTS.md, so `lava map --check` passes
@@ -120,7 +120,7 @@ jobs:
         # Local git repositories stand in for the mirrors split.yml pushes, and a
         # Composer home listing them stands in for Packagist. The consumer runs
         # the documented commands verbatim — create-project, require, check —
-        # and every lava/* package it locks must come from a mirror. Nothing is
+        # and every lavaphp/* package it locks must come from a mirror. Nothing is
         # pushed or published. `composer check:split` runs the same locally.
         run: php tools/split-check.php
 
@@ -144,7 +144,7 @@ jobs:
         # this list and `apps/demo/composer.json` move together.
         #
         # Installed rather than run in-tree for the same reason as the skeleton:
-        # `vendor/lava/core` must be a symlink to the sibling checkout, which is
+        # `vendor/lavaphp/core` must be a symlink to the sibling checkout, which is
         # what a real install looks like.
         run: |
           rm -rf /tmp/demo && mkdir -p /tmp/demo/packages /tmp/demo/apps
@@ -154,7 +154,7 @@ jobs:
           cd /tmp/demo/apps/demo
           composer install --no-interaction --no-progress
           # The demo's constraints have to stay concrete. The packs declare
-          # `lava/core: ^0.1.0`, so a `@dev` in this manifest resolves to
+          # `lavaphp/core: ^0.1.0`, so a `@dev` in this manifest resolves to
           # `dev-main` and the install above dies on a core that cannot satisfy
           # them — which is exactly how this was found, and the install alone
           # does not say so clearly. This is not a publishability claim about an
@@ -233,7 +233,7 @@ jobs:
           coverage: none
       - name: Fresh copy of the blog, beside the packs it loads, installed for real
         # The same shape as the demo job, for the same reasons: a real install
-        # symlinks `vendor/lava/*` to sibling checkouts, and every pack
+        # symlinks `vendor/lavaphp/*` to sibling checkouts, and every pack
         # `apps/blog/composer.json` requires must be copied or the install fails
         # on a path repository that is not on disk. This list and that manifest
         # move together.

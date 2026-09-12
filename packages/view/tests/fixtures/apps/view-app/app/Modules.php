@@ -9,5 +9,5 @@ return [
     // fixture exercises both halves of the manifest: `config/view.php` is read
     // by LoadPackConfig at boot, and the gate flag `views` is defined by the
     // pack from this very line.
-    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lava/view', feature: 'views'),
+    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lavaphp/view', feature: 'views'),
 ];

@@ -27,7 +27,7 @@
                     "description": "Flag names without their leading dashes; `json` is always among them.",
                     "items": { "type": "string" }
                   },
-                  "pack": { "type": "string", "description": "The pack providing it, by its short name — `core`, or the pack's feature name (`db` for `lava/db`, whose commands are the `db:*` ones). The package name is what `app/Modules.php` and `composer require` use; this is the name the pack calls itself." },
+                  "pack": { "type": "string", "description": "The pack providing it, by its short name — `core`, or the pack's feature name (`db` for `lavaphp/db`, whose commands are the `db:*` ones). The package name is what `app/Modules.php` and `composer require` use; this is the name the pack calls itself." },
                   "schema": { "type": "string", "description": "The contract name this command's envelope claims — `lava.routes/1`, or `lava.db.status/1` for a pack command, whose colon cannot survive into a file name. The contract is the file `docs/schemas/<schema>.json`. Versioned per command, so this is the field that tells a caller which shape to expect rather than which to assume." }
                 },
                 "additionalProperties": false

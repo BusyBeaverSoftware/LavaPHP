@@ -15,7 +15,7 @@ use Lava\Core\Modules\ModuleRef;
  * the repository rather than of core or of the pack, and this fixture is the
  * smallest app in which it can be asked.
  *
- * The pack is named, not installed here: `lava/db` comes from the monorepo's own
+ * The pack is named, not installed here: `lavaphp/db` comes from the monorepo's own
  * dev requirements, and an app that names a module it has not downloaded is a
  * `missing_pack` problem with the exact `composer require` to run — which is why
  * a file like this one is safe to ship.
@@ -26,5 +26,5 @@ use Lava\Core\Modules\ModuleRef;
  * registered commands are the whole of what `lava list` reports.
  */
 return [
-    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
+    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
 ];

@@ -1,4 +1,4 @@
-# lava/http-client
+# lavaphp/http-client
 
 A PSR-18 client on ext-curl, with two rules and a JSON shortcut. One module,
 three container ids, five problem codes — and every failure leaving the pack as
@@ -28,7 +28,7 @@ Codes this pack raises: `transport_failed`, `bad_request_url`,
 ## Install and enable
 
 ```sh
-composer require lava/http-client
+composer require lavaphp/http-client
 ```
 
 ```php
@@ -36,7 +36,7 @@ composer require lava/http-client
 use Lava\Core\Modules\ModuleRef;
 
 return [
-    ModuleRef::of(\Lava\HttpClient\HttpClientModule::class, package: 'lava/http-client', feature: 'http_client'),
+    ModuleRef::of(\Lava\HttpClient\HttpClientModule::class, package: 'lavaphp/http-client', feature: 'http_client'),
 ];
 ```
 
@@ -67,7 +67,7 @@ return [
     'connect_timeout' => 5,                     // seconds for the connection alone
     'retries'         => 2,                     // extra attempts, idempotent methods only
     'backoff_ms'      => 100,                   // milliseconds between attempts
-    'user_agent'      => 'lava/http-client',
+    'user_agent'      => 'lavaphp/http-client',
 ];
 ```
 

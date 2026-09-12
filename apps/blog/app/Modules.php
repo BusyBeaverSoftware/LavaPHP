@@ -17,7 +17,7 @@ use Lava\Core\Modules\ModuleRef;
  * The order does not matter; packs depend on core and never on each other.
  */
 return [
-    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
-    ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lava/validate', feature: 'validate'),
-    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lava/view', feature: 'views'),
+    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
+    ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lavaphp/validate', feature: 'validate'),
+    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lavaphp/view', feature: 'views'),
 ];

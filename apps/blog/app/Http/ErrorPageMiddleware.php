@@ -26,7 +26,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * layer: a global middleware meets every problem thrown inward of it and can
  * answer first.
  *
- * "Every" includes the requests no route answers. `lava/core` throws an unknown
+ * "Every" includes the requests no route answers. `lavaphp/core` throws an unknown
  * path, a known path under the wrong method, and a body that does not parse
  * through the global middleware as well, so `GET /no/such/page` gets the same
  * page as `GET /posts/999`.

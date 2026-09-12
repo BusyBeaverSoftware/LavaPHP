@@ -45,7 +45,7 @@ final class DemoPackModule implements Module, ProvidesRoutes
         // `'database'` means `config/database.php`, and the extension is added
         // by whoever reads it. This fixture has that file, so the manifest and
         // the filesystem describe the same thing and the map must say it once.
-        return PackInfo::of('lava/demo-pack', 'demo_pack', configFiles: ['database'], envVars: ['DEMO_API_KEY']);
+        return PackInfo::of('lavaphp/demo-pack', 'demo_pack', configFiles: ['database'], envVars: ['DEMO_API_KEY']);
     }
 
     public function register(Container $container, AppContext $ctx): void

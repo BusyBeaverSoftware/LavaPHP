@@ -4046,3 +4046,36 @@ section records both.
     neither of which works since entry 248 stripped those repositories. Steps 4
     and 5 are now `composer check:install` and `composer check:split`, and step 6
     is CI on the tag commit, which now has nine jobs.
+
+252. **The packages are published as `lavaphp/*`, because Packagist's `lava`
+    vendor belongs to someone else.** Submitting
+    `github.com/BusyBeaverSoftware/lava-core` was refused at Packagist's check:
+    *"The vendor name "lava" was already claimed by someone else on
+    Packagist.org."* All six package names had returned 404, which is what made
+    them look free — but Packagist reserves a vendor for the account that first
+    published under it, and `lava/` holds two packages from 2020 (`lava/container`
+    and `lava/validator`, single-digit downloads, published from another GitHub
+    account). A 404 for a package name says nothing about its vendor; the
+    question that would have caught this is `packages/list.json?vendor=lava`. The
+    tag had been held back for exactly this kind of surprise, since a pushed tag
+    cannot move, so nothing public carried the wrong name: the mirrors existed,
+    but no package had been submitted and nothing was tagged.
+
+    The user chose among asking that account for maintainership (dependent on a
+    stranger), self-hosting a Composer repository that keeps `lava/*` (the names
+    on Packagist would still be someone else's, and a consumer who forgot the
+    repository entry would resolve theirs), stopping, and renaming — and chose to
+    rename to `lavaphp/*`, which matches the project and its repository. Only the
+    Composer name changed: the six packages, the root (`lavaphp/lavaphp`), the apps
+    (`lavaphp/demo`, `lavaphp/blog`), the fixtures' pack names, the validation in
+    `PackInfo::of()` and `ModuleRef::of()` (now `^lavaphp\/`) with their messages,
+    every fix text that names a package (`composer require lavaphp/db`), the HTTP
+    client's default User-Agent, and each doc and CI line quoting one. Unchanged:
+    the PHP namespaces (`Lava\Core\…`), the `lava` binary, `LAVA_*` variables, the
+    `lava.<command>/N` schema ids, feature names, and the mirror repositories
+    (`BusyBeaverSoftware/lava-<name>`) — Packagist takes a package's name from its
+    `composer.json`, not from its repository. This file keeps the old names where
+    it records history. The committed maps and the root lock were regenerated
+    rather than edited, because both are derived from the names. Packagist lists
+    no packages under `lavaphp`, which is not proof the vendor is unclaimed;
+    submitting is what settles it.

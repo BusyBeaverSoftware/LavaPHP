@@ -20,12 +20,12 @@ if (PHP_SAPI !== 'cli') {
 //     right there in the app's own `app/`.
 //  2. `_composer_autoload_path` — set by Composer's own bin proxy, which is what
 //     `vendor/bin/lava` is. It names the install the binary was launched from,
-//     and it is the only candidate here that survives `vendor/lava/core` being a
+//     and it is the only candidate here that survives `vendor/lavaphp/core` being a
 //     SYMLINK (a path-repo install, or a monorepo app using path repos):
 //     `__DIR__` resolves through a symlink to the package's real home, so every
 //     `__DIR__`-relative candidate below would find the WRONG vendor directory.
 //  3. `__DIR__ . '/../../../autoload.php'` — installed as a dependency with no
-//     proxy in between: vendor/lava/core/bin → vendor/autoload.php.
+//     proxy in between: vendor/lavaphp/core/bin → vendor/autoload.php.
 //  4. `__DIR__ . '/../../../vendor/autoload.php'` — the monorepo:
 //     packages/core/bin → <root>/vendor/autoload.php.
 $candidates = [];

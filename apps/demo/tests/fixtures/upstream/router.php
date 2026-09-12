@@ -12,7 +12,7 @@ declare(strict_types=1);
  * the same process, so a top-level constant would be a redeclare warning from
  * the second request onward. A test asserts the two copies of the prefix agree.
  *
- * One route per thing `lava/http-client` has to get right. The demo's
+ * One route per thing `lavaphp/http-client` has to get right. The demo's
  * `App\Upstream\Upstream` builds its URL as `<base>/health`, so the caller
  * chooses the behaviour by choosing the base: point `UPSTREAM_URL` at
  * `http://127.0.0.1:PORT/broken` and the fetch becomes

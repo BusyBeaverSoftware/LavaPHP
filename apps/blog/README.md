@@ -4,7 +4,7 @@ A blog with sign-in, built on LavaPHP. It is the second example app beside
 [`apps/demo`](../demo), and a different kind: the demo is the framework's own
 dogfood — every pack, every pillar, an API first — while this one was written
 the way someone outside the monorepo writes an ordinary website, and kept for
-what that turned up. Four changes to `lava/core` came out of it (see
+what that turned up. Four changes to `lavaphp/core` came out of it (see
 [What building it changed](#what-building-it-changed)), and
 [`DECISIONS.md`](DECISIONS.md) records the design choices and what they traded
 away.
@@ -63,7 +63,7 @@ against the source afterwards, much of what that report called a limitation
 already had an answer: cross-field validation is a `custom()` rule closing over
 the payload, each pack's config file is documented key by key, and an unset
 required environment variable fails `lava check --strict`. What had no answer is
-now part of `lava/core`:
+now part of `lavaphp/core`:
 
 - **A request no route answers passes through the global middleware.** An
   unknown path, a wrong method or an unparsable body is thrown from where the
@@ -92,6 +92,6 @@ and it is the part of this repo most worth reading critically: `tests/AuthTest.p
 exists to hold each of those claims to account, because a hand-written auth
 layer with no tests is a hand-written auth layer with no guarantees.
 
-No ORM, no templating beyond `lava/view`, no auto-wiring. `app/Services.php` is
+No ORM, no templating beyond `lavaphp/view`, no auto-wiring. `app/Services.php` is
 the complete answer to "where does this come from?", and a handler parameter can
 only be the request, `RouteArgs`, or something registered there.

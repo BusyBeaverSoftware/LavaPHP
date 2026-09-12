@@ -15,7 +15,7 @@ use Lava\Core\Features\Flag;
  * not care how it was assembled.
  *
  * The pack's unit tests are about templates and about how the module reads
- * config, not about flag resolution — that is lava/core's subject and it has
+ * config, not about flag resolution — that is lavaphp/core's subject and it has
  * its own tests. What these tests need is a resolver that answers correctly for
  * the two or three names they mention, without a boot.
  */

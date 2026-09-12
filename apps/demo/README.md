@@ -1,4 +1,4 @@
-# lava/demo
+# lavaphp/demo
 
 The framework's **canonical app**: a small tasks service that uses every pillar
 and every shipped pack, and the app the framework's own acceptance runs are
@@ -45,7 +45,7 @@ vendor/bin/lava map --check     # is AGENTS.md still an accurate map of this app
 | `GET` | `/tasks/export` | CSV download — **gated** by `tasks_csv_export` |
 | `GET` | `/` | the task board, as HTML |
 | `GET` | `/tasks/{id:int}/view` | one task, as HTML |
-| `GET` | `/upstream/health` | the upstream's health, fetched with `lava/http-client` |
+| `GET` | `/upstream/health` | the upstream's health, fetched with `lavaphp/http-client` |
 
 `GET /tasks/export` is gated so the demo has a flag that does something visible.
 It is `on` in `config/features.php`; set `LAVA_FEATURE_TASKS_CSV_EXPORT=off` and
@@ -72,7 +72,7 @@ the other asks for a different route. So `app/Http/TasksController.php` is the
 API and `app/Http/TasksPageController.php` is the page, and neither has to ask
 what the caller would have preferred.
 
-The templates are in `views/`, and they are where two things `lava/view` exists
+The templates are in `views/`, and they are where two things `lavaphp/view` exists
 for are visible:
 
 ```twig
@@ -100,7 +100,7 @@ curl -s -H 'Accept: text/html' localhost:8080/tasks/999/view | head   # the diag
 
 ## The outbound call
 
-`GET /upstream/health` fetches a URL through `lava/http-client` and returns what
+`GET /upstream/health` fetches a URL through `lavaphp/http-client` and returns what
 it says. It is the demo's only route that leaves the process, and the only one
 whose failure is raised by a pack rather than constructed by this app — so
 `UpstreamController` is one statement with no error branch, and a refused
@@ -150,7 +150,7 @@ for an agent.
 | Every route declared, none inferred | zero magic | `app/Routes.php` |
 | Every service built by visible code | zero magic | `app/Services.php` |
 | A pack gated by a flag, not by a `require` | pack decoupling | `app/Modules.php`, `config/features.php` |
-| Four packs, one app, no coupling between them | packs | `TaskRepository` uses `lava/db`; `TasksController` uses `lava/validate`; `TasksPageController` uses `lava/view`; `Upstream` uses `lava/http-client` |
+| Four packs, one app, no coupling between them | packs | `TaskRepository` uses `lavaphp/db`; `TasksController` uses `lavaphp/validate`; `TasksPageController` uses `lavaphp/view`; `Upstream` uses `lavaphp/http-client` |
 | All validation problems at once | errors as a loop | `TasksController::store` |
 | An app-owned problem code with a fix | errors as a loop | `app/Problem/TaskNotFound.php` |
 | A generated map that cannot disagree with `lava routes` | project map | `AGENTS.md` |
@@ -199,7 +199,7 @@ the alternative would have been a quietly worse demo:
   wrong on every machine but one.
 - **`/upstream/health` fetches a URL from config, never from the request.** An
   endpoint that fetched a caller-supplied URL is an SSRF primitive — the reason
-  `lava/http-client` refuses `file://` and `gopher://` at all — and a demo that
+  `lavaphp/http-client` refuses `file://` and `gopher://` at all — and a demo that
   shipped one would be teaching the wrong thing.
 - **`config/app.php` reads `UPSTREAM_URL` itself.** The demo's suite has to be
   able to point the fetch at a server it starts, and a config file reading one
@@ -209,7 +209,7 @@ the alternative would have been a quietly worse demo:
 
 ## Requirements
 
-`lava/db` needs a PDO driver, and `lava/http-client` needs `ext-curl`. The demo's
+`lavaphp/db` needs a PDO driver, and `lavaphp/http-client` needs `ext-curl`. The demo's
 default DSN is SQLite, so `pdo_sqlite` has to be installed
 (`sudo apt install php8.5-sqlite3`, or the equivalent). CI's `ubuntu-latest` +
 `setup-php` image ships both.

@@ -13,11 +13,11 @@ declare(strict_types=1);
  * composer.json, and its tags. A consumer then runs exactly the documented
  * commands against it:
  *
- *     composer create-project lava/app consumer
- *     composer require lava/db lava/validate lava/view lava/http-client
+ *     composer create-project lavaphp/app consumer
+ *     composer require lavaphp/db lavaphp/validate lavaphp/view lavaphp/http-client
  *     vendor/bin/lava check --strict
  *
- * and every lava/* package in the consumer's lock has to have come from its
+ * and every lavaphp/* package in the consumer's lock has to have come from its
  * mirror, at the rehearsal version. Nothing leaves the machine and nothing is
  * published.
  *
@@ -50,7 +50,7 @@ if ($root === false) {
 }
 
 $packages = ['core', 'db', 'validate', 'view', 'http-client', 'app'];
-$packs = ['lava/db', 'lava/validate', 'lava/view', 'lava/http-client'];
+$packs = ['lavaphp/db', 'lavaphp/validate', 'lavaphp/view', 'lavaphp/http-client'];
 
 $version = monorepoVersion($root);
 $parts = explode('.', $version);
@@ -99,9 +99,9 @@ try {
         $env['COMPOSER_CACHE_DIR'] = $cacheDir;
     }
 
-    must(['composer', 'create-project', 'lava/app', 'consumer', $tag, '--no-interaction', '--no-progress'], $scratch, $env);
+    must(['composer', 'create-project', 'lavaphp/app', 'consumer', $tag, '--no-interaction', '--no-progress'], $scratch, $env);
     $consumer = "{$scratch}/consumer";
-    echo "  consumer composer create-project lava/app: ok\n";
+    echo "  consumer composer create-project lavaphp/app: ok\n";
 
     must(['composer', 'require', ...$packs, '--no-interaction', '--no-progress'], $consumer, $env);
     echo '  consumer composer require ' . implode(' ', $packs) . ": ok\n";
@@ -110,7 +110,7 @@ try {
     $entries = $lock['packages'] ?? null;
     $installed = [];
     foreach (is_array($entries) ? $entries : [] as $entry) {
-        if (!is_array($entry) || !is_string($entry['name'] ?? null) || !str_starts_with($entry['name'], 'lava/')) {
+        if (!is_array($entry) || !is_string($entry['name'] ?? null) || !str_starts_with($entry['name'], 'lavaphp/')) {
             continue;
         }
         $source = is_array($entry['source'] ?? null) ? ($entry['source']['url'] ?? null) : null;
@@ -121,7 +121,7 @@ try {
     }
     ksort($installed);
 
-    $expected = ['lava/core', ...$packs];
+    $expected = ['lavaphp/core', ...$packs];
     sort($expected);
     if (array_keys($installed) !== $expected) {
         throw new \RuntimeException(

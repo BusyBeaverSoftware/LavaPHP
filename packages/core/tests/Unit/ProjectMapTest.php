@@ -210,11 +210,11 @@ final class ProjectMapTest extends TestCase
     public function testDependencyCodeRendersTheSameInstalledOrCheckedOut(): void
     {
         // THE reason the canonicalization exists: the same core file lives at
-        // `vendor/lava/core/…` in an installed app and at `packages/core/…` in
+        // `vendor/lavaphp/core/…` in an installed app and at `packages/core/…` in
         // this checkout. An app's committed AGENTS.md must not care which.
         self::assertSame(
             'core:src/Boot/Kernel.php',
-            ProjectMap::relative('/srv/site/vendor/lava/core/src/Boot/Kernel.php', '/srv/site'),
+            ProjectMap::relative('/srv/site/vendor/lavaphp/core/src/Boot/Kernel.php', '/srv/site'),
         );
         self::assertSame(
             'core:src/Boot/Kernel.php',
@@ -273,7 +273,7 @@ final class ProjectMapTest extends TestCase
         // But dependency code the app installed INTO itself is still that.
         self::assertSame(
             'core:src/Boot/Kernel.php',
-            ProjectMap::relative('/srv/site/vendor/lava/core/src/Boot/Kernel.php', '/srv/site'),
+            ProjectMap::relative('/srv/site/vendor/lavaphp/core/src/Boot/Kernel.php', '/srv/site'),
         );
         self::assertSame(
             'core:src/Boot/Kernel.php',

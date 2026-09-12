@@ -1,5 +1,5 @@
 {
-    "name": "lava/core",
+    "name": "lavaphp/core",
     "description": "LavaPHP core — agent-first micro-framework kernel: self-diagnosing boot, explicit DI, mandatory-name routing, deterministic feature flags.",
     "type": "library",
     "license": "MIT",

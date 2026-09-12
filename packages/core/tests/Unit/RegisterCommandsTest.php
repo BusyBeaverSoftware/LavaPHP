@@ -32,7 +32,7 @@ final class RegisterCommandsTest extends TestCase
         $app = $this->booted('commands-app');
         $packs = $this->packsByName($app->commands());
 
-        self::assertSame('lava/demo-pack', $packs['demo:ping'] ?? null);
+        self::assertSame('lavaphp/demo-pack', $packs['demo:ping'] ?? null);
         self::assertSame('app', $packs['app:report'] ?? null);
         self::assertSame('core', $packs['routes'] ?? null);
 
@@ -62,7 +62,7 @@ final class RegisterCommandsTest extends TestCase
         self::assertCount(2, $problems);
         self::assertSame('routes', $problems[0]->context['name']);
         self::assertSame('core', $problems[0]->context['existing_pack']);
-        self::assertSame('lava/demo-pack', $problems[0]->context['incoming_pack']);
+        self::assertSame('lavaphp/demo-pack', $problems[0]->context['incoming_pack']);
         self::assertSame('services', $problems[1]->context['name']);
         self::assertSame('app', $problems[1]->context['incoming_pack']);
     }
@@ -90,12 +90,12 @@ final class RegisterCommandsTest extends TestCase
         $incumbent = $registry->get('routes');
 
         try {
-            $registry->add($this->claiming('routes', 'lava/demo-pack'));
+            $registry->add($this->claiming('routes', 'lavaphp/demo-pack'));
             self::fail('a duplicate name must throw');
         } catch (DuplicateCommand $problem) {
             self::assertSame('duplicate_command', $problem->code());
             self::assertSame('core', $problem->context['existing_pack']);
-            self::assertSame('lava/demo-pack', $problem->context['incoming_pack']);
+            self::assertSame('lavaphp/demo-pack', $problem->context['incoming_pack']);
         }
 
         self::assertSame($incumbent, $registry->get('routes'));

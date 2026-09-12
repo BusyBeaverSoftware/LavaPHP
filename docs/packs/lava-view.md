@@ -1,4 +1,4 @@
-# lava/view
+# lavaphp/view
 
 Twig, wired the way the rest of the framework is wired. One service, two
 template functions, four problem codes — and every Twig failure leaving the pack
@@ -28,7 +28,7 @@ Codes this pack raises: `template_not_found`, `template_failed`,
 ## Install and enable
 
 ```sh
-composer require lava/view
+composer require lavaphp/view
 ```
 
 ```php
@@ -36,7 +36,7 @@ composer require lava/view
 use Lava\Core\Modules\ModuleRef;
 
 return [
-    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lava/view', feature: 'views'),
+    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lavaphp/view', feature: 'views'),
 ];
 ```
 
@@ -208,7 +208,7 @@ A `LavaProblem` raised inside a template — `bad_view_call`, from `url()` or
 `feature()` — passes through **untouched**. Twig wraps anything a template
 function throws in its own `RuntimeError`, and unwrapping it is what keeps the
 specific code and the specific fix instead of burying them inside Twig's
-sentence. This is the same rule `lava/db`'s `migration_failed` follows: a
+sentence. This is the same rule `lavaphp/db`'s `migration_failed` follows: a
 wrapper problem wraps only throwables that are not already `LavaProblem`s.
 
 Nothing this pack reports ever contains a value from your context. `bad_view_call`

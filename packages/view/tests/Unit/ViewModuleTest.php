@@ -101,7 +101,7 @@ final class ViewModuleTest extends TestCase
         // nothing, so the stem is what is asserted.
         $pack = (new ViewModule())->pack();
 
-        self::assertSame('lava/view', $pack->package);
+        self::assertSame('lavaphp/view', $pack->package);
         self::assertSame('views', $pack->feature);
         self::assertSame(['view'], $pack->configFiles);
     }

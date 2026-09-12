@@ -19,7 +19,7 @@ final class RedefinedPackModule implements Module
 {
     public function pack(): PackInfo
     {
-        return PackInfo::of('lava/redefined-pack', 'redefined_pack');
+        return PackInfo::of('lavaphp/redefined-pack', 'redefined_pack');
     }
 
     public function register(Container $container, AppContext $ctx): void

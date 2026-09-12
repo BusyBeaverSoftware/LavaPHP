@@ -26,7 +26,7 @@ final class ViewDirMissing extends LavaProblem
     public static function of(string $path, string $configKey, string $appDir): self
     {
         return new self(
-            "lava/view renders from {$path}, which is not a directory.",
+            "lavaphp/view renders from {$path}, which is not a directory.",
             "Create it — mkdir -p {$path} — or point the pack somewhere else: add 'path' => '…' to "
             . "config/view.php, where a relative value is resolved against {$appDir}.",
             ['path' => $path, 'config_key' => $configKey, 'app_dir' => $appDir],

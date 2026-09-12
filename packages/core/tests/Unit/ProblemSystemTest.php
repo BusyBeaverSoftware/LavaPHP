@@ -42,9 +42,9 @@ final class ProblemSystemTest extends TestCase
     {
         $problem = self::missingSearch();
 
-        self::assertStringContainsString('composer require lava/search', $problem->fix);
+        self::assertStringContainsString('composer require lavaphp/search', $problem->fix);
         self::assertSame('search', $problem->context['feature']);
-        self::assertSame('lava/search', $problem->context['package']);
+        self::assertSame('lavaphp/search', $problem->context['package']);
     }
 
     public function testServiceNotRegisteredIsAPsr11NotFound(): void
@@ -89,7 +89,7 @@ final class ProblemSystemTest extends TestCase
 
         self::assertStringContainsString('[X] [fatal] missing_pack', $text);
         self::assertStringContainsString("PROBLEM: Feature 'search' is enabled", $text);
-        self::assertStringContainsString('FIX: Run: composer require lava/search', $text);
+        self::assertStringContainsString('FIX: Run: composer require lavaphp/search', $text);
         self::assertStringContainsString('AT: ' . __FILE__ . ':', $text);
         self::assertStringContainsString('feature: search', $text);
     }
@@ -113,7 +113,7 @@ final class ProblemSystemTest extends TestCase
         // A fictional pack on purpose: every real pack in this monorepo is
         // installed, so a MissingPack built from one would describe a state the
         // framework can no longer produce. See missing-pack-app/app/Modules.php.
-        return MissingPack::of(ModuleRef::of(\Lava\Search\SearchModule::class, package: 'lava/search', feature: 'search'));
+        return MissingPack::of(ModuleRef::of(\Lava\Search\SearchModule::class, package: 'lavaphp/search', feature: 'search'));
     }
 
     private static function warnProblem(): LavaProblem

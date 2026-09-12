@@ -38,7 +38,7 @@ composer install    # the monorepo, for steps 1–3
 ```
 
 1. **`composer verify`** — the suite, PHPStan at level 8 across every pack's
-   `src`, `apps/demo/app`, `apps/demo/tests` and `tools`, and `lava/core` alone
+   `src`, `apps/demo/app`, `apps/demo/tests` and `tools`, and `lavaphp/core` alone
    at level `max`. Expect `[OK] No errors` twice and a green suite.
 2. **`composer coverage`** — per-pack line coverage with a floor per pack,
    counted with the `bin/lava` subprocesses included. Expect exit 0 and a
@@ -53,7 +53,7 @@ composer install    # the monorepo, for steps 1–3
 4. **`composer check:install`** — every package and app copied out of the
    working tree as a fresh clone has it, and installed for real. Each package
    gets `composer validate --strict` on its manifest *as published* — no
-   `repositories` block, a real `lava/core` constraint — and then an install;
+   `repositories` block, a real `lavaphp/core` constraint — and then an install;
    the skeleton, `apps/demo` and `apps/blog` are then mapped and checked with
    `lava map --check` and `lava check --strict`. One command carries the
    decoupling claim (a pack that has grown an undeclared dependency on a sibling
@@ -92,9 +92,9 @@ learns about a tag from a webhook on a package that is *already registered*, so
 the order runs the other way from what "the push makes it a release" suggests:
 register the package, put the webhook in place, and only then is a tag push
 visible to the world. Measured on 2026-09-12, **none of the six packages exists
-on Packagist** — `packagist.org/packages/lava/core.json` and the five siblings
+on Packagist** — `packagist.org/packages/lavaphp/core.json` and the five siblings
 all return `404` — so a tag push today creates the tag on GitHub and leaves
-`composer require lava/core` failing for everyone. The names are unclaimed, so
+`composer require lavaphp/core` failing for everyone. The names are unclaimed, so
 registering them is available on demand; until it is done, a green tag push is
 evidence about the code and not a distribution event.
 
@@ -120,12 +120,12 @@ Six packages are published, each from a read-only mirror of its directory:
 
 | Directory | Package | Mirror |
 |---|---|---|
-| `packages/core` | `lava/core` | `BusyBeaverSoftware/lava-core` |
-| `packages/db` | `lava/db` | `BusyBeaverSoftware/lava-db` |
-| `packages/validate` | `lava/validate` | `BusyBeaverSoftware/lava-validate` |
-| `packages/view` | `lava/view` | `BusyBeaverSoftware/lava-view` |
-| `packages/http-client` | `lava/http-client` | `BusyBeaverSoftware/lava-http-client` |
-| `packages/app` | `lava/app` | `BusyBeaverSoftware/lava-app` |
+| `packages/core` | `lavaphp/core` | `BusyBeaverSoftware/lava-core` |
+| `packages/db` | `lavaphp/db` | `BusyBeaverSoftware/lava-db` |
+| `packages/validate` | `lavaphp/validate` | `BusyBeaverSoftware/lava-validate` |
+| `packages/view` | `lavaphp/view` | `BusyBeaverSoftware/lava-view` |
+| `packages/http-client` | `lavaphp/http-client` | `BusyBeaverSoftware/lava-http-client` |
+| `packages/app` | `lavaphp/app` | `BusyBeaverSoftware/lava-app` |
 
 The mirror names are set once, at the top of `.github/workflows/split.yml`. A
 package's name comes from its `composer.json`, never from its mirror.
@@ -133,7 +133,7 @@ package's name comes from its `composer.json`, never from its mirror.
 **Every manifest under `packages/` is publishable as it sits.** None carries a
 `repositories` block: in a published package that block is ignored when the
 package is a dependency and fatal when it is the root, and `composer
-create-project lava/app` makes the skeleton the root (DECISIONS.md 229). So the
+create-project lavaphp/app` makes the skeleton the root (DECISIONS.md 229). So the
 split is a pure prefix split that rewrites nothing, and the manifest CI tested
 is the one a consumer gets. Inside this repository the packages still resolve
 each other from the working tree — the root `composer.json` and each app under
@@ -180,8 +180,8 @@ does them once, by hand:
   `skeleton` jobs run the same script.
 - `composer check:split` turns each package into a local git repository — a
   mirror — and has a consumer that knows only those mirrors run `composer
-  create-project lava/app`, `composer require` for every pack, and `lava check
-  --strict`; every `lava/*` package in its lock must come from a mirror. It
+  create-project lavaphp/app`, `composer require` for every pack, and `lava check
+  --strict`; every `lavaphp/*` package in its lock must come from a mirror. It
   builds the mirrors from the working tree, so it rehearses manifests before
   they are committed. CI's `publish-rehearsal` job runs it too.
 
@@ -191,7 +191,7 @@ Neither pushes or publishes anything, and neither can show Packagist itself.
 
 - **No `composer.lock` is committed** for any pack or app, and the omission is
   load-bearing rather than housekeeping: a lock generated in this monorepo pins
-  `lava/core` to a `../core` path repository, which exists only here. Shipping
+  `lavaphp/core` to a `../core` path repository, which exists only here. Shipping
   one would hand a consumer a lock that cannot resolve. The root lock IS
   committed — it is a project, and its dev tooling is worth pinning.
 - **No `CHANGELOG.md`.** The record is `DECISIONS.md` (every judgement call with
@@ -225,7 +225,7 @@ implies everything was verified is worse than one that lists what was not.
 - **No release has reached anyone.** The `0.1.0` tag is pushed as of
   2026-09-12, but the six packages are not registered on Packagist, so no
   webhook exists for Packagist to learn about it from — `composer require
-  lava/core` still 404s and `lava/app`'s `composer create-project` path is still
+  lavaphp/core` still 404s and `lavaphp/app`'s `composer create-project` path is still
   untested against Packagist. The skeleton is verified by copy-and-install
   (step 4) instead. Registering the packages is the step that would make the
   pushed tag mean what "release" usually means; see "The tag" above.

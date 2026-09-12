@@ -34,7 +34,7 @@ use PHPUnit\Framework\TestCase;
  * What it does NOT prove: that a snippet is a complete working file (they are
  * minimal on purpose), and that a name from a PACK exists — core's suite must
  * run with only core installed (`cd packages/core && composer install`), so it
- * cannot require `lava/db` to be present. The `modules` snippet naming
+ * cannot require `lavaphp/db` to be present. The `modules` snippet naming
  * `Lava\Db\DbModule` is therefore checked by the db pack, which is the package
  * that owns that class.
  */

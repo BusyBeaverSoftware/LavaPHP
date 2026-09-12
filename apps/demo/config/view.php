@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * lava/view's settings.
+ * lavaphp/view's settings.
  *
  * Both values here are the pack's defaults, so this file could be deleted
  * without changing anything. It is here because the demo is the canonical app,

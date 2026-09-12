@@ -64,7 +64,7 @@ jobs:
       - name: Refuse a manifest that only works inside this repository
         # A `repositories` block in a published package is ignored when the
         # package is a dependency and fatal when it is the root — and
-        # `composer create-project lava/app` makes the skeleton the root
+        # `composer create-project lavaphp/app` makes the skeleton the root
         # (DECISIONS.md 229). A split that carries one is not published.
         run: |
           git show "${{ steps.split.outputs.sha }}:composer.json" > "$RUNNER_TEMP/split-composer.json"

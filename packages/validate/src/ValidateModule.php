@@ -10,7 +10,7 @@ use Lava\Core\Modules\Module;
 use Lava\Core\Modules\PackInfo;
 
 /**
- * lava/validate's entry point.
+ * lavaphp/validate's entry point.
  *
  * **`register()` is empty, and that is the design rather than an omission.**
  * This pack has nothing to wire: a {@see \Lava\Validate\Validation\Validator}
@@ -30,7 +30,7 @@ final class ValidateModule implements Module
 {
     public function pack(): PackInfo
     {
-        return PackInfo::of('lava/validate', 'validate');
+        return PackInfo::of('lavaphp/validate', 'validate');
     }
 
     public function register(Container $container, AppContext $ctx): void

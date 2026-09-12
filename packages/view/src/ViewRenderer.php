@@ -83,7 +83,7 @@ final class ViewRenderer
             // Twig wraps whatever a template function throws in a RuntimeError
             // whose `previous` is the original. A LavaProblem raised by url()
             // or feature() is already a precise diagnosis with its own fix, so
-            // it passes through UNTOUCHED — the same rule lava/db's
+            // it passes through UNTOUCHED — the same rule lavaphp/db's
             // MigrationFailed follows. Wrapping it would turn a `bad_view_call`
             // into a `template_failed` and bury the fix inside Twig's sentence
             // ("An exception has been thrown during the rendering of a

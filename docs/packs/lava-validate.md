@@ -1,4 +1,4 @@
-# lava/validate
+# lavaphp/validate
 
 A typed validation DSL. You declare a field map; the pack runs it against a
 payload and gives you back the values that were there and one problem per field
@@ -22,7 +22,7 @@ Codes this pack raises: `validation_failed`, `invalid_rule`, `unreadable_field`
 ## Install and enable
 
 ```sh
-composer require lava/validate
+composer require lavaphp/validate
 ```
 
 ```php
@@ -30,7 +30,7 @@ composer require lava/validate
 use Lava\Core\Modules\ModuleRef;
 
 return [
-    ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lava/validate', feature: 'validate'),
+    ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lavaphp/validate', feature: 'validate'),
 ];
 ```
 

@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  *
  * Every test here boots the app with `UPSTREAM_URL` pointing at a real `php -S`
  * this suite starts. That is the whole reason the config value is
- * environment-overridable: the demo must exercise `lava/http-client` against
+ * environment-overridable: the demo must exercise `lavaphp/http-client` against
  * something genuinely running without depending on the internet, which would
  * make this suite fail offline and flake online.
  *

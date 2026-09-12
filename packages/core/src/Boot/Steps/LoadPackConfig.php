@@ -15,7 +15,7 @@ use Lava\Core\Problem\LavaProblem;
  *
  * A pack's manifest names the config files it reads ({@see \Lava\Core\Modules\PackInfo}),
  * and this is what makes that declaration true. Without it `configFiles` is a
- * field nothing acts on: `lava about` would advertise that lava/db reads
+ * field nothing acts on: `lava about` would advertise that lavaphp/db reads
  * config/database.php while `lava config` showed none of its keys, and a pack
  * would have to read its own file behind the framework's back, without
  * provenance and without the shape checks every other config value gets.

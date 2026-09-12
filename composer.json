@@ -1,44 +1,44 @@
 {
-    "name": "lava/lava",
+    "name": "lavaphp/lavaphp",
     "description": "LavaPHP monorepo — an agent-first PHP framework: small readable core, hard-decoupled packs, self-diagnosing boot.",
     "type": "project",
     "license": "MIT",
     "repositories": {
-        "lava/core": {
+        "lavaphp/core": {
             "type": "path",
             "url": "packages/core",
-            "options": { "versions": { "lava/core": "0.1.0" } }
+            "options": { "versions": { "lavaphp/core": "0.1.0" } }
         },
-        "lava/db": {
+        "lavaphp/db": {
             "type": "path",
             "url": "packages/db",
-            "options": { "versions": { "lava/db": "0.1.0" } }
+            "options": { "versions": { "lavaphp/db": "0.1.0" } }
         },
-        "lava/validate": {
+        "lavaphp/validate": {
             "type": "path",
             "url": "packages/validate",
-            "options": { "versions": { "lava/validate": "0.1.0" } }
+            "options": { "versions": { "lavaphp/validate": "0.1.0" } }
         },
-        "lava/view": {
+        "lavaphp/view": {
             "type": "path",
             "url": "packages/view",
-            "options": { "versions": { "lava/view": "0.1.0" } }
+            "options": { "versions": { "lavaphp/view": "0.1.0" } }
         },
-        "lava/http-client": {
+        "lavaphp/http-client": {
             "type": "path",
             "url": "packages/http-client",
-            "options": { "versions": { "lava/http-client": "0.1.0" } }
+            "options": { "versions": { "lavaphp/http-client": "0.1.0" } }
         }
     },
     "require": {
         "php": "^8.3"
     },
     "require-dev": {
-        "lava/core": "^0.1.0",
-        "lava/db": "^0.1.0",
-        "lava/http-client": "^0.1.0",
-        "lava/validate": "^0.1.0",
-        "lava/view": "^0.1.0",
+        "lavaphp/core": "^0.1.0",
+        "lavaphp/db": "^0.1.0",
+        "lavaphp/http-client": "^0.1.0",
+        "lavaphp/validate": "^0.1.0",
+        "lavaphp/view": "^0.1.0",
         "opis/json-schema": "^2.6",
         "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^12.5"

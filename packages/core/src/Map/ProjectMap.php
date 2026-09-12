@@ -461,7 +461,7 @@ final readonly class ProjectMap
      *  2. **Dependency code** — anything under `vendor/<vendor>/<pkg>/` or
      *     `packages/<pkg>/` becomes `<pkg>:<rest>`, e.g. `db:src/DbModule.php`.
      *     This is the important one: an installed app holds core at
-     *     `vendor/lava/core/src/…` and a checkout booting it from a sibling
+     *     `vendor/lavaphp/core/src/…` and a checkout booting it from a sibling
      *     directory holds it at `packages/core/src/…`. Both must render — and
      *     therefore HASH — identically, or an app's committed AGENTS.md would be
      *     stale the moment someone installed the same packages a different way.
@@ -512,7 +512,7 @@ final readonly class ProjectMap
      * package, or null when it does not.
      *
      * A leading `/` is added when there is none, so the marker may sit at the
-     * very start: `vendor/lava/core/src/X.php` is a real shape — it is exactly
+     * very start: `vendor/lavaphp/core/src/X.php` is a real shape — it is exactly
      * what the remainder looks like once the app root has been stripped off.
      */
     private static function dependencyPath(string $path): ?string

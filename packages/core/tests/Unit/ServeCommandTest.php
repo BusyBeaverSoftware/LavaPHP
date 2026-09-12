@@ -91,7 +91,7 @@ final class ServeCommandTest extends CommandTestCase
         self::assertSame(ExitCode::Failure, $code);
         self::assertSame(['missing_entry_point'], array_column($envelope['problems'], 'code'));
         self::assertSame('public/index.php', $envelope['problems'][0]['context']['expected']);
-        self::assertStringContainsString('lava/app skeleton', (string) $envelope['problems'][0]['fix']);
+        self::assertStringContainsString('lavaphp/app skeleton', (string) $envelope['problems'][0]['fix']);
         self::assertFalse($envelope['data']['booted']);
         self::assertSame('public/index.php', $envelope['data']['entry_point']);
     }

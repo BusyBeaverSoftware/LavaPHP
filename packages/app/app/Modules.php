@@ -12,14 +12,14 @@ use Lava\Core\Modules\ModuleRef;
  *
  * This app loads none, so there is nothing to enable. Adding one looks like:
  *
- *     ModuleRef::of(Lava\Db\DbModule::class, package: 'lava/db', feature: 'db')
+ *     ModuleRef::of(Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db')
  *
- * and takes exactly two things: that line, and `composer require lava/db`.
+ * and takes exactly two things: that line, and `composer require lavaphp/db`.
  *
  * The flag is NOT one of them. `db` is the pack's GATE, so the pack defines it
  * — core reads this file and registers `Feature::define('db', Flag::on())` for
  * you. Writing it yourself is a boot problem rather than a harmless duplicate:
- * "Flag 'db' is the gate for pack lava/db and is defined by the pack itself."
+ * "Flag 'db' is the gate for pack lavaphp/db and is defined by the pack itself."
  * The pack owns the flag the same way it owns its routes and its commands, and
  * this file owns only the decision to load it.
  *

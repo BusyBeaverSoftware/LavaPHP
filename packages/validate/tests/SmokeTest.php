@@ -10,6 +10,6 @@ final class SmokeTest extends TestCase
 {
     public function test_php_floor_is_honored(): void
     {
-        self::assertGreaterThanOrEqual(80300, PHP_VERSION_ID, 'lava/validate requires PHP 8.3+');
+        self::assertGreaterThanOrEqual(80300, PHP_VERSION_ID, 'lavaphp/validate requires PHP 8.3+');
     }
 }

@@ -17,7 +17,7 @@ abstract class LavaProblem extends \RuntimeException
 {
     /**
      * @param string $message WHAT failed, one sentence.
-     * @param string $fix IMPERATIVE fix, e.g. "Run: composer require lava/db".
+     * @param string $fix IMPERATIVE fix, e.g. "Run: composer require lavaphp/db".
      * @param array<string, mixed> $context The failing input, JSON-safe key/value pairs.
      * @param SourceLocation|null $source The user-authored artifact at fault, if known.
      */

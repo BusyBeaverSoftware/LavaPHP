@@ -31,7 +31,7 @@ final class PingCommand extends Command
 
     public function pack(): string
     {
-        return 'lava/demo-pack';
+        return 'lavaphp/demo-pack';
     }
 
     public function run(IO $io, Args $args, string $appDir): int
@@ -46,7 +46,7 @@ final class CommandsPackModule implements Module, ProvidesCommands
 {
     public function pack(): PackInfo
     {
-        return PackInfo::of('lava/demo-pack', 'demo_pack');
+        return PackInfo::of('lavaphp/demo-pack', 'demo_pack');
     }
 
     public function register(Container $container, AppContext $ctx): void

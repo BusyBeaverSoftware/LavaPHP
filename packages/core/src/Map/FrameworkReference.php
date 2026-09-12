@@ -25,7 +25,7 @@ namespace Lava\Core\Map;
  *
  * What that test does NOT prove: that a snippet is a *complete working file*.
  * The examples are minimal on purpose — they show the shape, not the error
- * handling — so they are checked for truth, not for bootability. The `lava/app`
+ * handling — so they are checked for truth, not for bootability. The `lavaphp/app`
  * skeleton is the working-app proof, and `lava check` is what verifies it.
  */
 final class FrameworkReference
@@ -164,7 +164,7 @@ final class FrameworkReference
                     use Lava\Core\Modules\ModuleRef;
 
                     return [
-                        ModuleRef::of(Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
+                        ModuleRef::of(Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
                     ];
                     PHP,
             ],

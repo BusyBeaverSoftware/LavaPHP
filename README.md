@@ -9,17 +9,17 @@ An open-source PHP framework designed for **agent-first usage**: an AI agent (or
 3. **Generated project map** — `lava map` compiles the running app into `AGENTS.md` (routes, services, features, env vars, schema). A build artifact, like a lockfile: always current, never hand-edited.
 4. **Errors as a feedback loop** — every framework failure is a `LavaProblem` carrying *what* failed, *where* (file:line), the *failing input*, and an *imperative fix*. One error message = one self-correction round trip.
 
-LavaPHP is a small core plus hard-decoupled packs (`lava/db`, `lava/validate`, `lava/view`, `lava/http-client`), each a separate Composer package depending only on core. A deterministic feature-flag system gates every pack at boot and app features per request — and the app *tells you* when a pack is missing, with the exact command to install it.
+LavaPHP is a small core plus hard-decoupled packs (`lavaphp/db`, `lavaphp/validate`, `lavaphp/view`, `lavaphp/http-client`), each a separate Composer package depending only on core. A deterministic feature-flag system gates every pack at boot and app features per request — and the app *tells you* when a pack is missing, with the exact command to install it.
 
 ## Repository layout
 
 ```
-packages/core        lava/core        — the kernel: boot, DI, routing, feature flags, console, errors
-packages/db          lava/db          — query builder, schema DSL, migrations (PDO)
-packages/validate    lava/validate    — typed validation DSL
-packages/view        lava/view        — Twig integration
-packages/http-client lava/http-client — small HTTP client (ext-curl)
-packages/app         lava/app         — application skeleton (composer create-project target)
+packages/core        lavaphp/core        — the kernel: boot, DI, routing, feature flags, console, errors
+packages/db          lavaphp/db          — query builder, schema DSL, migrations (PDO)
+packages/validate    lavaphp/validate    — typed validation DSL
+packages/view        lavaphp/view        — Twig integration
+packages/http-client lavaphp/http-client — small HTTP client (ext-curl)
+packages/app         lavaphp/app         — application skeleton (composer create-project target)
 apps/demo            — dogfood demo app, the canonical example
 apps/blog            — a blog with sign-in, built the way a consumer builds one
 docs/                — conventions, per-pack docs, stable JSON schemas for every CLI command
@@ -49,8 +49,8 @@ and the monorepo's install fills only the root `vendor/`, so `apps/demo/vendor`
 does not exist until you run it — and it must be the demo's own install, because
 the app's `App\` namespace and its pack wiring are only in *its* autoloader.
 
-The per-package commands — `composer require lava/db`, `composer create-project
-lava/app my-app` — **do not work yet.** Each package is published from a
+The per-package commands — `composer require lavaphp/db`, `composer create-project
+lavaphp/app my-app` — **do not work yet.** Each package is published from a
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root. The manifests and the split workflow are ready; creating
 the mirrors and registering them on Packagist is a one-time maintainer step
@@ -61,7 +61,7 @@ rehearses the whole path locally.
 
 ```
 composer install     # installs all packs via path repositories
-composer verify      # phpunit (all suites) + phpstan level 8 + lava/core at max
+composer verify      # phpunit (all suites) + phpstan level 8 + lavaphp/core at max
 composer coverage    # per-pack line coverage, floors enforced
 composer check:floor # every tracked file parses on the oldest PHP we claim to support
 ```

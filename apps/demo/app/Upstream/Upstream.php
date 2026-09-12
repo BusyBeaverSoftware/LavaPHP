@@ -20,7 +20,7 @@ use Lava\HttpClient\HttpClient;
  *
  * The URL is a value from config, never one from the request. An endpoint that
  * fetched a caller-supplied URL would be an SSRF primitive — the reason
- * `lava/http-client` refuses `file://` and `gopher://` in the first place — and
+ * `lavaphp/http-client` refuses `file://` and `gopher://` in the first place — and
  * a demo that shipped one would be teaching the wrong thing.
  *
  * Nothing here catches a failure. `getJson()` raises a `LavaProblem` —

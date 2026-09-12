@@ -26,7 +26,7 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * The handler contract is unchanged from the JSON side: no constructor,
  * dependencies as typed method parameters. `ViewRenderer` is a registered id —
- * lava/view registers it — so it is injectable by type like any other service.
+ * lavaphp/view registers it — so it is injectable by type like any other service.
  */
 final class TasksPageController
 {

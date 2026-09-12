@@ -24,10 +24,10 @@ final class ModuleTest extends TestCase
 {
     public function testPackInfoValidatesItsIdentity(): void
     {
-        $pack = PackInfo::of('lava/demo-pack', 'demo_pack', envVars: ['DEMO_API_KEY']);
+        $pack = PackInfo::of('lavaphp/demo-pack', 'demo_pack', envVars: ['DEMO_API_KEY']);
 
         self::assertSame([
-            'package' => 'lava/demo-pack',
+            'package' => 'lavaphp/demo-pack',
             'feature' => 'demo_pack',
             'config_files' => [],
             'env_vars' => ['DEMO_API_KEY'],
@@ -35,7 +35,7 @@ final class ModuleTest extends TestCase
 
         // One combined report lists every offending field at once.
         try {
-            PackInfo::of('lava/Bad', 'DemoPack');
+            PackInfo::of('lavaphp/Bad', 'DemoPack');
             self::fail('InvalidConfig expected for a doubly-invalid PackInfo');
         } catch (InvalidConfig $problem) {
             self::assertSame('invalid_config', $problem->code());
@@ -45,7 +45,7 @@ final class ModuleTest extends TestCase
         }
 
         try {
-            PackInfo::of('lava/demo-pack', 'demo_pack', envVars: ['demo_api_key']);
+            PackInfo::of('lavaphp/demo-pack', 'demo_pack', envVars: ['demo_api_key']);
             self::fail('InvalidConfig expected for a lowercase env var');
         } catch (InvalidConfig $problem) {
             self::assertStringContainsString('UPPER_SNAKE', $problem->getMessage());
@@ -54,13 +54,13 @@ final class ModuleTest extends TestCase
 
     public function testCrossCheckDemandsIdentityAgreement(): void
     {
-        $ref = ModuleRef::of(\Lava\DemoPack\DemoPackModule::class, package: 'lava/demo-pack', feature: 'demo_pack');
+        $ref = ModuleRef::of(\Lava\DemoPack\DemoPackModule::class, package: 'lavaphp/demo-pack', feature: 'demo_pack');
 
         // Agreement is silent — that is the whole point of a cross-check.
-        ModuleCheck::crossCheck($ref, PackInfo::of('lava/demo-pack', 'demo_pack'));
+        ModuleCheck::crossCheck($ref, PackInfo::of('lavaphp/demo-pack', 'demo_pack'));
 
         try {
-            ModuleCheck::crossCheck($ref, PackInfo::of('lava/demo-pack', 'other_feature'));
+            ModuleCheck::crossCheck($ref, PackInfo::of('lavaphp/demo-pack', 'other_feature'));
             self::fail('ModuleMismatch expected');
         } catch (ModuleMismatch $problem) {
             self::assertSame('module_mismatch', $problem->code());

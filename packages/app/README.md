@@ -1,4 +1,4 @@
-# lava/app
+# lavaphp/app
 
 The LavaPHP application skeleton — and the `composer create-project` target.
 
@@ -8,11 +8,11 @@ file you can open, and nothing is wired by convention.
 ## Create an app
 
 ```sh
-composer create-project lava/app my-app
+composer create-project lavaphp/app my-app
 cd my-app
 ```
 
-**This does not work yet.** `lava/app` reaches Packagist through a mirror
+**This does not work yet.** `lavaphp/app` reaches Packagist through a mirror
 repository that does not exist until the one-time setup under
 [Publishing](../../docs/releasing.md#publishing) is done. Until then, work from a
 checkout of the monorepo: `composer check:install -- app`, from its root, copies
@@ -70,7 +70,7 @@ than failing at request time.
 ## Working on this skeleton inside the monorepo
 
 `composer.json` carries no `repositories` block, and must not: it is the file
-`composer create-project lava/app` hands a consumer, and a path repository there
+`composer create-project lavaphp/app` hands a consumer, and a path repository there
 would point at a `../core` that does not exist in their project. Composer fails
 a root package's install outright rather than falling back to Packagist.
 

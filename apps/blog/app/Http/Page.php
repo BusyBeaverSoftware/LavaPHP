@@ -10,7 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * The context every page template needs, in one place.
  *
- * This exists because `lava/view` exposes exactly two Twig functions and no way
+ * This exists because `lavaphp/view` exposes exactly two Twig functions and no way
  * to add a global: there is no `addGlobal()`, no extension registration, and the
  * environment is built inside the pack's factory. So a layout that wants the
  * signed-in user and the CSRF token — and a blog layout wants both, since the

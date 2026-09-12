@@ -178,7 +178,7 @@ function removeScratch(string $directory): void
         if (!$item instanceof \SplFileInfo) {
             continue;
         }
-        // A symlink is removed, never followed: vendor/lava/* link to sibling
+        // A symlink is removed, never followed: vendor/lavaphp/* link to sibling
         // copies inside this same directory.
         if ($item->isDir() && !$item->isLink()) {
             rmdir($item->getPathname());
@@ -227,25 +227,25 @@ function writeJsonObject(string $file, array $object): void
 
 /**
  * The version the monorepo pins its packages at: what the root manifest's path
- * repository tells Composer `lava/core` is.
+ * repository tells Composer `lavaphp/core` is.
  */
 function monorepoVersion(string $root): string
 {
     $repositories = readJsonObject($root . '/composer.json')['repositories'] ?? null;
-    $core = is_array($repositories) ? ($repositories['lava/core'] ?? null) : null;
+    $core = is_array($repositories) ? ($repositories['lavaphp/core'] ?? null) : null;
     $options = is_array($core) ? ($core['options'] ?? null) : null;
     $versions = is_array($options) ? ($options['versions'] ?? null) : null;
-    $version = is_array($versions) ? ($versions['lava/core'] ?? null) : null;
+    $version = is_array($versions) ? ($versions['lavaphp/core'] ?? null) : null;
 
     if (!is_string($version) || preg_match('/^\d+\.\d+\.\d+$/', $version) !== 1) {
-        throw new \RuntimeException('composer.json does not pin lava/core at a version in its path repository');
+        throw new \RuntimeException('composer.json does not pin lavaphp/core at a version in its path repository');
     }
 
     return $version;
 }
 
 /**
- * The manifest with path repositories to the sibling packages for every `lava/*`
+ * The manifest with path repositories to the sibling packages for every `lavaphp/*`
  * it requires — the monorepo standing in for Packagist, for a copy of one
  * package. Never written back to the package in the repository.
  *
@@ -261,10 +261,10 @@ function withSiblingRepositories(array $manifest, string $version): array
             continue;
         }
         foreach (array_keys($requires) as $package) {
-            if (is_string($package) && str_starts_with($package, 'lava/')) {
+            if (is_string($package) && str_starts_with($package, 'lavaphp/')) {
                 $repositories[$package] = [
                     'type' => 'path',
-                    'url' => '../' . substr($package, strlen('lava/')),
+                    'url' => '../' . substr($package, strlen('lavaphp/')),
                     'options' => ['versions' => [$package => $version]],
                 ];
             }

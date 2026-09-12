@@ -4,16 +4,16 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "9c84130e7b5c73b0325adb6e00b87050",
+    "content-hash": "016f0df13fb1961f5b32e517d70cd1de",
     "packages": [],
     "packages-dev": [
         {
-            "name": "lava/core",
+            "name": "lavaphp/core",
             "version": "0.1.0",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
-                "reference": "59c3eea25278d84a884d294f6d10e2152dec65dc"
+                "reference": "aa424cde0592a5d28951c192335b41804f50cd1e"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -52,16 +52,16 @@
             }
         },
         {
-            "name": "lava/db",
+            "name": "lavaphp/db",
             "version": "0.1.0",
             "dist": {
                 "type": "path",
                 "url": "packages/db",
-                "reference": "c874505fb43d33068bd665feb4406356837286aa"
+                "reference": "3ad7a463da380a66e7245c5b875507cc1c41cc42"
             },
             "require": {
                 "ext-pdo": "*",
-                "lava/core": "^0.1.0",
+                "lavaphp/core": "^0.1.0",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -87,16 +87,16 @@
             }
         },
         {
-            "name": "lava/http-client",
+            "name": "lavaphp/http-client",
             "version": "0.1.0",
             "dist": {
                 "type": "path",
                 "url": "packages/http-client",
-                "reference": "a3eb246de97b0a878f643f5f23ece9799ad3f681"
+                "reference": "d60996c8ba9a473b7fb915aa7903249bb345befd"
             },
             "require": {
                 "ext-curl": "*",
-                "lava/core": "^0.1.0",
+                "lavaphp/core": "^0.1.0",
                 "nyholm/psr7": "^1.8",
                 "php": "^8.3",
                 "psr/http-client": "^1.0",
@@ -126,15 +126,15 @@
             }
         },
         {
-            "name": "lava/validate",
+            "name": "lavaphp/validate",
             "version": "0.1.0",
             "dist": {
                 "type": "path",
                 "url": "packages/validate",
-                "reference": "954c10a26addc054ec57fbf97bf693e615c202df"
+                "reference": "80e0b79969c1a1bef18c3dcbf9fe667a435b5640"
             },
             "require": {
-                "lava/core": "^0.1.0",
+                "lavaphp/core": "^0.1.0",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -160,15 +160,15 @@
             }
         },
         {
-            "name": "lava/view",
+            "name": "lavaphp/view",
             "version": "0.1.0",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
-                "reference": "278a957916899baf39e0939ee7535ba4edfeb6c3"
+                "reference": "2205b1ce2b81990daef47607c50341745c1b5033"
             },
             "require": {
-                "lava/core": "^0.1.0",
+                "lavaphp/core": "^0.1.0",
                 "php": "^8.3",
                 "twig/twig": "^3.28"
             },

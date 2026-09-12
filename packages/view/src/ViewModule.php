@@ -14,7 +14,7 @@ use Lava\Core\Routing\UrlGenerator;
 use Lava\View\Problem\ViewDirMissing;
 
 /**
- * lava/view's entry point.
+ * lavaphp/view's entry point.
  *
  * One service, registered as a singleton: the {@see ViewRenderer}. Everything
  * else the pack ships is reached through it — the Twig environment through
@@ -56,7 +56,7 @@ final class ViewModule implements Module
         // `views` is the feature name, matching the plan's Modules.php example.
         // It is the pack's gate and this file's declaration is the only place
         // it is defined — see CollectFlagDefinitions.
-        return PackInfo::of('lava/view', 'views', configFiles: ['view']);
+        return PackInfo::of('lavaphp/view', 'views', configFiles: ['view']);
     }
 
     public function register(Container $container, AppContext $ctx): void
@@ -108,7 +108,7 @@ final class ViewModule implements Module
      * A configured path, made absolute against the app directory.
      *
      * Relative values are resolved against the APP, never against the working
-     * directory — the same rule lava/db's `config/database.php` follows and for
+     * directory — the same rule lavaphp/db's `config/database.php` follows and for
      * the same reason: `lava serve` and a request under FPM have different
      * working directories, and a path that depends on which one is running is a
      * path that works in development and 404s in production.

@@ -19,7 +19,7 @@ use Lava\Core\Problem\LavaProblem;
  * Raised from `render()`, not at boot, and deliberately: a template that does
  * not exist yet is the normal state of an app being built, and boot refusing
  * to start would mean the CLI — `lava routes`, `lava check` — could not run to
- * help. Same reasoning as lava/db's `DbNotConfigured`: the diagnosis tools have
+ * help. Same reasoning as lavaphp/db's `DbNotConfigured`: the diagnosis tools have
  * to work on the app that is broken.
  */
 final class TemplateNotFound extends LavaProblem

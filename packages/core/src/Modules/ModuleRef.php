@@ -33,8 +33,8 @@ final readonly class ModuleRef
         if (!preg_match('/^Lava\\\\[A-Za-z0-9]+\\\\[A-Za-z0-9]+Module$/', $moduleClass)) {
             $problems[] = "module class '{$moduleClass}' should be a Pack module class like Lava\\Db\\DbModule";
         }
-        if (!preg_match('/^lava\/[a-z0-9-]+$/', $package)) {
-            $problems[] = "package '{$package}' should look like lava/<pack-name>";
+        if (!preg_match('/^lavaphp\/[a-z0-9-]+$/', $package)) {
+            $problems[] = "package '{$package}' should look like lavaphp/<pack-name>";
         }
         if (!preg_match('/^[a-z][a-z0-9_]*$/', $feature)) {
             $problems[] = "feature '{$feature}' should be snake_case";
@@ -42,7 +42,7 @@ final readonly class ModuleRef
         if ($problems !== []) {
             throw new InvalidConfig(
                 'Invalid app/Modules.php entry: ' . implode('; ', $problems) . '.',
-                'Use ModuleRef::of(\Lava\<Pack>\<Pack>Module::class, package: \'lava/<pack>\', feature: \'<snake_case>\').',
+                'Use ModuleRef::of(\Lava\<Pack>\<Pack>Module::class, package: \'lavaphp/<pack>\', feature: \'<snake_case>\').',
                 ['module_class' => $moduleClass, 'package' => $package, 'feature' => $feature],
                 self::caller(),
             );

@@ -34,8 +34,8 @@ final readonly class PackInfo
     public static function of(string $package, string $feature, array $configFiles = [], array $envVars = []): self
     {
         $problems = [];
-        if (preg_match('/^lava\/[a-z0-9-]+$/', $package) !== 1) {
-            $problems[] = "package '{$package}' should look like lava/<pack-name>";
+        if (preg_match('/^lavaphp\/[a-z0-9-]+$/', $package) !== 1) {
+            $problems[] = "package '{$package}' should look like lavaphp/<pack-name>";
         }
         if (preg_match('/^[a-z][a-z0-9_]*$/', $feature) !== 1) {
             $problems[] = "feature '{$feature}' should be snake_case";
@@ -65,7 +65,7 @@ final readonly class PackInfo
         if ($problems !== []) {
             throw new InvalidConfig(
                 'Invalid PackInfo: ' . implode('; ', array_unique($problems)) . '.',
-                "Build it as PackInfo::of('lava/<pack>', '<snake_case>', configFiles: […], envVars: […]).",
+                "Build it as PackInfo::of('lavaphp/<pack>', '<snake_case>', configFiles: […], envVars: […]).",
                 ['package' => $package, 'feature' => $feature],
             );
         }

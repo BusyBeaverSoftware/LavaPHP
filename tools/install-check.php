@@ -89,7 +89,7 @@ foreach ($names as $name) {
 
 $version = monorepoVersion($root);
 $failures = 0;
-echo 'install-check: ' . count($names) . " target(s), lava/* from the working tree at {$version}\n";
+echo 'install-check: ' . count($names) . " target(s), lavaphp/* from the working tree at {$version}\n";
 
 foreach ($names as $name) {
     $target = $targets[$name];

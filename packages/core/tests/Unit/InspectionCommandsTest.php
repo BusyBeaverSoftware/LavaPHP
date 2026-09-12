@@ -254,7 +254,7 @@ final class InspectionCommandsTest extends CommandTestCase
         self::assertIsArray($envelope['data']['php']['pdo_drivers']);
 
         $pack = $envelope['data']['packs'][0];
-        self::assertSame('lava/demo-pack', $pack['package']);
+        self::assertSame('lavaphp/demo-pack', $pack['package']);
         self::assertSame('demo_pack', $pack['feature']);
         self::assertSame('enabled', $pack['state']);
         self::assertTrue($pack['installed']);

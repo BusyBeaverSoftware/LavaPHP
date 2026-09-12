@@ -98,7 +98,7 @@ final class PagesTest extends BootedTestCase
 
     public function testAMistypedAddressIsTheAppsOwnPageToo(): void
     {
-        // No route matches, so no handler runs — but `lava/core` throws the 404
+        // No route matches, so no handler runs — but `lavaphp/core` throws the 404
         // through the global middleware all the same, and this app's error page
         // is one of those layers. A mistyped URL and a missing post are the same
         // situation to a reader, and they now look it.

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * lava/http-client's settings.
+ * lavaphp/http-client's settings.
  *
  * Every value is read at boot, so a bad one — a `timeout` of `0`, a negative
  * `retries` — is a boot problem naming this key and this file, rather than a

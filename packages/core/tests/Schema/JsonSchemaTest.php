@@ -181,7 +181,7 @@ final class JsonSchemaTest extends TestCase
     public function testEverySchemaIsClaimedAndEveryClaimIsDocumented(): void
     {
         if (!class_exists(\Lava\Db\DbModule::class)) {
-            self::markTestSkipped('lava/db is not installed, so no fixture can boot with a pack enabled');
+            self::markTestSkipped('lavaphp/db is not installed, so no fixture can boot with a pack enabled');
         }
 
         $listed = LavaCli::run(['list', '--json'], self::fixture('packed-app'));
@@ -228,7 +228,7 @@ final class JsonSchemaTest extends TestCase
     public function testARejectedInvocationObeysTheSchemaItsCommandClaims(): void
     {
         if (!class_exists(\Lava\Db\DbModule::class)) {
-            self::markTestSkipped('lava/db is not installed, so no fixture can boot with a pack enabled');
+            self::markTestSkipped('lavaphp/db is not installed, so no fixture can boot with a pack enabled');
         }
 
         $listed = LavaCli::run(['list', '--json'], self::fixture('packed-app'));

@@ -80,7 +80,7 @@ final class CollectFlagDefinitions implements BootStep
         if (!is_array($list)) {
             $ctx->problems->add(new InvalidConfig(
                 'app/Modules.php must return a list of ModuleRef entries.',
-                "Write: return [ ModuleRef::of(\\Lava\\Db\\DbModule::class, package: 'lava/db', feature: 'db'), … ];",
+                "Write: return [ ModuleRef::of(\\Lava\\Db\\DbModule::class, package: 'lavaphp/db', feature: 'db'), … ];",
                 ['file' => 'app/Modules.php'],
                 SourceLocation::of($file, 1),
             ));
@@ -90,7 +90,7 @@ final class CollectFlagDefinitions implements BootStep
             if (!$entry instanceof ModuleRef) {
                 $ctx->problems->add(new InvalidConfig(
                     'app/Modules.php has an entry that is not a ModuleRef.',
-                    "Every entry must be built by ModuleRef::of(\\Lava\\<Pack>\\<Pack>Module::class, package: 'lava/<pack>', feature: '<snake_case>').",
+                    "Every entry must be built by ModuleRef::of(\\Lava\\<Pack>\\<Pack>Module::class, package: 'lavaphp/<pack>', feature: '<snake_case>').",
                     ['file' => 'app/Modules.php'],
                 ));
                 continue;

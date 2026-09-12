@@ -10,7 +10,7 @@ namespace Lava\Core\Problem;
  * `php -S` needs a front controller; without one the server either 404s
  * everything or serves the directory listing, which looks like a working
  * server with a broken app — the worst possible diagnosis. The canonical
- * entry point is shipped in the `lava/app` skeleton, so the fix is a copy,
+ * entry point is shipped in the `lavaphp/app` skeleton, so the fix is a copy,
  * not a rewrite.
  */
 final class MissingEntryPoint extends LavaProblem
@@ -19,7 +19,7 @@ final class MissingEntryPoint extends LavaProblem
     {
         return new self(
             "'{$appDir}' has no public/index.php, so there is nothing to serve.",
-            'Create public/index.php — copy the canonical one from the lava/app skeleton '
+            'Create public/index.php — copy the canonical one from the lavaphp/app skeleton '
                 . '(require the autoloader, then Kernel::boot() and handle the request).',
             ['app_dir' => $appDir, 'expected' => 'public/index.php'],
         );

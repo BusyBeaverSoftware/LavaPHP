@@ -9,7 +9,7 @@ use Lava\Core\Modules\ModuleRef;
  *
  * The gate flag is defined HERE, by the pack — not in `config/features.php`.
  * A module's flag belongs to the pack, and re-defining it in the app is a boot
- * problem (`Flag 'db' is the gate for pack lava/db and is defined by the pack
+ * problem (`Flag 'db' is the gate for pack lavaphp/db and is defined by the pack
  * itself`). An entry below is already `Flag::on()`; what overrides it is a
  * `set` entry in `config/features.php`, the real environment, or `config/.env`:
  *
@@ -20,12 +20,12 @@ use Lava\Core\Modules\ModuleRef;
  * served — so "off" reads as off, never as "the pack is broken".
  *
  * A pack that is enabled but not installed is a boot problem naming the exact
- * `composer require lava/db` to run, which is why this file can name the module
+ * `composer require lavaphp/db` to run, which is why this file can name the module
  * class of a pack the app has not downloaded yet.
  */
 return [
-    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
-    ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lava/validate', feature: 'validate'),
-    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lava/view', feature: 'views'),
-    ModuleRef::of(\Lava\HttpClient\HttpClientModule::class, package: 'lava/http-client', feature: 'http_client'),
+    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
+    ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lavaphp/validate', feature: 'validate'),
+    ModuleRef::of(\Lava\View\ViewModule::class, package: 'lavaphp/view', feature: 'views'),
+    ModuleRef::of(\Lava\HttpClient\HttpClientModule::class, package: 'lavaphp/http-client', feature: 'http_client'),
 ];

@@ -11,5 +11,5 @@ require_once __DIR__ . '/pack/DemoPackModule.php';
 use Lava\Core\Modules\ModuleRef;
 
 return [
-    ModuleRef::of(\Lava\DemoPack\DemoPackModule::class, package: 'lava/demo-pack', feature: 'demo_pack'),
+    ModuleRef::of(\Lava\DemoPack\DemoPackModule::class, package: 'lavaphp/demo-pack', feature: 'demo_pack'),
 ];

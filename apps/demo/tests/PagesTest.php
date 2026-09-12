@@ -13,7 +13,7 @@ use Lava\Db\Migration\MigrationRunner;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The HTML surface: what `lava/view` does for this app, proven over the same
+ * The HTML surface: what `lavaphp/view` does for this app, proven over the same
  * in-process dispatch path the JSON suite uses.
  *
  * Four things are worth a test here, and each of them is a claim the pack makes

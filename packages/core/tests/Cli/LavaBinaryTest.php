@@ -46,7 +46,7 @@ final class LavaBinaryTest extends TestCase
     public function testTheAppsOwnAutoloaderWinsOverTheOneBesideTheBinary(): void
     {
         // The bug this pins: the binary used to look for `autoload.php` only
-        // relative to its OWN location. Installed with `vendor/lava/core` as a
+        // relative to its OWN location. Installed with `vendor/lavaphp/core` as a
         // SYMLINK — which is every path-repo install, including this monorepo's
         // own `packages/app` — `__DIR__` resolves through the link to the
         // package's real home, so the binary loaded the MONOREPO's autoloader
@@ -206,7 +206,7 @@ final class LavaBinaryTest extends TestCase
 
         self::assertSame(ExitCode::Failure, $result->exit);
         self::assertSame(['duplicate_command', 'duplicate_command'], $result->codes());
-        self::assertSame('lava/demo-pack', $result->context('duplicate_command', 'incoming_pack'));
+        self::assertSame('lavaphp/demo-pack', $result->context('duplicate_command', 'incoming_pack'));
     }
 
     public function testCheckReportsAWrongShapedAppArtifact(): void

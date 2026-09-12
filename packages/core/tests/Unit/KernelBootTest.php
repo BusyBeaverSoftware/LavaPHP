@@ -103,7 +103,7 @@ final class KernelBootTest extends TestCase
 
         // Registered by BuildRouter, because that is the step that builds them.
         // Before M8 they were reachable only through the boot context, which no
-        // handler and no pack has — so `url()` in a template (lava/view) and a
+        // handler and no pack has — so `url()` in a template (lavaphp/view) and a
         // handler that generates a URL both had no way to ask for one.
         self::assertTrue($app->container->has(Router::class));
         self::assertTrue($app->container->has(UrlGenerator::class));
@@ -289,7 +289,7 @@ final class KernelBootTest extends TestCase
         self::assertSame(['missing_pack', 'invalid_gating'], $codes);
 
         $missing = $result->problems->problems()[0];
-        self::assertStringContainsString('composer require lava/search', $missing->fix);
+        self::assertStringContainsString('composer require lavaphp/search', $missing->fix);
         self::assertSame('Modules.php', basename($missing->source->file));
 
         $gating = $result->problems->problems()[1];
@@ -444,8 +444,8 @@ final class KernelBootTest extends TestCase
         }
         self::assertNotNull($redefinition, 'expected the pack-flag redefinition problem');
         self::assertSame('invalid_config', $redefinition->code());
-        self::assertSame('lava/redefined-pack', $redefinition->context['package']);
-        self::assertStringContainsString('is the gate for pack lava/redefined-pack', $redefinition->getMessage());
+        self::assertSame('lavaphp/redefined-pack', $redefinition->context['package']);
+        self::assertStringContainsString('is the gate for pack lavaphp/redefined-pack', $redefinition->getMessage());
         self::assertStringContainsString("override it in 'set'", $redefinition->fix);
     }
 }

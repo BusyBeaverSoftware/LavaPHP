@@ -171,7 +171,7 @@ final class AuthTest extends BootedTestCase
         // the app and reads as nonsense to somebody who fumbled their
         // confirmation field.
         self::assertStringContainsString('The two passwords do not match.', $response->body());
-        self::assertStringNotContainsString('lava/validate', $response->body());
+        self::assertStringNotContainsString('lavaphp/validate', $response->body());
 
         self::assertSame(0, $this->rowCount('users'));
     }

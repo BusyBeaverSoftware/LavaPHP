@@ -1,4 +1,4 @@
-# lava/db
+# lavaphp/db
 
 Typed query builder, schema DSL, and migrations on PDO. Three database
 dialects — SQLite, MySQL, Postgres — through one API, with the differences
@@ -18,7 +18,7 @@ Codes this pack raises: `unsupported_dialect`, `db_not_configured`,
 ## Install and enable
 
 ```sh
-composer require lava/db
+composer require lavaphp/db
 ```
 
 ```php
@@ -26,7 +26,7 @@ composer require lava/db
 use Lava\Core\Modules\ModuleRef;
 
 return [
-    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
+    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
 ];
 ```
 

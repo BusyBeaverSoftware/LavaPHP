@@ -225,7 +225,7 @@ require` to run.
 use Lava\Core\Modules\ModuleRef;
 
 return [
-    ModuleRef::of(Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
+    ModuleRef::of(Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
 ];
 ```
 

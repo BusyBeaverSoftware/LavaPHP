@@ -9,5 +9,5 @@ require_once __DIR__ . '/pack/RedefinedPackModule.php';
 use Lava\Core\Modules\ModuleRef;
 
 return [
-    ModuleRef::of(\Lava\RedefinedPack\RedefinedPackModule::class, package: 'lava/redefined-pack', feature: 'redefined_pack'),
+    ModuleRef::of(\Lava\RedefinedPack\RedefinedPackModule::class, package: 'lavaphp/redefined-pack', feature: 'redefined_pack'),
 ];
