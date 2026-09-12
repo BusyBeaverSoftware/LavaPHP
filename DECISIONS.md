@@ -3615,3 +3615,27 @@ for after anything that exercises the demo.
     the manifests at the pushed tag still declare `@dev`, and a pushed tag is
     treated as immutable, so the first thing Packagist can ever serve is a later
     tag (0.1.1+).
+
+233. **The strict gate passed in CI, on a machine that is not this one.** The
+    outcome of 230–232, recorded here rather than in the commit that caused it,
+    for the reason given in 226: a commit cannot contain the result of the
+    action it takes. `25ee6c6` was verified by **two** runs, both green on all
+    seven jobs — `34700875263` on the pushed branch and `34700941161` on `main`
+    after the fast-forward. The duplicate is the cost of the branch-first flow
+    (branch push, then main push) and is the same redundancy 225 and 227
+    describe; it is accepted for the same reason, since CI cannot distinguish
+    the two pushes and a green result being about *the code at that commit* is
+    worth more than the saved run.
+
+    The load-bearing fact is which jobs went green: `isolated-install`,
+    `skeleton` and `demo` all ran `composer validate --strict` for the first
+    time, and passed. That is the claim of 230 checked by someone else's
+    machine rather than asserted from a local run — the manifests now satisfy
+    the strict gate that was too strong for them an hour earlier, and the gate
+    is enforced on every push to come.
+
+    `main` is `25ee6c6`; `0.1.0` stays at `ad8d5b1` and `main` passes it, as
+    226 requires. The branch `release-prep/strict-install-gates` is left on the
+    remote, merged — it is the only place the pre-merge review state is
+    recorded, and deleting it would discard the one artifact a reviewer of this
+    decision would want.
