@@ -4079,3 +4079,40 @@ section records both.
     rather than edited, because both are derived from the names. Packagist lists
     no packages under `lavaphp`, which is not proof the vendor is unclaimed;
     submitting is what settles it.
+
+253. **`0.1.1` is on Packagist, all six packages, and a consumer who knows only
+    Packagist installs it and checks green.** Packagist accepted the six mirrors
+    under `lavaphp`, which settles what entry 252 left open: the vendor was
+    unclaimed. The tag `0.1.1` on `cce988d` reached every mirror through split run
+    `34725060121`, and Packagist did not see it, because none of the packages has
+    the GitHub hook — a pushed tag waits until **Update** is pressed on each
+    package's page. That control is not on the page itself but inside the
+    **Manage** menu, beside **Delete**, so the first attempts to press it did
+    nothing for twenty-five minutes while GitHub already listed `0.1.1` on all six
+    mirrors. Pressed on each package in turn, it had all six listed in
+    `repo.packagist.org/p2` by 23:54 UTC. `packagist.org/packages/<name>.json`
+    kept listing only `dev-main` for minutes afterwards; the `p2` file is what
+    Composer 2 reads, and it is the one to check.
+
+    Verified as a consumer, on this machine's PHP 8.5.4, with a Composer home and
+    cache that had never seen this repository or its mirrors: `composer
+    create-project lavaphp/app shop 0.1.1`, then `composer require lavaphp/db
+    lavaphp/validate lavaphp/view lavaphp/http-client`, which chose `^0.1.1` for
+    each. The lock took every `lavaphp/*` package at `0.1.1` as a zip of its
+    mirror; `vendor/lavaphp` held no `tests/`, `phpunit.xml.dist` or `.github`, so
+    `export-ignore` survived the split; the skeleton's manifest had no
+    `repositories` block; and `lava check --strict` passed all nine sections, the
+    skeleton's five tests among them. Not verified: the packs *enabled* in that
+    app (they were installed only), and an install from Packagist on PHP 8.3 or
+    8.4, which CI covers from the working tree but not from Packagist.
+
+    Two things were left undone on purpose. **Automatic updates are not set up**,
+    because both ways of setting them up run on the maintainer's own credentials:
+    the GitHub integration is an OAuth grant of the Packagist application to the
+    `BusyBeaverSoftware` organization, and a manual webhook takes the Packagist API
+    token as its secret. Until one exists, every push to `main` and every tag needs
+    **Update** pressed on all six packages, and Packagist's `dev-main` trails the
+    mirrors in between. And the READMEs that said the Packagist commands "do not
+    work yet" were corrected only after the install above passed, so the
+    correction is on `main`, not in `0.1.1`: a project created from `0.1.1` still
+    has that sentence in its `README.md`, and will until the next tag.

@@ -12,12 +12,8 @@ composer create-project lavaphp/app my-app
 cd my-app
 ```
 
-**This does not work yet.** `lavaphp/app` reaches Packagist through a mirror
-repository that does not exist until the one-time setup under
-[Publishing](../../docs/releasing.md#publishing) is done. Until then, work from a
-checkout of the monorepo: `composer check:install -- app`, from its root, copies
-this skeleton beside `packages/core`, installs it and checks it — the same thing
-CI's `skeleton` job runs.
+The skeleton requires only `lavaphp/core`. Add a pack when the app needs one —
+`composer require lavaphp/db` — and enable it in `app/Modules.php`.
 
 ## Run it
 

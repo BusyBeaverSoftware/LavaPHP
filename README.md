@@ -27,7 +27,20 @@ docs/                — conventions, per-pack docs, stable JSON schemas for eve
 
 ## Installing
 
-There is no Packagist release yet, so clone the repository:
+An app starts from the skeleton on Packagist:
+
+```sh
+composer create-project lavaphp/app my-app
+cd my-app
+./vendor/bin/lava check
+```
+
+and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
+`lavaphp/view`, `lavaphp/http-client`. Each package is published from a
+read-only mirror of its directory, because Packagist reads `composer.json` only
+at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
+
+To work on the framework itself, clone the repository:
 
 ```sh
 git clone https://github.com/BusyBeaverSoftware/LavaPHP.git
@@ -48,14 +61,6 @@ The second `composer install` is not optional. `apps/*/vendor/` is gitignored
 and the monorepo's install fills only the root `vendor/`, so `apps/demo/vendor`
 does not exist until you run it — and it must be the demo's own install, because
 the app's `App\` namespace and its pack wiring are only in *its* autoloader.
-
-The per-package commands — `composer require lavaphp/db`, `composer create-project
-lavaphp/app my-app` — **do not work yet.** Each package is published from a
-read-only mirror of its directory, because Packagist reads `composer.json` only
-at a repository root. The manifests and the split workflow are ready; creating
-the mirrors and registering them on Packagist is a one-time maintainer step
-([docs/releasing.md](docs/releasing.md#publishing)). `composer check:split`
-rehearses the whole path locally.
 
 ## Development
 

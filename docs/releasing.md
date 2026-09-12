@@ -91,15 +91,12 @@ it a release, and a pushed tag is not reversible in the way a local one is.
 learns about a tag from a webhook on a package that is *already registered*, so
 the order runs the other way from what "the push makes it a release" suggests:
 register the package, put the webhook in place, and only then is a tag push
-visible to the world. Measured on 2026-09-12, **none of the six packages exists
-on Packagist** — `packagist.org/packages/lavaphp/core.json` and the five siblings
-all return `404` — so a tag push today creates the tag on GitHub and leaves
-`composer require lavaphp/core` failing for everyone. The names are unclaimed, so
-registering them is available on demand; until it is done, a green tag push is
-evidence about the code and not a distribution event.
+visible to the world. Until that webhook exists, a pushed tag reaches Packagist
+only when a maintainer presses **Update** on each package's page — which is how
+`0.1.1` was published on 2026-09-12 (DECISIONS.md 253).
 
 Two consequences worth expecting. The push triggers a **full duplicate run of
-all seven CI jobs** on the tagged commit, because the workflow triggers on any
+all nine CI jobs** on the tagged commit, because the workflow triggers on any
 push with no `tags:` filter and no job branches on `github.ref`; it is
 redundant but harmless. And the tagged commit is whatever the tag points at:
 move the tag to the commit whose record should ship, not to a convenient one.
@@ -146,10 +143,11 @@ result to that mirror's `main`; on a tag, it pushes the tag. It refuses a split
 whose `composer.json` declares `repositories`, never forces a push, and skips a
 mirror whose deploy key is not configured.
 
-### Before the first publish
+### Setting up the mirrors
 
+Done once, on 2026-09-12, and kept as the procedure for recreating a mirror.
 These steps create public repositories and publish packages, so a maintainer
-does them once, by hand:
+does them by hand:
 
 1. Create six **empty** public repositories under `BusyBeaverSoftware`, named as
    in the table — no README, license or `.gitignore`, so the first push is not
@@ -163,9 +161,14 @@ does them once, by hand:
    should publish one package rather than six.
 3. Push `main`. Check that each mirror now has `composer.json` at its root and
    the history of its own directory.
-4. Sign in to packagist.org with GitHub and submit each mirror's URL. Set up
-   Packagist's GitHub integration (or its webhook) for each, so pushes and tags
-   reach it without a manual update.
+4. Sign in to packagist.org and submit each mirror's URL. Then make updates
+   automatic, one of two ways: log in via GitHub and grant the Packagist
+   application access to the `BusyBeaverSoftware` organization, then trigger an
+   account sync; or add a webhook to each mirror with the payload URL
+   `https://packagist.org/api/github?username=<packagist-username>`, content type
+   `application/json`, the Packagist API token as the secret, and only the `push`
+   event. Until one of those is done, every push and tag needs **Update** pressed
+   on each package's page.
 5. Tag the release here — `git tag -a 0.1.1 -m "0.1.1"`, then push the tag. The
    workflow pushes it to every mirror, and Packagist publishes it. `0.1.0` is not
    published: its manifests still carry path repositories.
@@ -200,42 +203,38 @@ Neither pushes or publishes anything, and neither can show Packagist itself.
   believed second. If consumers ask for one, it should be generated from the
   commit log at tag time rather than written alongside it.
 
-## Known gaps at 0.1.0
+## Known gaps at 0.1.1
 
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
-- **CI has been observed green, once, on the tag commit.** All seven jobs passed
-  on the public repository for run
-  [34696518049](https://github.com/BusyBeaverSoftware/LavaPHP/actions/runs/34696518049),
-  on 2026-09-12 and on `cdc75ee` — the same commit `main` points at. That run is
-  also the first green `coverage` job this project has had on GitHub, so the
-  `pcov`-through-`PHP_INI_SCAN_DIR` mechanism is now observed rather than only
-  reasoned about, and the `skeleton` job's `lava map --check` step — the one that
-  would have caught the stale map this repository shipped for two milestones
-  (DECISIONS.md 170) — has run for real. One green run is not a pattern: the
-  jobs are re-run on every push, and any push that moves the tag commit has to
-  earn its own green.
-- **PHP 8.3 and 8.4 are exercised by CI, and the floor is now checkable
-  locally too.** Development here is on 8.5.4. The CI matrix is what runs the
-  suite on 8.3 and 8.4; locally, `composer check:floor` (step 3) lints every
-  tracked file against a real 8.3 through docker. What is still CI-only is the
-  *suite* on those versions — a local 8.3 or 8.4 run means mounting the
-  repository into `php:8.3-cli` and running PHPUnit there by hand.
-- **No release has reached anyone.** The `0.1.0` tag is pushed as of
-  2026-09-12, but the six packages are not registered on Packagist, so no
-  webhook exists for Packagist to learn about it from — `composer require
-  lavaphp/core` still 404s and `lavaphp/app`'s `composer create-project` path is still
-  untested against Packagist. The skeleton is verified by copy-and-install
-  (step 4) instead. Registering the packages is the step that would make the
-  pushed tag mean what "release" usually means; see "The tag" above.
-- **The mirrors do not exist yet.** Every manifest is publishable as it sits and
-  the split workflow is in place, but nothing is pushed until the six mirror
-  repositories and their deploy keys exist — the one-time setup under
-  [Publishing](#publishing). `composer check:split` rehearses the whole path
-  locally, Packagist excepted.
-- **The first publishable split cannot come from `0.1.0`.** The manifests at the
-  pushed tag still declare `@dev` against unpinned path repositories, and a
-  pushed tag is immutable — so whatever Packagist is first pointed at has to be
-  a later tag (0.1.1 or beyond), cut from a commit whose manifests carry no
-  path repositories.
+- **Packagist does not update itself yet.** None of the six packages has the
+  GitHub hook, so a push or a tag reaches Packagist only after **Update** is
+  pressed on each package's page. Setting the hook up is a maintainer step —
+  step 4 of [Setting up the mirrors](#setting-up-the-mirrors).
+- **CI was green on the tag commit, three times.** `cce988d` passed all nine
+  jobs on its branch (run 34724462644), on `main` (run 34724539558) and on the
+  tag (run 34725060175), and the split workflow pushed the tag to every mirror
+  (run 34725060121).
+- **`0.1.1` installs from Packagist, checked once, on PHP 8.5.4.** With a
+  Composer home and cache that had never seen this repository or its mirrors:
+  `composer create-project lavaphp/app shop 0.1.1`, then `composer require` for
+  all four packs. Every `lavaphp/*` package in the lock was `0.1.1`, fetched as a
+  zip of its mirror; nothing under `vendor/lavaphp` carried `tests/`,
+  `phpunit.xml.dist` or `.github`; and `lava check --strict` passed every
+  section, including the skeleton's five tests. The packs were installed, not
+  enabled — enabling them is what `check:install` proves for the demo and the
+  blog, from the working tree rather than from Packagist. When checking a
+  release, read `repo.packagist.org/p2/<package>.json`, which is what Composer 2
+  resolves from; `packagist.org/packages/<package>.json` went on listing only
+  `dev-main` for minutes after `0.1.1` was installable.
+- **PHP 8.3 and 8.4 are exercised by CI, and the floor is checkable locally.**
+  Development here is on 8.5.4. The CI matrix runs the suite on 8.3 and 8.4;
+  locally, `composer check:floor` (step 3) lints every tracked file against a
+  real 8.3 through docker. The *suite* on those versions is still CI-only.
+- **`0.1.0` is not on Packagist, and never will be.** Its manifests carry path
+  repositories and a pushed tag does not move, so the first installable version
+  is `0.1.1`.
+- **The mirrors are read-only.** Issues and pull requests belong in
+  `BusyBeaverSoftware/LavaPHP`. A commit pushed to a mirror directly makes the
+  next split fail, because the workflow never forces a push.
