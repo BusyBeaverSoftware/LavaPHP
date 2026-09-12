@@ -90,25 +90,45 @@ push with no `tags:` filter and no job branches on `github.ref`; it is
 redundant but harmless. And the tagged commit is whatever the tag points at:
 move the tag to the commit whose record should ship, not to a convenient one.
 
-**Registering the packages would not be enough either.** Five of the six
-manifests are still in monorepo development shape, so a consumer's install fails
-on the manifest before Packagist is even reached:
+**Registering the packages is not enough either — and the reason is structural.**
+Packagist reads `composer.json` **only at the root of a repository**: it serves
+GitHub's whole-repo archive rather than a subdirectory of it, so it cannot
+publish `packages/db` out of this monorepo, and this repo's root manifest is
+`lava/lava`, the monorepo project itself. Publishing any one of the six packages
+therefore requires a **split mirror** — a repository containing just that
+directory — which is what Symfony and Laravel do and what `splitsh-lite` exists
+for. There is no single-repo path to Packagist, which is what makes "ship only
+`lava/core` this round" the same machinery as shipping all six rather than a
+cheaper alternative to it.
 
-- `lava/app`, `lava/db`, `lava/validate`, `lava/view` and `lava/http-client`
-  each declare `repositories: {"lava/core": {"type": "path", "url": "../core"}}`.
-  A consumer has no `../core`, and Composer fails the install outright rather
-  than falling back to Packagist (`packages/app/README.md` says the same about
-  the skeleton).
-- Those same five require `lava/core: @dev` — an unbound constraint, which is
-  what a path repository needs during development and what a published package
-  must not declare.
+On top of that, five of the six manifests carry a development arrangement that
+distribution cannot keep:
 
-`lava/core` is the exception: no path repository, no `lava/*` dependency, only
-real Packagist requirements — so it is publishable as it stands. A real release
-needs the other five in distribution shape first: either a published split with
-the path repositories removed and `@dev` replaced by a version constraint, or a
-decision that only `lava/core` ships this round. That is a packaging decision
-rather than a mechanical one, and it has not been made.
+- Each of `lava/db`, `lava/validate`, `lava/view`, `lava/http-client` and
+  `lava/app` declares `repositories: {"lava/core": {"type": "path", "url":
+  "../core"}}`. Measured 2026-09-12: this is **ignored when the package is a
+  dependency** — Composer reads `repositories` only from the root package, and a
+  consumer installs these as dependencies — so `composer require lava/db` is
+  unaffected by it. It is fatal only where the package *is* the root:
+  `composer create-project lava/app` (the app skeleton is the root in its own
+  `create-project`), and cloning a split mirror and installing there. A missing
+  path repository is a hard error, not a silent fallback
+  (`PathRepository.php:163`: *"The `url` supplied for the path (../core)
+  repository does not exist"*), which is the failure `packages/app/README.md`
+  describes.
+- Those same five require `lava/core: @dev`, which a path repository needs
+  during development and a published package should not declare — Composer
+  flags it as unbound under `validate --strict`. A real constraint such as
+  `^0.1.0` resolves correctly, both from Packagist and from a version-pinned
+  path repository (`options.versions`), both measured.
+
+`lava/core` is the exception and the easy case: no path repository, no `lava/*`
+dependency, only real Packagist requirements — publishable verbatim, and the
+right package to prove a split pipeline on. The others need the path
+repositories stripped **in the split** (`splitsh-lite` is a pure prefix split
+and rewrites nothing, so this is a post-processing step) plus `@dev` replaced by
+a version constraint. Which set ships, and how the mirrors are pushed, is a
+packaging decision rather than a mechanical one; see DECISIONS.md 228–229.
 
 ## What is deliberately not part of a release
 
@@ -152,9 +172,11 @@ implies everything was verified is worse than one that lists what was not.
   untested against Packagist. The skeleton is verified by copy-and-install
   (step 5) instead. Registering the packages is the step that would make the
   pushed tag mean what "release" usually means; see "The tag" above.
-- **Five of the six manifests cannot be published as they stand.** The path
-  repositories and `lava/core: @dev` constraints that make this monorepo work
-  during development are exactly what break a consumer's install, so
-  registration alone would not produce a working `composer require`. The detail
-  and the two available resolutions are in "The tag" above. `lava/core` is the
-  one package that could ship today.
+- **Five of the six manifests cannot be published as they stand, and none of
+  the six can be published without a split.** Packagist reads `composer.json`
+  only at a repository root, and this repository's root is the monorepo, so
+  each package needs a split mirror before registration is even possible —
+  after which the path repositories and `lava/core: @dev` constraints still have
+  to be dealt with for five of them. The detail, including what is and is not
+  fatal for a consumer, is in "The tag" above. `lava/core` is the one package
+  that could ship verbatim.

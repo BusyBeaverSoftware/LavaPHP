@@ -3459,3 +3459,52 @@ for after anything that exercises the demo.
     user; `docs/releasing.md` now states the blocker in "The tag" and in "Known
     gaps" so the next person to attempt a release meets it before Packagist
     rather than after.
+
+    **[Corrected by 229 — the paragraph above overstates the blast radius. The
+    path repository is ignored for a consumer and fatal only for a root
+    package, and none of the six can reach Packagist without a split mirror at
+    all. Read 229 before acting on this entry.]**
+
+229. **Entry 228 was half wrong, and three experiments say which half.**
+    Written an hour earlier from reading the manifests, it claimed a path
+    repository pointing at `../core` is fatal to "a consumer's install". That is
+    false, and it is the kind of false that would have sent someone rewriting
+    five manifests for no reason. Measured with scratch packages:
+
+    | Experiment | Result |
+    |---|---|
+    | A dependency declares `repositories: {"lava/core": {"type": "path", "url": "../DOES-NOT-EXIST"}}` and requires `lava/core: ^0.1.0`; a consumer supplies `lava/core` from its own root | **Install succeeds.** Both packages resolve at `0.1.0`; the bogus URL is never consulted. Composer reads `repositories` **only from the root package** |
+    | The same missing path repository declared by the **root** | `PathRepository.php:163`: *"The `url` supplied for the path (../DOES-NOT-EXIST) repository does not exist"* — hard failure, no Packagist fallback |
+    | `^0.1.0` against a path repository carrying `options.versions` | Resolves to `0.1.0`. The no-version-field policy survives: the pin lives in the root's repository config, not in the package |
+
+    So the real blast radius is narrower than 228 said and differently shaped.
+    The `repositories` block is **harmless to `composer require lava/db`** and
+    fatal only where the package *is* the root: `composer create-project
+    lava/app`, and cloning a split mirror and installing there. The `@dev`
+    constraint is a correctness problem rather than a hard failure — unbound
+    under `validate --strict`, and not what a published package should declare —
+    fixed by a real constraint, which is verified to resolve. And
+    `packages/app/README.md`'s "Composer fails the install outright rather than
+    falling back to packagist" is **correct**, now measured rather than
+    inherited.
+
+    **What 228 missed entirely is the structural fact that decides the whole
+    question.** Packagist reads `composer.json` **only at the root of a
+    repository** — it serves GitHub's whole-repo archive, not a subdirectory of
+    it, and subdirectory support is a long-standing closed feature request
+    (`composer/packagist#472`). This repository's root manifest is `lava/lava`,
+    the monorepo itself, so **not one of the six packages can be published
+    without a split mirror**. 228 framed registration as the gate; registration
+    is not even reachable without splitting first. That also dissolves the
+    "two available resolutions" it offered: publishing only `lava/core` needs
+    the identical split machinery, so the choice is *how many packages a split
+    publishes*, never *whether to split*. `splitsh-lite` plus a tag-driven CI
+    job is the community-standard, free mechanism (it is what Symfony and
+    Laravel use); Private Packagist's multipackages solve it as a paid service;
+    and `splitsh-lite` is a pure prefix split that rewrites nothing, so
+    stripping the path repositories out of a published `lava/db` is an explicit
+    post-processing step rather than something the tool does.
+
+    Corrected in `docs/releasing.md` ("The tag" and "Known gaps"). A
+    recommendation was given to the user on the basis of this measurement and
+    the packaging decision itself is left to them.
