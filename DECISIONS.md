@@ -4477,3 +4477,31 @@ section records both.
     relied on `select()` with an expression, or read `context` from a production
     5xx, so the next release is a minor, `0.2.0`, with the lockstep constraints
     bumped together.
+
+268. **`0.2.0` is prepared as a minor, because entries 258–266 ask things of an
+    app.** A command name that now warns, a `select()` that now refuses, a
+    production 5xx that now carries less, and a committed map that reads stale until
+    regenerated are each something an upgrading app has to act on. Under the 0.x
+    policy that is a minor, never a patch, and `docs/releasing.md` now says so in
+    one paragraph. A `^0.1.0` constraint stops below `0.2.0`, so no app receives
+    these changes until it asks for them.
+
+    - The lockstep constraints move together: `lavaphp/core` `^0.2.0` in the four
+      packs and the skeleton, every `lavaphp/*` requirement in the root, `apps/demo`
+      and `apps/blog` at `^0.2.0`, and each path repository's version pin at
+      `0.2.0`. The root lock was updated to match; nothing else in it moved.
+    - The README has an "Upgrading from 0.1 to 0.2" section: run `lava map`, rename
+      hyphenated commands, move expressions out of `select()`, read production 5xx
+      details from the log, and where a test double can now live instead of
+      `app/Services.php`. It points here rather than repeating the reasons, so there
+      is still no changelog to drift.
+    - Verified before the tag, on the prep branch: `composer verify` (1059 tests,
+      5724 assertions, both PHPStan runs clean), `composer coverage` (every floor
+      met), `composer check:floor` (534 files on PHP 8.3), `composer check:install`
+      and `composer check:split`, both apps' suites (48 and 24 tests), and both
+      apps' maps current.
+
+    Not done here: merging, tagging and publishing, which wait for the user. After
+    the tag, the checks entry 256 learned apply — Packagist listing every package
+    without anyone pressing Update, and a fresh `composer show -a` rather than
+    `curl` agreeing.

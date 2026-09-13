@@ -5,10 +5,10 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "lavaphp/core": "^0.1.0",
-        "lavaphp/db": "^0.1.0",
-        "lavaphp/validate": "^0.1.0",
-        "lavaphp/view": "^0.1.0"
+        "lavaphp/core": "^0.2.0",
+        "lavaphp/db": "^0.2.0",
+        "lavaphp/validate": "^0.2.0",
+        "lavaphp/view": "^0.2.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.5"
@@ -17,22 +17,22 @@
         "lavaphp/core": {
             "type": "path",
             "url": "../../packages/core",
-            "options": { "versions": { "lavaphp/core": "0.1.0" } }
+            "options": { "versions": { "lavaphp/core": "0.2.0" } }
         },
         "lavaphp/db": {
             "type": "path",
             "url": "../../packages/db",
-            "options": { "versions": { "lavaphp/db": "0.1.0" } }
+            "options": { "versions": { "lavaphp/db": "0.2.0" } }
         },
         "lavaphp/validate": {
             "type": "path",
             "url": "../../packages/validate",
-            "options": { "versions": { "lavaphp/validate": "0.1.0" } }
+            "options": { "versions": { "lavaphp/validate": "0.2.0" } }
         },
         "lavaphp/view": {
             "type": "path",
             "url": "../../packages/view",
-            "options": { "versions": { "lavaphp/view": "0.1.0" } }
+            "options": { "versions": { "lavaphp/view": "0.2.0" } }
         }
     },
     "prefer-stable": true,

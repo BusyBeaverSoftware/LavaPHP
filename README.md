@@ -40,6 +40,30 @@ and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 
+### Upgrading from 0.1 to 0.2
+
+`0.2.0` changes things an app may have to act on. Require every `lavaphp/*`
+package at `^0.2.0` together, then:
+
+- **Run `lava map` once.** The services section now lists what each registration
+  declares, and core registers two more ids, so a committed `AGENTS.md` reads
+  stale until it is regenerated.
+- **Rename any command with a hyphen, underscore, capital or space** in its name.
+  It still runs, but `lava check` warns (`invalid_command_name`) with the new
+  name, and `--strict` fails until the rename is made.
+- **Move expressions out of `select()`.** It accepts column names only now;
+  `COUNT(*)` and friends go through `Connection::query()`.
+- **Read production 5xx details from the log.** A server fault's JSON in `prod`
+  keeps its code, message and fix but sends `context` as `{}` and `source` as
+  null; the app writes the whole problem to its `LoggerInterface`.
+- **Nothing to do, and one thing to undo.** A handler exception now renders as a
+  500 `unexpected_failure` instead of escaping. An app may now register its own
+  `LoggerInterface` or `ClockInterface`: core only fills them when empty. A test
+  double kept in `app/Services.php` behind `LAVA_ENV=test` can move to
+  `TestApp::boot($dir, replace: [...])`.
+
+The reasoning for each is in [DECISIONS.md](DECISIONS.md), entries 257–268.
+
 To work on the framework itself, clone the repository:
 
 ```sh
