@@ -231,15 +231,19 @@ implies everything was verified is worse than one that lists what was not.
   jobs on its branch (run 34724462644), on `main` (run 34724539558) and on the
   tag (run 34725060175), and the split workflow pushed the tag to every mirror
   (run 34725060121).
-- **`0.1.1` installs from Packagist, checked once, on PHP 8.5.4.** With a
+- **`0.1.1` installs from Packagist, checked on PHP 8.5, 8.4 and 8.3.** With a
   Composer home and cache that had never seen this repository or its mirrors:
   `composer create-project lavaphp/app shop 0.1.1`, then `composer require` for
   all four packs. Every `lavaphp/*` package in the lock was `0.1.1`, fetched as a
   zip of its mirror; nothing under `vendor/lavaphp` carried `tests/`,
   `phpunit.xml.dist` or `.github`; and `lava check --strict` passed every
-  section, including the skeleton's five tests. The packs were installed, not
-  enabled — enabling them is what `check:install` proves for the demo and the
-  blog, from the working tree rather than from Packagist. When checking a
+  section, including the skeleton's five tests. On 8.3 and 8.4, in the official
+  `php:<version>-cli` images, the same install went further (DECISIONS.md 255).
+  All four packs were enabled in `app/Modules.php` as their docs show. A
+  migration was written with `lava db:new` and applied to SQLite with `lava
+  db:migrate`. Then `lava map` and `lava check --strict` passed with four packs
+  loaded. Those images have neither `ext-zip` nor `unzip`, so install `unzip`
+  before running Composer in them. When checking a
   release, read `repo.packagist.org/p2/<package>.json`, which is what Composer 2
   resolves from; `packagist.org/packages/<package>.json` went on listing only
   `dev-main` for minutes after `0.1.1` was installable.

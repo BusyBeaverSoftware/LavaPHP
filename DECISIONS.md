@@ -4148,3 +4148,57 @@ section records both.
     reaching Packagist through a hook, because nothing has been pushed to a
     mirror since. The release checklist keeps **Update** as the fallback until
     the first split that changes a package shows it is not needed.
+
+255. **`0.1.2` is a docs-only patch release, cut to ship the skeleton's corrected
+    README, and the loose ends of publishing are tidied.** A project created from
+    `0.1.1` has a `README.md` saying the Packagist commands "do not work yet"
+    (entry 253), and a pushed tag cannot change, so the fix needs a new tag.
+    Nothing else a consumer receives differs from `0.1.1`: every other commit
+    since touches only this repository's docs and this file. Under the 0.x policy
+    that is a patch release, and the lockstep `^0.1.0` constraints need no bump.
+    It is also the first tag pushed with the webhooks in place, so it is the real
+    push that entry 254 left unverified.
+
+    The user asked for the rest of what was open at the same time.
+    - The mirrors' GitHub descriptions still said "published as `lava/<name>`",
+      from before entry 252's rename. They now say `lavaphp/<name>`.
+    - `feat/consumer-findings`, `feat/lavaphp-vendor` and
+      `release-prep/strict-install-gates` were deleted locally and on GitHub, and
+      the local `m9-post-release` too, each after `git merge-base --is-ancestor`
+      confirmed `main` contains it.
+    - The two projects built outside the repository, `lava-test-blog` and
+      `lava-test-pulse` (entries 234 and 242), were removed at the user's
+      request. Both required `lava/*` through path repositories into this
+      checkout, so neither had installed since the rename. They were moved to
+      the desktop trash rather than deleted outright, which keeps their
+      `FRICTION.md` reports recoverable; the paths quoted in entries 234 and 242
+      no longer exist.
+
+    Verified before the tag, first the release gate, run from this checkout with
+    the ini shim:
+    - `composer verify`: 1029 tests, 5549 assertions, both PHPStan runs clean.
+    - `composer coverage`: every pack over its floor (core 88.97%, db 88.89%,
+      http-client 96.69%, validate 98.29%, view 97.19%), with 201 child
+      processes captured.
+    - `composer check:floor`: 517 files parse on 8.3.
+    - `composer check:install` and `composer check:split`: both passed.
+
+    Then the two checks entry 253 had left open. They ran against `0.1.1` from
+    Packagist, because `0.1.2`'s code is identical, in `php:8.3-cli` (8.3.33) and
+    `php:8.4-cli` (8.4.25), with a Composer home that had never seen this
+    repository.
+    - `composer create-project lavaphp/app shop 0.1.1`, then `composer require`
+      of the four packs, took every `lavaphp/*` package at `0.1.1`.
+    - All four packs were enabled in `app/Modules.php`, exactly as their docs
+      show. A `views/` directory was created, because a missing template
+      directory fails the boot by design, and `DATABASE_DSN` was pointed at a
+      SQLite file.
+    - `lava db:new create_notes_table` wrote a migration; its body was replaced
+      with a real `notes` table. `lava db:migrate` applied it, `lava db:status`
+      listed it, and SQLite held the table.
+    - `lava map`, then `lava check --strict`, passed all nine sections with four
+      packs, fifteen services and sixteen commands.
+
+    Those images ship neither `ext-zip` nor `unzip`, which Composer needs to
+    unpack a dist, so each run installed `unzip` first. That is a note for
+    whoever repeats the check, not a framework requirement.
