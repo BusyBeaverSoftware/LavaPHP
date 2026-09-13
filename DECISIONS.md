@@ -4202,3 +4202,50 @@ section records both.
     Those images ship neither `ext-zip` nor `unzip`, which Composer needs to
     unpack a dist, so each run installed `unzip` first. That is a note for
     whoever repeats the check, not a framework requirement.
+
+256. **`0.1.2` is released, and Packagist updated itself for it — though
+    Composer did not see `lavaphp/core 0.1.2` for its first ten minutes.** The tag
+    went onto `cc1e86f` once CI had passed all nine jobs there (run 34731700752),
+    and was pushed at 01:56:11 UTC. Nobody pressed **Update**:
+    - Split run 34731766457 pushed the tag to the six mirrors.
+    - Each mirror's webhook got `202` from Packagist between 01:56:22 and
+      01:56:25.
+    - `repo.packagist.org/p2` listed `0.1.2` for all six by 01:56:31, as a
+      cache-busted `curl` saw it.
+    - CI on the tag passed all nine jobs again (run 34731766456).
+
+    That settles what entry 254 left open.
+
+    A fresh consumer install straight afterwards did not get `0.1.2` everywhere.
+    At 01:56 and again at 01:57, `composer create-project lavaphp/app shop` took
+    the skeleton at `0.1.2`, with its corrected README, but locked
+    `lavaphp/core` at `0.1.1`. `composer require` of the four packs then locked
+    them at `0.1.2` and left core alone. `composer show -a lavaphp/core` from a
+    fresh home listed only `0.1.1`, and `-vvv` showed a `200` for
+    `p2/lavaphp/core.json` whose cached body held only `0.1.1`. So the stale
+    list came from the server, not from Composer's resolution.
+
+    Fetched by hand, one encoding at a time, the file turned out to be several:
+    - Packagist's CDN (BunnyCDN) varies it on `Accept-Encoding`.
+    - For `lavaphp/core`, the zstd copy still had `Last-Modified` 23:50:14 —
+      the manual update that published `0.1.1` — while the brotli and gzip
+      copies were current.
+    - Every other package's copies were current in all three encodings.
+    - PHP's curl here supports zstd, so Composer asks for it. A `curl` without
+      a compression header gets gzip or identity, which is why every earlier
+      check had looked right.
+
+    **Update** was pressed on `lavaphp/core` at 02:01:22. The brotli copy took
+    that timestamp at once. By 02:05:41 the zstd copy had it too, Composer saw
+    `0.1.2`, and a fresh install locked all five packages at `0.1.2` and passed
+    `lava check --strict`. Whether the manual update or the CDN's own expiry
+    (`max-age=900`) cleared the zstd copy cannot be told apart from outside, but
+    that copy had stayed stale through the webhook's update at 01:56. The lag
+    changed a version label and no code: the split is a pure prefix split, so
+    `lava-core`'s `0.1.1` and `0.1.2` tags are the same commit (`68b4e38`). The
+    same is true of every mirror but `lava-app`, the only package with a change.
+
+    The release checklist now says to check a release with `composer show -a`
+    from a fresh home rather than with hand-fetched metadata. A `curl` of the
+    file answers for whichever copy its own headers select, and Composer may be
+    reading a different one.
