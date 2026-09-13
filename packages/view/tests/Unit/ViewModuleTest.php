@@ -141,7 +141,10 @@ final class ViewModuleTest extends TestCase
             $this->register(['view.path' => 'nope']);
         } catch (ViewDirMissing $problem) {
             self::assertSame('view_dir_missing', $problem->code());
-            self::assertStringContainsString($this->templates->dir() . '/nope', $problem->getMessage());
+            // Named relative to the app: the absolute path is context only, as
+            // a production boot failure's sentence reaches every client (R2-B3).
+            self::assertStringContainsString('renders from nope,', $problem->getMessage());
+            self::assertSame($this->templates->dir() . '/nope', $problem->context['path']);
             // The fix has to name the config key, or the reader knows the
             // directory is wrong and not where the directory is set.
             self::assertStringContainsString('config/view.php', $problem->fix);

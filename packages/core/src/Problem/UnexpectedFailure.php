@@ -20,17 +20,29 @@ final class UnexpectedFailure extends LavaProblem
         return 'unexpected_failure';
     }
 
+    /**
+     * The sentence and the fix name the step and nothing from the throwable,
+     * for the reason {@see inRequest()} gives: in production a boot failure is
+     * rendered to every client, and redaction withholds only the context. The
+     * message and the location are in the context, which `lava check` prints
+     * and which the response carries outside production.
+     *
+     * Generic in every environment, not only in `prod`: a step that throws
+     * before `LoadConfig` does so while the environment is still the `dev`
+     * default, so a sentence chosen by it could not be trusted to be the one
+     * production renders.
+     */
     public static function of(string $step, \Throwable $throwable): self
     {
-        $at = $throwable->getFile() . ':' . $throwable->getLine();
         return new self(
-            "Unexpected failure during boot step {$step}: {$throwable->getMessage()}",
-            "Fix the underlying error at {$at} — it is not a LavaPHP wiring problem.",
+            "Unexpected failure during boot step {$step}.",
+            "Fix the exception this problem's context describes — it is not a LavaPHP wiring problem. "
+                . 'In production the context is withheld from the response: run lava check on the server to print it.',
             [
                 'step' => $step,
                 'exception' => $throwable::class,
                 'message' => $throwable->getMessage(),
-                'at' => $at,
+                'at' => $throwable->getFile() . ':' . $throwable->getLine(),
             ],
             null,
             $throwable,

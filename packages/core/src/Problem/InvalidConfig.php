@@ -89,14 +89,19 @@ final class InvalidConfig extends LavaProblem
      *
      * Reported against the file rather than as an unexpected failure of the
      * step that loaded it: the step is not what the reader has to change.
+     *
+     * The exception's message is in the context, not the sentence. A boot
+     * failure's sentence reaches every client in production, and a config
+     * file that throws is usually one that tried to connect somewhere — with
+     * the credentials in the message.
      */
     public static function threw(string $file, string $name, \Throwable $previous): self
     {
         return new self(
-            "config/{$name}.php threw while loading: " . $previous->getMessage(),
+            "config/{$name}.php threw while loading.",
             'A config file must only build and return an array — no queries, no service calls, no side effects '
             . 'at load time. Move that work to app/Services.php.',
-            ['file' => $file, 'exception' => $previous::class],
+            ['file' => $file, 'exception' => $previous::class, 'message' => $previous->getMessage()],
             SourceLocation::of($file, 1),
             $previous,
         );

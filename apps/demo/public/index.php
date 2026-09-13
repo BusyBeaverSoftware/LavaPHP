@@ -24,7 +24,12 @@ $request = \Lava\Core\Http\RequestFactory::fromGlobals();
 
 // A boot failure is a Problem report, rendered in the same media a runtime
 // error would be — so a broken app explains itself in the browser too.
+// Production withholds the details from the client, and there is no app logger
+// before boot, so they go to the server's error log instead.
 if ($app instanceof \Lava\Core\Boot\BootFailure) {
+    if ($app->env === 'prod') {
+        error_log($app->text());
+    }
     \Lava\Core\Http\Emitter::emit($app->toResponse($request));
     return;
 }

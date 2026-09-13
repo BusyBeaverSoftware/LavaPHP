@@ -183,12 +183,20 @@ final class ViewProblemsTest extends TestCase
     {
         // The fix has to name the config key or the reader knows the directory
         // is wrong and not where the directory is set.
-        $problem = ViewDirMissing::of('/app/views', 'view.path', '/app');
+        $problem = ViewDirMissing::of('/srv/app/resources/views', 'view.path', '/srv/app');
 
-        self::assertStringContainsString('/app/views', $problem->getMessage());
+        self::assertStringContainsString('renders from resources/views,', $problem->getMessage());
+        self::assertStringContainsString('mkdir -p resources/views', $problem->fix);
         self::assertStringContainsString('config/view.php', $problem->fix);
-        self::assertStringContainsString('/app', $problem->fix);
-        self::assertSame('/app/views', $problem->context['path']);
+        self::assertSame('/srv/app/resources/views', $problem->context['path']);
+        self::assertSame('/srv/app', $problem->context['app_dir']);
         self::assertSame('view.path', $problem->context['config_key']);
+
+        // The absolute paths are context only (R2-B3): this is a boot problem,
+        // and a production boot failure's sentence and fix go to every client.
+        self::assertStringNotContainsString('/srv/app', $problem->getMessage() . $problem->fix);
+
+        // A directory outside the app has no shorter name than the configured one.
+        self::assertStringContainsString('renders from /var/views,', ViewDirMissing::of('/var/views', 'view.path', '/srv/app')->getMessage());
     }
 }

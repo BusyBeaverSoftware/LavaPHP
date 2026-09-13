@@ -23,12 +23,20 @@ use Lava\Core\Problem\LavaProblem;
  */
 final class ViewDirMissing extends LavaProblem
 {
+    /**
+     * The sentence and the fix name the directory relative to the app, and
+     * the absolute paths stay in the context. A boot failure's sentence and
+     * fix reach every client in production, and the server's layout is not
+     * theirs to read. A directory outside the app is named as configured.
+     */
     public static function of(string $path, string $configKey, string $appDir): self
     {
+        $shown = str_starts_with($path, $appDir . '/') ? substr($path, strlen($appDir) + 1) : $path;
+
         return new self(
-            "lavaphp/view renders from {$path}, which is not a directory.",
-            "Create it — mkdir -p {$path} — or point the pack somewhere else: add 'path' => '…' to "
-            . "config/view.php, where a relative value is resolved against {$appDir}.",
+            "lavaphp/view renders from {$shown}, which is not a directory.",
+            "Create it — mkdir -p {$shown} in the app's root directory — or point the pack somewhere else: "
+            . "add 'path' => '…' to config/view.php, where a relative value is resolved against the app's root directory.",
             ['path' => $path, 'config_key' => $configKey, 'app_dir' => $appDir],
         );
     }
