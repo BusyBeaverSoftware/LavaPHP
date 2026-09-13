@@ -220,53 +220,37 @@ Neither pushes or publishes anything, and neither can show Packagist itself.
   believed second. If consumers ask for one, it should be generated from the
   commit log at tag time rather than written alongside it.
 
-## Known gaps at 0.1.2
+## Known gaps at 0.2.0
 
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
-- **Packagist updates itself, as the `0.1.2` tag showed.** Nobody pressed
-  **Update**. The tag was pushed at 01:56:11 UTC and `split.yml` pushed it to the
-  six mirrors. Each mirror's webhook got `202` from Packagist between 01:56:22
-  and 01:56:25, and `repo.packagist.org/p2` listed `0.1.2` for all six by
-  01:56:31, as `curl` saw it. Composer itself saw `lavaphp/core 0.1.2` only
-  from 02:05 — see the `0.1.2` install below. If a release does not appear,
-  read the mirror's hook deliveries
-  (`gh api repos/BusyBeaverSoftware/lava-<name>/hooks/<id>/deliveries`) before
-  pressing **Update**.
-- **CI was green on the tag commit, twice.** `cc1e86f` passed all nine jobs on
-  `main` before it was tagged (run 34731700752) and again on the tag (run
-  34731766456), and split run 34731766457 pushed the tag to every mirror.
-  `0.1.2` changes no code from `0.1.1`, whose tag commit `cce988d` had passed
-  three times (runs 34724462644, 34724539558 and 34725060175).
-- **`0.1.2` installs from Packagist, though not in its first ten minutes.** At
-  02:05 UTC, with a fresh Composer home and cache, `composer create-project
-  lavaphp/app shop` took `0.1.2`, whose `README.md` no longer says the Packagist
-  commands do not work. `composer require` of the four packs then locked all
-  five `lavaphp/*` packages at `0.1.2`, and `lava check --strict` passed. The
-  same install at 01:56 and 01:57 locked `lavaphp/core` at `0.1.1`. Packagist
-  serves `p2/<name>.json` as a separate copy per compression, and the zstd copy
-  for `lavaphp/core` — the one Composer asks for — still dated from 23:50 while
-  the gzip and brotli copies listed `0.1.2`. Pressing **Update** on
-  `lavaphp/core` at 02:01 was followed by a current zstd copy by 02:05
-  (DECISIONS.md 256). Both versions of core are the same commit, so the lag
-  changed a version label and no code.
-- **`0.1.1` installs from Packagist, checked on PHP 8.5, 8.4 and 8.3.** With a
-  Composer home and cache that had never seen this repository or its mirrors:
-  `composer create-project lavaphp/app shop 0.1.1`, then `composer require` for
-  all four packs. Every `lavaphp/*` package in the lock was `0.1.1`, fetched as a
-  zip of its mirror; nothing under `vendor/lavaphp` carried `tests/`,
-  `phpunit.xml.dist` or `.github`; and `lava check --strict` passed every
-  section, including the skeleton's five tests. On 8.3 and 8.4, in the official
-  `php:<version>-cli` images, the same install went further (DECISIONS.md 255).
-  All four packs were enabled in `app/Modules.php` as their docs show. A
-  migration was written with `lava db:new` and applied to SQLite with `lava
-  db:migrate`. Then `lava map` and `lava check --strict` passed with four packs
-  loaded. Those images have neither `ext-zip` nor `unzip`, so install `unzip`
-  before running Composer in them. When checking a
-  release, read `repo.packagist.org/p2/<package>.json`, which is what Composer 2
-  resolves from; `packagist.org/packages/<package>.json` went on listing only
-  `dev-main` for minutes after `0.1.1` was installable.
+- **Packagist updates itself, and Composer can still lag behind it for
+  `lavaphp/core`.** Nobody pressed **Update**. The tag was pushed at 06:21:10 UTC,
+  split run 34742535514 pushed it to the six mirrors, and each webhook got `202`
+  between 06:21:20 and 06:21:25. A fresh `composer show -a` saw `0.2.0` for five
+  packages by 06:22:17 and for `lavaphp/core` only at 06:35:29 — the second release
+  in a row where core's Composer-facing metadata lagged (DECISIONS.md 256, 269),
+  this time clearing on its own inside the CDN's fifteen-minute cache. Check a
+  release with `composer show -a` from a fresh Composer home, never with `curl`.
+  If a package is still missing after fifteen minutes, read that mirror's hook
+  deliveries (`gh api repos/BusyBeaverSoftware/lava-<name>/hooks/<id>/deliveries`)
+  before pressing **Update**.
+- **CI was green on the tag commit, three times.** `b6941f1` passed all nine jobs
+  on its branch (run 34741873148), on `main` (run 34742488041) and on the tag (run
+  34742535529).
+- **`0.2.0` installs from Packagist, checked on PHP 8.5 only.** At 06:35 UTC, with
+  a fresh Composer home and cache, `composer create-project lavaphp/app shop` took
+  `0.2.0`, whose manifest requires `lavaphp/core` `^0.2.0`; `composer require` of
+  the four packs locked all five `lavaphp/*` packages at `0.2.0`; and `lava check
+  --strict` passed. The deeper check on PHP 8.3 and 8.4 — all four packs enabled
+  and a SQLite migration applied, in the official `php:<version>-cli` images — was
+  run against `0.1.1` (DECISIONS.md 255) and not repeated. Those images ship
+  neither `ext-zip` nor `unzip`, so install `unzip` before running Composer in
+  them.
+- **`0.2.0` asks four things of an app upgrading from `0.1`**, listed in the
+  README's "Upgrading from 0.1 to 0.2". The only apps on `0.1` were this
+  repository's own and its test builds.
 - **PHP 8.3 and 8.4 are exercised by CI, and the floor is checkable locally.**
   Development here is on 8.5.4. The CI matrix runs the suite on 8.3 and 8.4;
   locally, `composer check:floor` (step 3) lints every tracked file against a

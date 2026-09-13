@@ -4505,3 +4505,28 @@ section records both.
     the tag, the checks entry 256 learned apply — Packagist listing every package
     without anyone pressing Update, and a fresh `composer show -a` rather than
     `curl` agreeing.
+
+269. **`0.2.0` is released.** `b6941f1` passed CI on its branch (run 34741873148),
+    was fast-forwarded onto `main` and passed again there (CI 34742488041, split
+    34742488050), and only then was tagged; the tag's own CI (34742535529) and split
+    (34742535514) both passed. The user's go-ahead came with the note that no app
+    but this repository's own test builds used `0.1`, so the breaking changes in
+    entries 258–266 had no one outside to strand.
+
+    Packagist updated itself again: each mirror's webhook got `202` within fifteen
+    seconds of the tag push, and a fresh `composer show -a` saw `0.2.0` for `db`,
+    `validate`, `view`, `http-client` and `app` within about a minute. It saw
+    `lavaphp/core` only fourteen minutes later, the same lag entry 256 traced to the
+    CDN's per-compression copy of core's metadata. This time nobody pressed
+    **Update** and it cleared by itself inside the fifteen-minute cache, so entry
+    256 cannot claim the manual update fixed it then; what is clear is that core,
+    and only core, has lagged on both releases since the webhooks. The checklist now
+    says to wait fifteen minutes and read the hook deliveries before pressing
+    anything.
+
+    A fresh consumer at 06:35 UTC got `lavaphp/app 0.2.0`, locked all five packages
+    at `0.2.0` after requiring the four packs, and passed `lava check --strict`. Not
+    repeated for this release: the docker install on PHP 8.3 and 8.4 with every pack
+    enabled (entry 255). The merged branches `fix/lava-notes-findings` and
+    `release-prep/0.2.0` were deleted locally and on GitHub once `main` contained
+    both.
