@@ -91,9 +91,9 @@ it a release, and a pushed tag is not reversible in the way a local one is.
 learns about a tag from a webhook on a package that is *already registered*, so
 the order runs the other way from what "the push makes it a release" suggests:
 register the package, put the webhook in place, and only then is a tag push
-visible to the world. Until that webhook exists, a pushed tag reaches Packagist
-only when a maintainer presses **Update** on each package's page — which is how
-`0.1.1` was published on 2026-09-12 (DECISIONS.md 253).
+visible to the world. All six packages have had that webhook since 2026-09-13
+(DECISIONS.md 254). `0.1.1` predates it, and reached Packagist only because a
+maintainer pressed **Update** on each package's page (DECISIONS.md 253).
 
 Two consequences worth expecting. The push triggers a **full duplicate run of
 all nine CI jobs** on the tagged commit, because the workflow triggers on any
@@ -168,7 +168,18 @@ does them by hand:
    `https://packagist.org/api/github?username=<packagist-username>`, content type
    `application/json`, the Packagist API token as the secret, and only the `push`
    event. Until one of those is done, every push and tag needs **Update** pressed
-   on each package's page.
+   on each package's page. Choose one, not both: a working sync treats any hook
+   whose URL starts `https://packagist.org/api/github` as its own and rewrites it.
+
+   The integration is what set the hooks up here, and it took two syncs. The
+   Packagist account was already connected to GitHub, but the Packagist
+   application had not been granted the organization, and a sync in that state
+   reported *6 hooks already setup and left unchanged* while GitHub listed none:
+   Packagist counts a hook it failed to create as unchanged. After the grant, at
+   `github.com/settings/connections/applications/a059f127e1c09c04aa5a`, a second
+   sync from `packagist.org/trigger-github-sync/` created all six. Check the
+   result with `gh api repos/BusyBeaverSoftware/lava-<name>/hooks`, not with the
+   sync's count.
 5. Tag the release here — `git tag -a 0.1.1 -m "0.1.1"`, then push the tag. The
    workflow pushes it to every mirror, and Packagist publishes it. `0.1.0` is not
    published: its manifests still carry path repositories.
@@ -208,10 +219,14 @@ Neither pushes or publishes anything, and neither can show Packagist itself.
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
-- **Packagist does not update itself yet.** None of the six packages has the
-  GitHub hook, so a push or a tag reaches Packagist only after **Update** is
-  pressed on each package's page. Setting the hook up is a maintainer step —
-  step 4 of [Setting up the mirrors](#setting-up-the-mirrors).
+- **Packagist's auto-update is proven by a test delivery, not yet by a real
+  push.** Each mirror has Packagist's `push` webhook, and GitHub's test delivery
+  — a signed replay of the mirror's latest push — got `202` from Packagist on
+  all six. `lavaphp/core`'s *Last update* moved to the second after its
+  delivery, and no package is labelled "Not Auto-Updated" any more. No new
+  commit or tag has reached Packagist through a hook yet. The first `split.yml`
+  run that changes a package is that proof: compare each changed package's
+  *Last update* with the run's time, and press **Update** where it did not move.
 - **CI was green on the tag commit, three times.** `cce988d` passed all nine
   jobs on its branch (run 34724462644), on `main` (run 34724539558) and on the
   tag (run 34725060175), and the split workflow pushed the tag to every mirror

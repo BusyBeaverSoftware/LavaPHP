@@ -4116,3 +4116,35 @@ section records both.
     work yet" were corrected only after the install above passed, so the
     correction is on `main`, not in `0.1.1`: a project created from `0.1.1` still
     has that sentence in its `README.md`, and will until the next tag.
+
+254. **Packagist updates itself now: each mirror has its webhook, created by
+    Packagist's GitHub integration once the Packagist application was granted the
+    organization.** The user asked for both the integration and a manual webhook.
+    They are alternatives rather than steps, and doing both is worse than either:
+    Packagist's sync treats any hook whose URL starts
+    `https://packagist.org/api/github` as its own and rewrites it, so a manual
+    hook would be taken over by the next sync that works. The integration came
+    first because it needs no token; a manual hook's secret is the maintainer's
+    Packagist API token, which the assistant does not handle. A script that
+    creates the manual hooks, reading the token without echo, was written and
+    dry-run as a fallback, and left out of the repository once it was not needed.
+
+    The Packagist account was already connected to the user's GitHub account. A
+    sync from `packagist.org/trigger-github-sync/` reported *0 hooks
+    setup/updated, 6 hooks already setup and left unchanged*, and GitHub listed
+    no hooks on any mirror. Packagist's worker
+    (`GitHubUserMigrationWorker::setupWebHook`) counts a hook as set up only when
+    GitHub answers its create request with `201`; any other answer that does not
+    throw leaves the hook counted as unchanged. So the summary cannot tell a
+    working hook from a failed one, and `gh api repos/<mirror>/hooks` is the
+    check. The user granted the Packagist application access to
+    `BusyBeaverSoftware` in GitHub's application settings. The next sync
+    reported six set up, and GitHub listed one active `push` hook per mirror.
+
+    Verified: GitHub's test delivery, a signed replay of the repository's latest
+    push, got `202` from Packagist on all six mirrors. `lavaphp/core`'s *Last
+    update* moved to 01:20:36 UTC, a second after its delivery, and no package
+    is labelled "Not Auto-Updated" any more. Not verified: a new commit or tag
+    reaching Packagist through a hook, because nothing has been pushed to a
+    mirror since. The release checklist keeps **Update** as the fallback until
+    the first split that changes a package shows it is not needed.
