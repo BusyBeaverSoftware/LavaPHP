@@ -4530,3 +4530,175 @@ section records both.
     enabled (entry 255). The merged branches `fix/lava-notes-findings` and
     `release-prep/0.2.0` were deleted locally and on GitHub once `main` contained
     both.
+
+## 2026-09-13 — Lava Notes round 2: the framework bugs, on `fix/round2`
+
+Section A of the round-2 task list (in the Lava Notes repository), in its order.
+Every code fix below has a regression test that failed on the 0.2.0 source
+before the fix went in; R2-B7 and R2-B13 are documentation only.
+
+270. **`Schema::table()` creates the indexes it collects, and refuses a primary
+    key (R2-B14).** `table()` compiled only `ADD COLUMN`, so `index()`,
+    `unique()` and a column's `->unique()` were dropped without a word and a
+    "unique" slug took duplicates. The review offered two answers: compile them,
+    or refuse them. Compiling won, because `CREATE INDEX` is the one statement all
+    three dialects agree on and `SchemaCompiler::createIndex()` already emitted
+    it. `SchemaCompiler::alter()` adds the columns, then one index per
+    declaration, after checking every index against the table's existing columns
+    plus the added ones, so a bad index fails before any `ALTER` runs. The
+    existing columns are read from a snapshot only when there is an index to
+    check, as `checkReferences()` does. `primary()` is refused with `bad_schema`:
+    SQLite cannot add a primary key without rebuilding the table, and silently
+    dropping it would repeat the bug. A unique index over a column whose existing
+    rows already collide still fails in the database after the columns were
+    added; the migration is then half-applied, as any failed DDL is.
+
+271. **A production boot failure sends neither the exception's message nor a
+    path (R2-B3).** Entry 259 withheld `context` and `source`, but
+    `UnexpectedFailure::of()` put the throwable's message and absolute `file:line`
+    into the sentence and fix, which production keeps. `of()` is now generic like
+    `inRequest()` (entry 258), with the specifics in `context` only, and in every
+    environment rather than only in `prod`: a step that throws before `LoadConfig`
+    runs while the environment is still the `dev` default, so a sentence chosen by
+    the environment could not be trusted to be the one production renders.
+    Nothing is lost outside production: the diagnostics page, the JSON and
+    `lava check` all show the context. The review's "other boot problems" check
+    found two more: `InvalidConfig::threw()` copied the message into its sentence
+    (moved to `context.message`), and `view_dir_missing` named the absolute
+    template and app directories (now relative to the app, absolute paths in
+    `context`; a directory outside the app is still named as configured).
+    `not_an_app`, `missing_entry_point` and `missing_test_runner` also carry
+    absolute paths but never reach an HTTP client: a front controller exists, so
+    `CheckAppDir` passes. The skeleton's `public/index.php`, and the demo's and
+    blog's copies, now `error_log()` the report's text in `prod`, which revisits
+    entry 259's "no logger for a boot failure": there is still no PSR-3 logger
+    before boot, but the server's error log is always there, and without it a
+    generic production 500 would be undiagnosable from the server. An app that
+    copied the old front controller keeps working and simply logs nothing.
+
+272. **Nothing on the request path escapes `App::handle()` (R2-B5, R2-B4).**
+    Building the `FlagSubjectResolver` is now inside the same `try` as
+    `subjectFor()`: a `factory` is rebuilt on every request, so the boot sweep
+    cannot vouch for it. Problem JSON is encoded with
+    `JSON_INVALID_UTF8_SUBSTITUTE` in `HttpErrors`, `ProblemJsonRenderer` and
+    `Envelope`, as `LineLogger` and the HTML page already were, because a
+    problem's text is whatever the failure's was. `Responses::json()` is
+    unchanged on purpose: a handler's own data with invalid UTF-8 still throws,
+    and that is now answered as `unexpected_failure` rather than silently
+    altered. `problemResponse()` has a last resort, a plain-text 500 naming the
+    problem's code, for a problem that still cannot be encoded (a `NAN` in its
+    context).
+
+273. **A request failure names the app's own line, and the log gets the
+    throwable (R2-B6); a 5xx a handler renders itself is documented as unlogged
+    (R2-B7).** `unexpected_failure` keeps the throw site as `context.at` and now
+    sets `source` to the first frame outside `vendor/` and core's `src/`, which is
+    what docs/conventions.md promises `source` is. The alternative, replacing `at`
+    with the app frame, was rejected because the library's throw site is still
+    the first thing to read when the library is right to throw. Outside `prod`
+    the context carries a ten-frame trace, read from the request's recorded
+    environment; in `prod` it does not, because `App` now passes the throwable
+    under PSR-3's `exception` key and `LineLogger` prints its class, message,
+    location, trace and previous chain on the entry's one line. For R2-B7 the
+    review offered a docblock or moving the log-on-redact decision; the docblock
+    won. `HttpErrors` is static and has no logger, recognising a redacted problem
+    response on its way out of `App` would need a marker on the response, and no
+    documented pattern renders a 5xx from a handler. Throwing is the way.
+
+274. **A list passed to `replace:` is `bad_replacement`, not a `TypeError`
+    (R2-B12).** `Container::replacementProblems()` checks each key is a string
+    before `has()`; the problem shows the `[Id::class => $replacement]` form. The
+    constructor's docblock now admits integer keys so the check is honest to
+    phpstan, rather than widening `TestApp::boot()`'s documented shape.
+
+275. **`invalid_command_name` never suggests a name that is taken, and says who
+    added the command (R2-B9).** Following a suggestion onto an existing name
+    raised `duplicate_command`, which is fatal on every boot — the outage entry
+    263 made the warning a warning to avoid. The suggestion is checked against
+    every registered name and every suggestion already offered in the same pass,
+    so `Report:Daily` and `report daily` are not both told `report:daily`; a name
+    with bytes outside ASCII gets no suggestion. `CommandRegistry::addingFor()`
+    records which loader added a command, so a command from `app/Commands.php`
+    that never overrode `pack()` reads as `(from app)`, and the problem's
+    `source` is the command class's file and line. `duplicate_command` still says
+    "provided by core" for such a command; the task list did not ask for it, and
+    it is left for when that problem is next touched.
+
+276. **Alias rows name the `alias()` call (R2-B11), and a declared `self`,
+    `static` or `parent` names its class (R2-B10).** `Container::declaredAt()` is
+    an id's own registration site. `lava services`, the map and `lava describe`
+    use it, so core's default `LoggerInterface` reads as registered in
+    `RegisterDefaultServices`, which makes that step's docblock true, and an app
+    alias no longer names its target's file. `describe()` still answers for the
+    target, as `class` and `alias_of` need. Every committed map's alias rows
+    change, so the maps are regenerated. `declaredType()` substitutes the
+    closure's scope class for `self` and `static` and its parent for `parent`;
+    the scope is fixed where the closure was written, so entry 265's
+    environment-independent column holds. Renaming the column to `declares` was
+    the alternative and would have changed every map for a cosmetic gain.
+
+277. **Every column position refuses what is not a column name, and a name may
+    use any letter and a schema (R2-B1, R2-B8).** Entry 264 refused expressions
+    in `select()` only; `where*()`, `orderBy()`, both sides of a join, its table,
+    and insert and update keys still quoted `LOWER(email)` into a string
+    comparison. `Lava\Db\Query\ColumnName` is the one check, called from
+    `Condition`'s factories (so a `whereGroup` closure is covered too), the
+    builder and the write queries. The pattern widened at the same time rather
+    than rewording the message: letters of any script with `/u`, and up to two
+    qualifiers, because `prénom` and `main.users.name` worked on 0.1.2 and are
+    real identifiers. `BadQuery::notAColumn()` names the call, stops claiming
+    SQLite's string fallback for inputs that are real names, and points at
+    `whereRaw()`, `query()` and `statement()`. The refusal is documented in
+    lava-db.md's list and the `bad_query` row, with the limit stated plainly: the
+    check is on shape, so a typo that is still a valid name reaches SQLite, which
+    reads an unknown quoted identifier as a string. Both apps' repository
+    docblocks were corrected.
+
+278. **`template_not_found` for `@namespace/…` names that namespace's
+    directories (R2-B15); filters go in before the first render (R2-B13).** The
+    renderer reads the namespace's paths from Twig's `FilesystemLoader` and lists
+    the templates in them as `@namespace/…` names; an unregistered namespace says
+    so and shows `addPath()`. The main-directory case is unchanged. R2-B13 is
+    documentation only — the `environment()` docblock and lava-view.md say Twig
+    locks filters, functions, globals and extensions on first use and show the
+    `hasExtension()` guard. A pre-render hook is the separate gap R2-G11.
+
+279. **What was verified on `fix/round2`, and the version question it raises.** On
+    this machine, PHP 8.5.4. The ini shim of the environment notes was gone (a
+    reboot clears `/tmp`) and was rebuilt: `pdo_sqlite.so` and `sqlite3.so` from
+    Ubuntu's `php8.5-sqlite3` package unpacked without installing, pcov 1.0.12
+    built from its tag, and `30-pcov.ini` needs `pcov.directory` set to the
+    repository or `composer coverage` refuses to run.
+
+    - `composer verify` with the shim and `DB_TEST_DSN=sqlite::memory:`: 1099
+      tests, 5916 assertions, nothing skipped, both PHPStan runs clean. The last
+      two view tests were added for coverage afterwards; the coverage run then
+      passed all 1101.
+    - `composer coverage`: every floor met — core 89.81%, db 89.36%, http-client
+      96.69%, validate 98.29%, view 97.66% (94.39% before those two tests, below
+      its 95% floor; the new namespace branches were the gap, not the floor).
+    - `composer check:floor` (538 files parse on PHP 8.3) and `php
+      tools/install-check.php app core db validate view http-client`.
+    - `apps/demo` (24 tests) and `apps/blog` (48 tests), and `lava check --strict`
+      in both and in a scratch install of the skeleton. The three maps were
+      regenerated; each changed only its `LoggerInterface` row (entry 276) and its
+      hash.
+    - The R2-B3 repro served by `php -S` with `LAVA_ENV=prod`: neither the JSON nor
+      the HTML carries `hunter2` or a path, and the server's error log has both.
+      With `LAVA_ENV=dev` the response carries the whole context.
+
+    Not run: `composer check:split`, CI, the live tests against MySQL or
+    PostgreSQL (SQLite only), and Lava Notes itself against this branch — it pins
+    the published 0.2.0.
+
+    **The version is the user's call, and entry 268's rule says 0.3.0.** The plan
+    said `0.2.1`, but entry 268 made anything an upgrading app must act on a minor.
+    This branch has four such things: a committed `AGENTS.md` reads stale until
+    regenerated (entry 276); a `where*()`, `orderBy()`, join or write key given an
+    expression now throws `bad_query` (entry 277); a `Schema::table()` migration
+    with `primary()` now throws, and one whose `unique()` meets duplicate rows now
+    fails where it silently succeeded (entry 270); and the front controller's
+    `error_log()` only reaches apps that copy it (entry 271). Each fixes a silent
+    wrong result, which argues for shipping it soon, but none of that makes it a
+    patch under the rule. Nothing was merged, tagged or given upgrade notes; the
+    README section and the lockstep constraints wait for that decision.
