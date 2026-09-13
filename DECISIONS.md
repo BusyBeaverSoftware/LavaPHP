@@ -4782,3 +4782,24 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     on GitHub once `git merge-base --is-ancestor` confirmed `main` contains both.
     Not run for this release: the MySQL and PostgreSQL live tests, locally or in
     CI.
+
+282. **`Schema::dropIndex()` drops an index on every dialect; adding one stays in
+    `table()` (R2-G7).** Section C of the Lava Notes round-2 task list, begun on
+    `feat/round2-gaps` with the user's go-ahead for the concrete gaps plus docs.
+    The review asked for `Schema::index()`, `unique()` and `dropIndex()` over the
+    compiler's existing methods, and for `table()` to stop dropping index
+    declarations. Entry 270 already did the second, and it made the first two
+    redundant: `table('users', fn (Table $t) => $t->index('role'))` creates the
+    index, with the column check `table()` gives. A second spelling of the same
+    act would be two ways to write one migration. Only removal had no API, and it
+    is the half a raw statement gets wrong: MySQL needs `DROP INDEX … ON users`,
+    SQLite and PostgreSQL refuse the `ON`, which is how the blog's `down()`
+    became SQLite-only.
+
+    `dropIndex($table, $name)` reads the table's indexes first, the way
+    `table()` reads its columns, so a misspelt name is `bad_schema` listing the
+    indexes that exist and the default naming rule, rather than a driver error
+    in the middle of a rollback. It takes a name, not columns: `Index::
+    defaultName()` is deterministic and documented, and a name is what the
+    database knows the index by. Dropping a column is still not offered, for the
+    reason `SchemaCompiler::addColumns()` gives for changing one.

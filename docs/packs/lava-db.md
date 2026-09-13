@@ -207,8 +207,8 @@ order fails at DDL time and rolling them back in the wrong order fails too.
 
 ## Schema DSL
 
-`$db->schema()` gives `create()`, `table()`, `drop()`, `dropIfExists()`,
-`has()`, and `tables()`. `has()` then `create()` rather than
+`$db->schema()` gives `create()`, `table()`, `dropIndex()`, `drop()`,
+`dropIfExists()`, `has()`, and `tables()`. `has()` then `create()` rather than
 `CREATE TABLE IF NOT EXISTS`, because the DSL has no `if not exists` and adding
 one to the compiler for a single caller would be a feature the schema layer
 does not otherwise offer.
@@ -218,7 +218,17 @@ other constraint changes, and no altering a column that already exists. An
 `index()` or `unique()` there may cover a column the table already has, and a
 column's own `->unique()` is created too; `primary()` is refused with
 `bad_schema`, because SQLite cannot add one without rebuilding the table.
-(Before 0.2.1, `table()` dropped every index declaration without a word.)
+(Before 0.3.0, `table()` dropped every index declaration without a word.)
+
+`dropIndex($table, $name)` removes an index by name — the name you gave
+`index()` or `unique()`, or the one they chose: `<table>_<columns>_index`, or
+`_unique` for `unique()`, as in `dropIndex('users', 'users_email_unique')`.
+It writes `DROP INDEX … ON <table>` on MySQL and plain `DROP INDEX` elsewhere,
+which a raw statement gets wrong on one dialect or the other, and a name the
+table has no index by is `bad_schema` listing the indexes it has. There is no
+`Schema::index()` of its own: `table('users', fn (Table $t) => $t->index('role'))`
+already adds one.
+
 Changing a column's type
 or nullability means creating a new table and copying, which is a migration you
 should write deliberately rather than one a DSL should perform silently.
