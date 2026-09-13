@@ -64,11 +64,15 @@ final readonly class ProjectMap
     {
         $routes = [];
         foreach ($app->router->routes() as $route) {
+            // Every redirect's handler is the same class; its target is the fact.
+            $redirect = $app->router->redirectTarget($route->name);
             $routes[] = [
                 'name' => $route->name,
                 'methods' => $route->methodNames(),
                 'path' => $route->path,
-                'handler' => $app->router->plan($route->name)->describe(),
+                'handler' => $redirect === null
+                    ? $app->router->plan($route->name)->describe()
+                    : "redirect to {$redirect['to']} ({$redirect['status']})",
                 'feature' => $route->feature,
                 'middleware' => array_map(self::shorten(...), $route->middleware),
             ];

@@ -6,6 +6,7 @@ namespace Lava\Core\Routing;
 
 use Lava\Core\Features\Features;
 use Lava\Core\Problem\BadHandler;
+use Lava\Core\Problem\BadRedirect;
 use Lava\Core\Problem\BadRoutePattern;
 use Lava\Core\Problem\DuplicateRouteName;
 use Lava\Core\Problem\MethodNotAllowed;
@@ -46,6 +47,9 @@ final class Router
 
     /** @var array<string, HandlerPlan> route name => handler injection plan */
     private array $plans = [];
+
+    /** @var array<string, array{to: string, status: int}> redirect route name => its target */
+    private array $redirects = [];
 
     private bool $finalized = false;
 
@@ -141,6 +145,37 @@ final class Router
     }
 
     /**
+     * An address that answers GET and HEAD with a redirect to another route:
+     * `$r->redirect('/p/{slug:str}', 'posts.short', to: 'posts.show')`. The
+     * target's URL is filled from this route's params, and the query string is
+     * kept.
+     *
+     * It compiles to an ordinary route whose handler is {@see RedirectHandler},
+     * so `lava routes` lists it, `->when()` and `->middleware()` apply, and the
+     * map shows its target. The target may be registered later, so finalize()
+     * checks it once every route exists; see {@see redirectProblem()}.
+     *
+     * @throws BadRedirect when the status is not a redirect
+     */
+    public function redirect(string $path, string $name, string $to, int $status = 301): RouteBuilder
+    {
+        if (!in_array($status, [301, 302, 303, 307, 308], true)) {
+            throw BadRedirect::status($name, $status, self::caller());
+        }
+
+        $builder = $this->add($path, $name, Method::Get, Method::Head)->handler([RedirectHandler::class, 'handle']);
+        $this->redirects[$name] = ['to' => $to, 'status' => $status];
+
+        return $builder;
+    }
+
+    /** @return array{to: string, status: int}|null where a redirect route leads, or null for any other route */
+    public function redirectTarget(string $name): ?array
+    {
+        return $this->redirects[$name] ?? null;
+    }
+
+    /**
      * Compiles every pending builder into a Route. Bad routes become problems
      * on the shared report and are skipped — one bad route never hides the
      * others or blocks the rest of boot.
@@ -181,8 +216,50 @@ final class Router
             );
         }
 
+        // Targets now, when every route exists. A redirect that cannot reach
+        // its target is not compiled, like any other bad route.
+        foreach ($this->redirects as $name => $redirect) {
+            $route = $this->routes[$name] ?? null;
+            $problem = $route === null ? null : $this->redirectProblem($route, $redirect['to']);
+            if ($route === null || $problem !== null) {
+                if ($problem !== null) {
+                    $problems->add($problem);
+                }
+                unset($this->routes[$name], $this->redirects[$name]);
+            }
+        }
+
         $this->builders = [];
         $this->finalized = true;
+    }
+
+    /**
+     * Why a redirect cannot reach its target, or null. The target must exist,
+     * answer GET (a browser follows with GET), not be a redirect itself (one
+     * hop, and no loop), and have no param this route does not capture with
+     * the same type, so every address the redirect matches has a URL to go to.
+     */
+    private function redirectProblem(Route $route, string $to): ?BadRedirect
+    {
+        $source = $this->declaredAt[$route->name] ?? null;
+        $target = $this->routes[$to] ?? null;
+
+        if ($target === null) {
+            return BadRedirect::unknownTarget($route->name, $to, $this->nearestName($to), $source);
+        }
+        if (isset($this->redirects[$to])) {
+            return BadRedirect::targetIsRedirect($route->name, $to, $this->redirects[$to]['to'], $source);
+        }
+        if (!$target->allows('GET')) {
+            return BadRedirect::targetNotGet($route->name, $to, $target->methodNames(), $source);
+        }
+        foreach ($target->params as $param => $type) {
+            if (($route->params[$param] ?? null) !== $type) {
+                return BadRedirect::param($route->name, $to, $param, $type, $route->params, $source);
+            }
+        }
+
+        return null;
     }
 
     /**

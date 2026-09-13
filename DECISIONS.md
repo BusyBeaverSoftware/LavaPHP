@@ -4846,3 +4846,27 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     alone can still clash (two groups of one name), and such a route used to warn
     and miss on every request; it is now `bad_route_pattern` at boot and is not
     compiled.
+
+285. **`$r->redirect()` routes; exact matching stays the trailing-slash policy
+    (R2-G13).** An old address that should keep working took a handler of its
+    own, as the blog's `slashless()` does. `Router::redirect($path, $name, to:,
+    status: 301)` registers an ordinary GET and HEAD route whose handler is
+    core's `RedirectHandler`, and records the target on the Router: the response
+    is the target route's URL, filled from the redirect's own params, with the
+    query string kept. Ordinary, so `lava routes` lists it, `->when()` and
+    `->middleware()` apply, and the map's handler column reads `redirect to
+    posts.show (301)` rather than naming the class every redirect shares.
+
+    The target is checked in `finalize()`, when every route exists, so it may be
+    registered after the redirect. A target that is unknown (the fix names the
+    nearest), does not answer GET, is itself a redirect (one hop, because a
+    chain can loop), or has a param the redirect does not capture with the same
+    type is the new `bad_redirect`, and the redirect is not compiled. A status
+    other than 301, 302, 303, 307 or 308 is refused where `redirect()` is
+    called.
+
+    The other half of the review, a trailing-slash policy, is a decision not to
+    add one: matching stays exact, and conventions.md now says so. A redirect per
+    alternative address is explicit and listed; a global slash rewrite is a rule
+    no route table shows. A `TrailingSlash` middleware was considered and left
+    out until an app needs more than `redirect()` gives.

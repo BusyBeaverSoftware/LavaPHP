@@ -192,6 +192,17 @@ GET — declare `Method::Head` if a route should answer HEAD. URL generation
 (`UrlGenerator::url()`) validates every value against its param type: a
 generated URL can never point at a path the router wouldn't match.
 
+**Matching is exact, trailing slash included.** `/2026` and `/2026/` are two
+paths, and nothing redirects one to the other on its own. To accept an old or
+alternative address, register it as a redirect:
+`$r->redirect('/p/{slug:str}', 'posts.short', to: 'posts.show')` answers GET and
+HEAD with a 301 to the target route's URL, filled from its own params, with the
+query string kept; `status:` also takes 302, 303, 307 or 308. It is an ordinary
+route, so `->when()` and `->middleware()` apply, `lava routes` lists it and the
+map shows `redirect to posts.show (301)`. A target that does not exist, does not
+answer GET, is itself a redirect, or has a param the redirect does not capture
+with the same type is `bad_redirect` at boot.
+
 Routes register in order: `app/Routes.php` first, then each enabled module's
 `routes()` in `app/Modules.php` order — on any path overlap the app's
 registration matches first, so an app can always override a pack route by
