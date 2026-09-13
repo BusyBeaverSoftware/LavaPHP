@@ -4870,3 +4870,21 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     alternative address is explicit and listed; a global slash rewrite is a rule
     no route table shows. A `TrailingSlash` middleware was considered and left
     out until an app needs more than `redirect()` gives.
+
+286. **`TestConsole` takes `replace:`, as `TestApp::boot()` does (Lava Notes
+    round 1, G6, still open).** A command test had no substitutes: an app
+    command boots the app itself inside `run(IO, Args, string $appDir)`, and a
+    test's replacements had no way to reach that boot. `TestConsole` now takes
+    `replace:` and runs the command inside `AppBoot::replacing()`, which holds
+    the map for that one in-process run and puts back what was there in a
+    `finally`, as `IsolatedEnvironment` does for the environment.
+    `AppBoot::boot()` hands it to `Kernel::boot()` on both paths, with and
+    without `--env`.
+
+    A static, rather than a new parameter on the command contract, because that
+    contract is what every pack command implements, and because only a test
+    harness sets it: `bin/lava` never calls `replacing()`, so `Kernel::boot()`'s
+    promise that nothing an app writes can add a replacement still holds. A
+    replacement for an id nothing registers fails the boot the command needs, so
+    it reports the way any app command on an app that cannot boot does:
+    `unknown_command` together with the boot's `bad_replacement`, exit 2.

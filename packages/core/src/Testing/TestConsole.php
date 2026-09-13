@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\Core\Testing;
 
+use Lava\Core\Console\AppBoot;
 use Lava\Core\Console\CommandRegistry;
 use Lava\Core\Console\Console;
 use Lava\Core\Console\IO;
@@ -26,19 +27,26 @@ use Lava\Core\Console\IO;
  * ```
  *
  * What a command does to the outside world is still the command's: one that
- * fetches a URL fetches it. Test that logic against an injected fake — a PSR-18
- * client, a repository — and use this for the command's contract: its flags,
- * its exit code and its envelope.
+ * fetches a URL fetches it, unless the test swaps the service for a fake with
+ * `replace:`, exactly as {@see TestApp::boot()} takes one. The substitutes
+ * apply to every boot the command makes, and to nothing after the run:
+ *
+ * ```php
+ * $console = new TestConsole(dirname(__DIR__), replace: [HttpClient::class => $fake]);
+ * ```
  */
 final class TestConsole
 {
     /**
      * @param string $appDir the app's root — the directory holding `app/` and `config/`
      * @param array<string, string> $env variables visible to every command this console runs
+     * @param array<string, mixed> $replace services a test substitutes, id => value; an id nothing
+     *        registers, or a value of the wrong type, is `bad_replacement` in the command's envelope
      */
     public function __construct(
         private readonly string $appDir,
         private readonly array $env = [],
+        private readonly array $replace = [],
     ) {
     }
 
@@ -62,9 +70,14 @@ final class TestConsole
         $io = new IO($json, false, $stdout, $stderr);
         $appDir = rtrim($this->appDir, '/');
 
+        $replace = $this->replace;
+
         $exitCode = IsolatedEnvironment::run(
             $this->env,
-            static fn (): int => (new Console(CommandRegistry::core(), $appDir))->run(['lava', ...$args], $io),
+            static fn (): int => AppBoot::replacing(
+                $replace,
+                static fn (): int => (new Console(CommandRegistry::core(), $appDir))->run(['lava', ...$args], $io),
+            ),
         );
 
         return new CommandResult($exitCode, self::drain($stdout), self::drain($stderr));

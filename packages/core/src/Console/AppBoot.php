@@ -16,12 +16,44 @@ use Lava\Core\Boot\Kernel;
  */
 final class AppBoot
 {
+    /** @var array<string, mixed> the services a TestConsole run substitutes, id => value */
+    private static array $replace = [];
+
     /**
      * @param string|null $env the --env override; null means "use the real environment"
      */
     public static function boot(string $appDir, ?string $env): App|BootFailure
     {
-        return $env === null ? Kernel::boot($appDir) : self::bootWithEnv($appDir, $env);
+        return $env === null ? Kernel::boot($appDir, self::$replace) : self::bootWithEnv($appDir, $env);
+    }
+
+    /**
+     * Runs `$work` with `$replace` applied to every boot inside it, and puts
+     * back what was there before, however `$work` ends.
+     *
+     * For {@see \Lava\Core\Testing\TestConsole} only. A command's contract is
+     * `run(IO, Args, string $appDir)` and an app command boots the app itself,
+     * so a test's substitutes cannot reach that boot as an argument; they reach
+     * it for the length of one in-process run, the way IsolatedEnvironment
+     * scopes the environment. `bin/lava` never calls this, so nothing an app
+     * writes can add an entry ({@see Kernel::boot()}).
+     *
+     * @internal
+     * @template T
+     * @param array<string, mixed> $replace id => value, as TestApp::boot() takes them
+     * @param \Closure(): T $work
+     * @return T
+     */
+    public static function replacing(array $replace, \Closure $work): mixed
+    {
+        $before = self::$replace;
+        self::$replace = $replace;
+
+        try {
+            return $work();
+        } finally {
+            self::$replace = $before;
+        }
     }
 
     /**
@@ -40,7 +72,7 @@ final class AppBoot
         putenv("LAVA_ENV={$env}");
 
         try {
-            return Kernel::boot($appDir);
+            return Kernel::boot($appDir, self::$replace);
         } finally {
             $_ENV = $envBefore;
             $_SERVER = $serverBefore;
