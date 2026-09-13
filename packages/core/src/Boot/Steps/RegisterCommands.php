@@ -93,7 +93,7 @@ final class RegisterCommands implements BootStep
         }
 
         try {
-            $loader($registry);
+            $registry->addingFor('app', static fn (CommandRegistry $commands) => $loader($commands));
         } catch (LavaProblem $problem) {
             $ctx->problems->add($problem);
         }

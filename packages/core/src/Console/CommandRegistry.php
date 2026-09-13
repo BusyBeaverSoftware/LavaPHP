@@ -40,6 +40,9 @@ final class CommandRegistry
     /** @var array<string, Command> in registration order */
     private array $commands = [];
 
+    /** @var array<string, string> name => who registered it, for commands added through {@see addingFor()} */
+    private array $origins = [];
+
     /** @param list<Command> $commands */
     public function __construct(array $commands = [])
     {
@@ -72,13 +75,48 @@ final class CommandRegistry
     public function nameProblems(): array
     {
         $problems = [];
+        // A suggestion is offered once: two names with the same nearest name
+        // (`Report:Daily`, `report daily`) would collide the moment both renames
+        // were made.
+        $taken = array_map(strval(...), array_keys($this->commands));
         foreach ($this->commands as $command) {
             if (preg_match(self::NAME_PATTERN, $command->name()) !== 1) {
-                $problems[] = InvalidCommandName::of($command);
+                $problem = InvalidCommandName::of($command, $this->origin($command), $taken);
+                $problems[] = $problem;
+                if (is_string($problem->context['suggestion'] ?? null)) {
+                    $taken[] = $problem->context['suggestion'];
+                }
             }
         }
 
         return $problems;
+    }
+
+    /**
+     * Records every command `$register` adds as registered by `$origin` —
+     * `app` for app/Commands.php. Needed because `pack()` defaults to `core`, so
+     * without it an app command that never overrode it reads as core's.
+     *
+     * @param \Closure(self): void $register
+     */
+    public function addingFor(string $origin, \Closure $register): void
+    {
+        $before = $this->commands;
+        try {
+            $register($this);
+        } finally {
+            foreach (array_diff_key($this->commands, $before) as $name => $command) {
+                $this->origins[$name] = $origin;
+            }
+        }
+    }
+
+    /** Who provides a command: the pack it names, or else who registered it. */
+    public function origin(Command $command): string
+    {
+        $pack = $command->pack();
+
+        return $pack !== 'core' ? $pack : ($this->origins[$command->name()] ?? 'core');
     }
 
     public function has(string $name): bool

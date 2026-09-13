@@ -51,6 +51,7 @@ final class CommandNameTest extends TestCase
         self::assertSame('invalid_command_name', $problems[0]->code());
         self::assertSame(Severity::Warn, $problems[0]->severity());
         self::assertSame($name, $problems[0]->context['name']);
+        self::assertSame($suggestion, $problems[0]->context['suggestion']);
 
         if ($suggestion !== null) {
             self::assertStringContainsString("'{$suggestion}'", $problems[0]->fix);
@@ -59,6 +60,66 @@ final class CommandNameTest extends TestCase
             $renamed->add(self::command($suggestion));
             self::assertSame([], $renamed->nameProblems());
         }
+    }
+
+    public function testASuggestionAnotherCommandAlreadyHasIsNotMade(): void
+    {
+        // Lava Notes (R2-B9): `blog:publish_due` was told to become
+        // `blog:publish:due`, which the app already had. Following the fix raised
+        // duplicate_command, which is fatal on every boot — the very outcome the
+        // warning exists to avoid.
+        $registry = new CommandRegistry();
+        $registry->add(self::command('blog:publish:due'));
+        $registry->add(self::command('blog:publish_due'));
+
+        $problems = $registry->nameProblems();
+
+        self::assertCount(1, $problems);
+        self::assertNull($problems[0]->context['suggestion']);
+        self::assertStringNotContainsString("Rename it to 'blog:publish:due'", $problems[0]->fix);
+        self::assertStringContainsString("'blog:publish:due' is taken", $problems[0]->fix);
+    }
+
+    public function testTwoNamesWithTheSameNearestNameAreNotBothOfferedIt(): void
+    {
+        $registry = new CommandRegistry();
+        $registry->add(self::command('Report:Daily'));
+        $registry->add(self::command('report daily'));
+
+        $problems = $registry->nameProblems();
+
+        self::assertSame('report:daily', $problems[0]->context['suggestion']);
+        self::assertNull($problems[1]->context['suggestion']);
+    }
+
+    public function testANameOutsideAsciiGetsNoSuggestion(): void
+    {
+        // Dropping the bytes of `é` turned `café:list` into `caf:list`, which is
+        // a different word rather than the nearest valid name.
+        $registry = new CommandRegistry();
+        $registry->add(self::command('café:list'));
+
+        $problems = $registry->nameProblems();
+
+        self::assertNull($problems[0]->context['suggestion']);
+        self::assertStringNotContainsString('caf:list', $problems[0]->fix);
+    }
+
+    public function testACommandTheAppRegisteredReadsAsTheAppsAndPointsAtItsClass(): void
+    {
+        // `(from core)` with a null source, for a command in app/Commands.php,
+        // sent the reader to the framework.
+        $registry = CommandRegistry::core();
+        $registry->addingFor('app', static function (CommandRegistry $commands): void {
+            $commands->add(self::command('blog:publish_due'));
+        });
+
+        $problems = $registry->nameProblems();
+
+        self::assertCount(1, $problems);
+        self::assertStringContainsString('(from app)', $problems[0]->getMessage());
+        self::assertSame('app', $problems[0]->context['pack']);
+        self::assertSame(__FILE__, $problems[0]->source?->file);
     }
 
     public function testEveryCoreCommandNameIsValidAndMakesAValidContractId(): void
