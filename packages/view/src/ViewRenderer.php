@@ -202,6 +202,8 @@ final class ViewRenderer
      * extensions have already been initialized`. Code that may run after a render
      * — a handler, a middleware — guards the addition with the extension it lives
      * in: `if (!$twig->hasExtension(AppExtension::class)) { $twig->addExtension(new AppExtension()); }`.
+     * Simpler still: register the extension in app/Services.php and list its id
+     * in `view.extensions` (config/view.php), and the pack installs it at boot.
      */
     public function environment(): Environment
     {

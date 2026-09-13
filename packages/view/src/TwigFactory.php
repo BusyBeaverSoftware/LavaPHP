@@ -41,11 +41,19 @@ final class TwigFactory
      * @param string $templateDir absolute path to the templates
      * @param string $cacheDir absolute path for compiled templates, or '' for none
      * @param bool $debug whether Twig's own debug tools are on
+     * @param array<string, list<string>> $namespaces Twig namespace => absolute directories, searched in order
      */
-    public static function of(string $templateDir, string $cacheDir, bool $debug): Environment
+    public static function of(string $templateDir, string $cacheDir, bool $debug, array $namespaces = []): Environment
     {
+        $loader = new FilesystemLoader($templateDir);
+        foreach ($namespaces as $namespace => $dirs) {
+            foreach ($dirs as $dir) {
+                $loader->addPath($dir, $namespace);
+            }
+        }
+
         $environment = new Environment(
-            new FilesystemLoader($templateDir),
+            $loader,
             [
                 'autoescape' => 'html',
                 'strict_variables' => true,

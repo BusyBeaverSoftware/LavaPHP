@@ -4888,3 +4888,26 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     replacement for an id nothing registers fails the boot the command needs, so
     it reports the way any app command on an app that cannot boot does:
     `unknown_command` together with the boot's `bad_replacement`, exit 2.
+
+287. **`config/view.php` takes `namespaces` and `extensions` (R2-G10, R2-G11).**
+    Both gaps had a working path that nothing named. For themes, two `addPath()`
+    calls on the loader give Twig's own fallback, reached through
+    `environment()`. For extensions, a singleton whose factory adds one works
+    only because `ValidateWiring` builds every singleton at boot, before anything
+    renders, and Twig refuses additions after the first render. Both are now
+    keys `ViewModule` reads at boot.
+
+    `namespaces` maps a lowercase name to one directory or a list, searched
+    first to last and resolved like `path`. Each directory is checked to exist:
+    a missing one is `view_dir_missing` naming `view.namespaces.<name>`, whose
+    fix now points at that key rather than at `path`. `extensions` lists
+    container ids, and the renderer's factory resolves and adds each while it
+    builds the environment, so the timing rule belongs to the pack instead of
+    to the wiring sweep, and an extension's own dependencies arrive through its
+    registration, visible in `lava services`. A wrong shape is `invalid_config`,
+    a service that is not a Twig extension is `invalid_config` naming both
+    types, and an unregistered id is `service_not_registered`, all at boot.
+
+    Not taken: a per-render "prefer this directory" argument, which would be
+    request state on a shared loader (entry 242), and extension class names the
+    pack instantiates itself, which is the auto-wiring pillar 1 rules out.

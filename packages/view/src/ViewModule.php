@@ -12,6 +12,7 @@ use Lava\Core\Modules\PackInfo;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Routing\UrlGenerator;
 use Lava\View\Problem\ViewDirMissing;
+use Twig\Extension\ExtensionInterface;
 
 /**
  * lavaphp/view's entry point.
@@ -78,9 +79,12 @@ final class ViewModule implements Module
             throw ViewDirMissing::of($templateDir, 'view.path', $ctx->appDir);
         }
 
+        $namespaces = self::namespaces($ctx);
+        $extensions = self::extensions($ctx);
+
         $container->singleton(
             ViewRenderer::class,
-            static function (Container $c) use ($templateDir, $cacheDir, $debug): ViewRenderer {
+            static function (Container $c) use ($templateDir, $cacheDir, $debug, $namespaces, $extensions): ViewRenderer {
                 $url = $c->get(UrlGenerator::class);
                 if (!$url instanceof UrlGenerator) {
                     throw InvalidConfig::wrongService(UrlGenerator::class, UrlGenerator::class, $url);
@@ -94,14 +98,89 @@ final class ViewModule implements Module
                     throw InvalidConfig::wrongService(FeatureScope::class, FeatureScope::class, $scope);
                 }
 
-                $twig = TwigFactory::of($templateDir, $cacheDir, $debug);
+                $twig = TwigFactory::of($templateDir, $cacheDir, $debug, $namespaces);
                 foreach (ViewFunctions::registry($url, $scope) as $function) {
                     $twig->addFunction($function);
+                }
+
+                // Installed here, where the renderer is built, because Twig locks
+                // its extension set at the first render, and ValidateWiring builds
+                // this singleton at boot, before anything can render.
+                foreach ($extensions as $id) {
+                    $extension = $c->get($id);
+                    if (!$extension instanceof ExtensionInterface) {
+                        throw InvalidConfig::wrongService($id, ExtensionInterface::class, $extension);
+                    }
+                    $twig->addExtension($extension);
                 }
 
                 return new ViewRenderer($twig, $templateDir);
             },
         );
+    }
+
+    /**
+     * `view.namespaces`: a Twig namespace => the directories `@namespace/…`
+     * searches, first match first. `['paper' => ['themes/paper', 'views']]`
+     * makes `@paper/layout.twig` the theme's own file when it has one and the
+     * shared one when it does not: theme fallback, with no per-request state
+     * and nothing added to the loader after boot.
+     *
+     * Checked here, at boot, like `view.path`: a missing directory would fail
+     * every render that reaches it, and a name Twig cannot address would fail
+     * them all without saying why.
+     *
+     * @return array<string, list<string>> absolute directories
+     */
+    private static function namespaces(AppContext $ctx): array
+    {
+        $namespaces = [];
+        foreach ($ctx->config->array('view.namespaces', []) as $namespace => $dirs) {
+            if (!is_string($namespace) || preg_match('/^[a-z][a-z0-9_]*$/', $namespace) !== 1) {
+                throw InvalidConfig::badType('view.namespaces', 'a map from namespace names (lowercase letters, digits and _) to directories', 'the key ' . var_export($namespace, true), 'config/view.php');
+            }
+            $list = is_string($dirs) ? [$dirs] : $dirs;
+            if (!is_array($list) || $list === [] || !array_is_list($list)) {
+                throw InvalidConfig::badType("view.namespaces.{$namespace}", 'a directory or a non-empty list of directories', get_debug_type($dirs), 'config/view.php');
+            }
+            foreach ($list as $dir) {
+                if (!is_string($dir) || $dir === '') {
+                    throw InvalidConfig::badType("view.namespaces.{$namespace}", 'a directory or a non-empty list of directories', 'a list holding ' . get_debug_type($dir), 'config/view.php');
+                }
+                $path = self::resolve($ctx->appDir, $dir);
+                if (!is_dir($path)) {
+                    throw ViewDirMissing::of($path, "view.namespaces.{$namespace}", $ctx->appDir);
+                }
+                $namespaces[$namespace][] = $path;
+            }
+        }
+
+        return $namespaces;
+    }
+
+    /**
+     * `view.extensions`: container ids of Twig extensions, installed when the
+     * renderer is built. Each is registered in app/Services.php, which is how an
+     * extension's own dependencies arrive and how `lava services` shows it.
+     *
+     * @return list<string>
+     */
+    private static function extensions(AppContext $ctx): array
+    {
+        $ids = [];
+        foreach ($ctx->config->array('view.extensions', []) as $index => $id) {
+            if ($index !== count($ids) || !is_string($id) || $id === '' || in_array($id, $ids, true)) {
+                throw InvalidConfig::badType(
+                    'view.extensions',
+                    'a list of distinct container ids',
+                    is_string($id) && in_array($id, $ids, true) ? "'{$id}' twice" : get_debug_type($id),
+                    'config/view.php',
+                );
+            }
+            $ids[] = $id;
+        }
+
+        return $ids;
     }
 
     /**

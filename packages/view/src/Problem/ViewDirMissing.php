@@ -32,11 +32,14 @@ final class ViewDirMissing extends LavaProblem
     public static function of(string $path, string $configKey, string $appDir): self
     {
         $shown = str_starts_with($path, $appDir . '/') ? substr($path, strlen($appDir) + 1) : $path;
+        $elsewhere = $configKey === 'view.path'
+            ? "point the pack somewhere else: add 'path' => '…' to config/view.php"
+            : "change that directory under 'namespaces' in config/view.php";
 
         return new self(
             "lavaphp/view renders from {$shown}, which is not a directory.",
-            "Create it — mkdir -p {$shown} in the app's root directory — or point the pack somewhere else: "
-            . "add 'path' => '…' to config/view.php, where a relative value is resolved against the app's root directory.",
+            "Create it — mkdir -p {$shown} in the app's root directory — or {$elsewhere}, "
+            . "where a relative value is resolved against the app's root directory.",
             ['path' => $path, 'config_key' => $configKey, 'app_dir' => $appDir],
         );
     }

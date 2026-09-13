@@ -67,6 +67,8 @@ return [
     'path'  => 'views',      // where templates live
     'debug' => false,        // Twig's debug tools (dump()); omit the key for env !== 'prod'
     'cache' => 'var/views',  // compiled templates; '' means compile every render
+    'namespaces' => [],      // 'paper' => ['themes/paper', 'views']: @paper/… searches these in order
+    'extensions' => [],      // container ids of Twig extensions, installed at boot
 ];
 ```
 
@@ -89,6 +91,39 @@ A `path` that is not a directory fails the **boot** with `view_dir_missing`,
 naming the path, the config key and the app directory. Every render would fail
 identically, so N request-time errors collapse into one message that says what
 to create.
+
+**`namespaces` is how themes fall back.** Each entry is a Twig namespace and the
+directories `@name/…` searches, first match first:
+
+```php
+'namespaces' => ['paper' => ['themes/paper', 'views']],
+```
+
+`render('@paper/layout')` is `themes/paper/layout.twig` when the theme has one
+and `views/layout.twig` when it does not, and a page picks its theme without
+touching the loader: `{% extends '@' ~ theme ~ '/layout.twig' %}` with `theme` in
+the render context. A name is lowercase letters, digits and `_`; one directory
+may be given as a string. Every directory is resolved like `path` and checked at
+boot, so a missing one is `view_dir_missing` naming `view.namespaces.<name>`, and
+`template_not_found` for `@name/…` lists that namespace's directories.
+
+**`extensions` installs Twig extensions at boot.** Register each in
+`app/Services.php` and list its container id:
+
+```php
+// app/Services.php
+$c->singleton(App\View\AppExtension::class, static fn (): App\View\AppExtension => new App\View\AppExtension());
+
+// config/view.php
+'extensions' => [App\View\AppExtension::class],
+```
+
+The renderer's factory adds them while it builds the Twig environment, which
+boot does before anything can render. That matters because Twig refuses a new
+filter, function or extension after its first render, so an extension added
+later, from a handler or a middleware, works only until something has rendered.
+An id that is not registered is `service_not_registered`, and one whose service
+is not a `Twig\Extension\ExtensionInterface` is `invalid_config`, both at boot.
 
 ## Rendering
 
