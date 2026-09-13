@@ -8,8 +8,10 @@ use App\RecordingLogger;
 use Lava\Core\Boot\App;
 use Lava\Core\Boot\BootFailure;
 use Lava\Core\Container\Container;
+use Lava\Core\Features\FlagSubjectResolver;
 use Lava\Core\Http\HttpErrors;
 use Lava\Core\Http\Responses;
+use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\RouteNotFound;
 use Lava\Core\Testing\TestApp;
 use Lava\Core\Testing\TestClient;
@@ -130,6 +132,70 @@ final class RequestFailureTest extends TestCase
         self::assertSame(\LogicException::class, $problem['context']['exception']);
     }
 
+    public function testASubjectResolverWhoseFactoryThrowsIsAnUnexpectedFailureToo(): void
+    {
+        // Lava Notes (R2-B5): the guard covered subjectFor() but not building
+        // the resolver, and a `factory` is built again on every request — so
+        // the boot sweep cannot vouch for it.
+        $booted = self::boot('dev');
+        $container = new Container();
+        $container->factory(
+            FlagSubjectResolver::class,
+            static fn (): FlagSubjectResolver => throw new \RuntimeException('session store unavailable'),
+        );
+
+        $response = (new TestClient(self::rebuilt($booted, $container, [])))->get('/boom');
+
+        self::assertSame(500, $response->status());
+        $problem = self::firstProblem($response->json());
+        self::assertSame('unexpected_failure', $problem['code']);
+        self::assertSame('session store unavailable', $problem['context']['message']);
+    }
+
+    public function testASubjectResolverWhoseFactoryThrowsAProblemAnswersWithThatProblem(): void
+    {
+        $booted = self::boot('dev');
+        $container = new Container();
+        $container->factory(
+            FlagSubjectResolver::class,
+            static fn (): FlagSubjectResolver => throw RouteNotFound::of('GET', '/from-the-factory'),
+        );
+
+        $response = (new TestClient(self::rebuilt($booted, $container, [])))->get('/boom');
+
+        self::assertSame(404, $response->status());
+        self::assertSame('/from-the-factory', self::firstProblem($response->json())['context']['path']);
+    }
+
+    public function testAMessageThatIsNotUtf8StillRendersAsJson(): void
+    {
+        // Lava Notes (R2-B4): an upload's name reached an exception message
+        // byte for byte, and encoding the problem threw a JsonException that
+        // left handle() — an empty 500 in dev and test, hiding the original.
+        $response = (new TestClient($this->throwingMiddleware(new \RuntimeException("could not read upload \xff\xfe.bin"))))
+            ->get('/boom');
+
+        self::assertSame(500, $response->status());
+        $problem = self::firstProblem($response->json());
+        self::assertSame('unexpected_failure', $problem['code']);
+        self::assertIsString($problem['context']['message']);
+        self::assertStringStartsWith('could not read upload ', $problem['context']['message']);
+        self::assertStringContainsString("\u{FFFD}", $problem['context']['message']);
+    }
+
+    public function testAProblemThatCannotBeRenderedStillAnswersA500(): void
+    {
+        // The last resort: nothing a problem carries may turn the answer into
+        // an exception. NAN has no JSON form, whatever the flags.
+        $problem = new InvalidConfig('A ratio went wrong.', 'Fix the ratio.', ['ratio' => NAN]);
+
+        $response = (new TestClient($this->throwingMiddleware($problem)))->get('/boom');
+
+        self::assertSame(500, $response->status());
+        self::assertStringStartsWith('text/plain', $response->header('Content-Type'));
+        self::assertStringContainsString('invalid_config', $response->body());
+    }
+
     public function testAClientMistakeKeepsItsContextInProduction(): void
     {
         // A 4xx is the caller's to fix, and the context is how an agent fixes it.
@@ -160,6 +226,24 @@ final class RequestFailureTest extends TestCase
         );
 
         return $app;
+    }
+
+    /** The fixture app in dev, behind one global middleware that throws this. */
+    private function throwingMiddleware(\Throwable $throwable): App
+    {
+        $container = new Container();
+        $container->value('app.throws', new readonly class ($throwable) implements MiddlewareInterface {
+            public function __construct(private \Throwable $throwable)
+            {
+            }
+
+            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+            {
+                throw $this->throwable;
+            }
+        });
+
+        return self::rebuilt(self::boot('dev'), $container, ['app.throws']);
     }
 
     /** @param list<string> $middleware */

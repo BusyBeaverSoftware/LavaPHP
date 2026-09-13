@@ -125,7 +125,17 @@ final class HttpErrors
                 $problems = array_map(self::redacted(...), $problems);
             }
 
-            return Responses::json(['problems' => $problems], $status);
+            // Invalid UTF-8 is substituted, not thrown: a problem carries
+            // whatever text the failure had — an upload's name, a latin-1
+            // column — and an exception from encoding it would replace the
+            // diagnosis. The HTML page and the logger already substitute.
+            return Responses::text(
+                json_encode(
+                    ['problems' => $problems],
+                    JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR,
+                ),
+                $status,
+            )->withHeader('Content-Type', 'application/json');
         }
         return Responses::html(DiagnosticsPage::render($report, $env), $status);
     }

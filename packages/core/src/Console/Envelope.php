@@ -100,6 +100,8 @@ final class Envelope
             $envelope['data'] = new \stdClass();
         }
 
-        return json_encode($envelope, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+        // Substituted for the reason ProblemJsonRenderer gives: an envelope
+        // carries problems, and their text is whatever the failure's was.
+        return json_encode($envelope, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR) . "\n";
     }
 }

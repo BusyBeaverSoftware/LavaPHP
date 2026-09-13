@@ -108,6 +108,18 @@ final class ProblemSystemTest extends TestCase
         self::assertSame($report->json(), json_decode((new ProblemJsonRenderer())->render($report), true));
     }
 
+    public function testJsonRendererSubstitutesInvalidUtf8RatherThanThrowing(): void
+    {
+        // R2-B4: an exception's message is copied into the context byte for byte.
+        $report = new ProblemReport();
+        $report->add(new MissingPack("could not read upload \xff.bin", 'Fix it.', ['name' => "\xfe"]));
+
+        $json = json_decode((new ProblemJsonRenderer())->render($report), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame("could not read upload \u{FFFD}.bin", $json[0]['problem']);
+        self::assertSame("\u{FFFD}", $json[0]['context']['name']);
+    }
+
     private static function missingSearch(): MissingPack
     {
         // A fictional pack on purpose: every real pack in this monorepo is

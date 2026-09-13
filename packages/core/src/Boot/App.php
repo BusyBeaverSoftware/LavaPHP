@@ -13,6 +13,7 @@ use Lava\Core\Features\Features;
 use Lava\Core\Features\FeatureScope;
 use Lava\Core\Http\HttpErrors;
 use Lava\Core\Http\RequestBody;
+use Lava\Core\Http\Responses;
 use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Modules\PackInfo;
 use Lava\Core\Problem\InvalidConfig;
@@ -172,25 +173,27 @@ final class App implements RequestHandlerInterface
         // BEFORE matching, so gated routes stay real 404s, never 503s.
         $features = $this->features;
         if ($this->container->has(FlagSubjectResolver::class)) {
-            $resolver = $this->container->get(FlagSubjectResolver::class);
-            if (!$resolver instanceof FlagSubjectResolver) {
-                // `get_debug_type`, not `get_class`: this branch means the value
-                // is not a FlagSubjectResolver, and it need not be an object at
-                // all — `get_class` on a scalar registered under this id would
-                // raise a TypeError from inside the error report, turning a
-                // diagnosable misconfiguration into a blank 500.
-                return $this->problemResponse(new InvalidConfig(
-                    'The service registered under FlagSubjectResolver::class is '
-                        . get_debug_type($resolver) . ', which does not implement FlagSubjectResolver.',
-                    'Register a class implementing Lava\\Core\\Features\\FlagSubjectResolver in app/Services.php.',
-                    ['registered' => get_debug_type($resolver)],
-                ), $request);
-            }
-
             // The resolver is app code, and it runs before any middleware:
-            // whatever it throws is answered here, in the same media as
-            // everything else, rather than leaving the app as a bare exception.
+            // whatever building it or calling it throws is answered here, in the
+            // same media as everything else, rather than leaving the app as a
+            // bare exception. Building it is guarded too: a `factory` is built
+            // again on every request, so the boot sweep cannot vouch for it.
             try {
+                $resolver = $this->container->get(FlagSubjectResolver::class);
+                if (!$resolver instanceof FlagSubjectResolver) {
+                    // `get_debug_type`, not `get_class`: this branch means the value
+                    // is not a FlagSubjectResolver, and it need not be an object at
+                    // all — `get_class` on a scalar registered under this id would
+                    // raise a TypeError from inside the error report, turning a
+                    // diagnosable misconfiguration into a blank 500.
+                    return $this->problemResponse(new InvalidConfig(
+                        'The service registered under FlagSubjectResolver::class is '
+                            . get_debug_type($resolver) . ', which does not implement FlagSubjectResolver.',
+                        'Register a class implementing Lava\\Core\\Features\\FlagSubjectResolver in app/Services.php.',
+                        ['registered' => get_debug_type($resolver)],
+                    ), $request);
+                }
+
                 $features = $features->forSubject($resolver->subjectFor($request));
             } catch (LavaProblem $problem) {
                 return $this->problemResponse($problem, $request);
@@ -308,6 +311,11 @@ final class App implements RequestHandlerInterface
      * they go: core's `LineLogger` on stderr by default, or whatever logger the
      * app registered under that id. A 4xx is never logged here — it is the
      * client's mistake, and its response already carries everything.
+     *
+     * Rendering is the last thing on the request path that could throw, so it
+     * has a last resort: a problem the renderers cannot encode — a context value
+     * with no JSON form — still answers a plain 500 naming its code, rather than
+     * leaving `handle()` as an exception that hides the original.
      */
     private function problemResponse(LavaProblem $problem, ServerRequestInterface $request): ResponseInterface
     {
@@ -315,7 +323,14 @@ final class App implements RequestHandlerInterface
             $this->logWithheld($problem);
         }
 
-        return HttpErrors::toResponse($problem, $request, $this->env);
+        try {
+            return HttpErrors::toResponse($problem, $request, $this->env);
+        } catch (\Throwable) {
+            return Responses::text(
+                "Internal Server Error: the {$problem->code()} problem this request raised could not be rendered.\n",
+                500,
+            );
+        }
     }
 
     private function logWithheld(LavaProblem $problem): void
