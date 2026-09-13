@@ -197,6 +197,37 @@ final class ViewRendererTest extends TestCase
         }
     }
 
+    public function testANamespaceNothingRegisteredSaysSoAndShowsHowToRegisterIt(): void
+    {
+        try {
+            $this->renderer()->renderToString('@nope/layout');
+            self::fail('a missing template should raise template_not_found');
+        } catch (TemplateNotFound $problem) {
+            self::assertStringContainsString("no directory is registered for the Twig namespace '@nope'", $problem->getMessage());
+            self::assertStringContainsString("addPath(\$directory, 'nope')", $problem->fix);
+            self::assertSame([], $problem->context['directories']);
+        }
+    }
+
+    public function testANamespaceWithNoTemplatesYetSaysSoRatherThanListingNothing(): void
+    {
+        $theme = Templates::empty();
+        try {
+            $twig = TwigFactory::of($this->templates->dir(), '', true);
+            $loader = $twig->getLoader();
+            self::assertInstanceOf(FilesystemLoader::class, $loader);
+            $loader->addPath($theme->dir(), 'theme');
+
+            (new ViewRenderer($twig, $this->templates->dir()))->renderToString('@theme/layout');
+            self::fail('a missing template should raise template_not_found');
+        } catch (TemplateNotFound $problem) {
+            self::assertStringContainsString('hold no template yet', $problem->getMessage());
+            self::assertSame([$theme->dir()], $problem->context['directories']);
+        } finally {
+            $theme->remove();
+        }
+    }
+
     public function testAnEmptyDirectorySaysSoRatherThanListingNothing(): void
     {
         // An empty list and a wrong spelling need different fixes: one means
