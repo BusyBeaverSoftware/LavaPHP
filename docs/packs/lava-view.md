@@ -124,7 +124,7 @@ final class TaskController
 | `renderToString($template, $context = [])` | the HTML alone, for an email body or a fragment written to a file |
 | `exists($template)` | whether a template is there, so a handler can choose a page or a 404 without catching an exception to find out |
 | `templateDir()` | where templates are read from |
-| `environment()` | the Twig `Environment`, for an app that needs to add a filter of its own |
+| `environment()` | the Twig `Environment`, for an app that needs to add a filter of its own — before the first render: Twig locks filters, functions, globals and extensions on first use and throws `LogicException` after. Code that may run later guards it: `if (!$twig->hasExtension(AppExtension::class)) { $twig->addExtension(new AppExtension()); }` |
 
 The renderer returns a response rather than a string on purpose. Twig returns
 HTML and a handler must return a response, so somewhere the string has to be

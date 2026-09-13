@@ -163,6 +163,13 @@ final class ViewRenderer
      * is not — a global holding the signed-in user would still hold it for the
      * next visitor a long-running worker serves. Pass request state in the
      * render context instead.
+     *
+     * **Add filters, functions, globals and extensions before the first render.**
+     * Twig locks its extension set the first time it compiles or renders, and a
+     * later `addFilter()` throws `LogicException: Unable to add filter … as
+     * extensions have already been initialized`. Code that may run after a render
+     * — a handler, a middleware — guards the addition with the extension it lives
+     * in: `if (!$twig->hasExtension(AppExtension::class)) { $twig->addExtension(new AppExtension()); }`.
      */
     public function environment(): Environment
     {
