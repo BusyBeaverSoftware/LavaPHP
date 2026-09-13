@@ -340,6 +340,17 @@ says "not known", which is what a caller needs to branch on.
 
 `bad_query` is raised before any connection is opened, for:
 
+- anything but a column name where a column goes — in `select()`, every
+  `where*()` column, `orderBy()`, both sides of a join and its table, and the
+  keys of an `insert()` or `update()`. A name may be qualified (`posts.title`,
+  `main.posts.title`) and may use any letter (`prénom`); `select()` also takes
+  `*` and `posts.*`. Everything else — `COUNT(*)`, `LOWER(email)`, `name AS
+  author` — would be quoted as one identifier, and SQLite answers an unknown
+  quoted identifier with the string itself, so the query would compare or
+  return that string instead of failing. Write those with `whereRaw()`,
+  `query()` or `statement()`. The check is on the shape of the name, not its
+  existence: a typo in a valid-looking name (`where('emial', …)`) still reaches
+  SQLite, which reads it as the string `'emial'` when no such column exists;
 - a null comparison written as an equality — `where('x', Operator::Eq, null)`,
   because SQL evaluates `x = NULL` as *unknown*, so the condition would match
   nothing and look like an empty table;

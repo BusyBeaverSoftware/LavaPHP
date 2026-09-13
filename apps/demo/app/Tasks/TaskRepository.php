@@ -108,8 +108,8 @@ final class TaskRepository
      *
      * Every count is taken in PHP, and that is a deliberate trade rather than
      * an oversight. The builder has no aggregate verb — `select()` takes
-     * columns, not expressions, and `select('COUNT(*)')` would compile to the
-     * quoted identifier `"COUNT(*)"`, which is not what anyone means. So a
+     * column names, not expressions, and refuses `select('COUNT(*)')` with
+     * `bad_query` rather than quoting it into a string. So a
      * count in SQL means leaving the builder for `Connection::query()` and
      * quoting the identifiers by hand; at demo scale, reading the rows and
      * counting them is shorter, cannot be wrong about the dialect, and is the

@@ -16,16 +16,16 @@ use Lava\Db\Query\Operator;
  * Two things about this repository are shaped by the query builder rather than
  * by taste, and both are worth knowing before the first query is written:
  *
- *  - **There is no aggregate verb.** `select('COUNT(*)')` would compile to
- *    `SELECT "COUNT(*)"`, because the compiler quotes every column it is given
- *    and `Dialect::quote()` only knows how to quote dotted identifier paths. A
- *    count therefore goes through the raw-read hatch, {@see Connection::query()}.
+ *  - **There is no aggregate verb.** `select()` takes column names only, and
+ *    refuses `COUNT(*)` with `bad_query`: the compiler quotes every column it is
+ *    given, and a quoted `"COUNT(*)"` comes back from SQLite as the string
+ *    itself. A count therefore goes through the raw-read hatch,
+ *    {@see Connection::query()}.
  *
- *  - **There are no column aliases.** `select('users.display_name AS name')`
- *    would compile to `"users"."display_name AS name"`, which is not valid SQL —
- *    the whole string is treated as one identifier path. Selecting
- *    `users.display_name` unaliased produces the array key `display_name`, which
- *    is what this class reads, and is the reason the join below needs no `AS`.
+ *  - **There are no column aliases.** `select('users.display_name AS name')` is
+ *    refused the same way. Selecting `users.display_name` unaliased produces the
+ *    array key `display_name`, which is what this class reads, and is the reason
+ *    the join below needs no `AS`.
  */
 final class PostRepository
 {
