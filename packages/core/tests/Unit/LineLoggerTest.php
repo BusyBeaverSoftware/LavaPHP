@@ -66,6 +66,27 @@ final class LineLoggerTest extends TestCase
         self::assertStringContainsString('{"sql":"select 1","ms":12}', self::written($stream));
     }
 
+    public function testAnExceptionInTheContextIsWrittenWithItsClassMessageLocationAndTrace(): void
+    {
+        // PSR-3 reserves `exception` for a Throwable. JSON-encoded as it is, an
+        // exception object prints as `{}` — which is what 0.2.0 wrote (R2-B6).
+        $stream = self::stream();
+        $exception = new \RuntimeException('session store unavailable', 0, new \LogicException('inner'));
+        (new LineLogger('debug', $stream))->log('error', 'failed', ['code' => 'x', 'exception' => $exception]);
+
+        $written = self::written($stream);
+        self::assertCount(1, array_filter(explode("\n", $written), static fn (string $l): bool => $l !== ''));
+
+        $json = json_decode(substr($written, (int) strpos($written, '{')), true, flags: JSON_THROW_ON_ERROR);
+        self::assertIsArray($json);
+        self::assertSame('x', $json['code']);
+        self::assertSame(\RuntimeException::class, $json['exception']['class']);
+        self::assertSame('session store unavailable', $json['exception']['message']);
+        self::assertSame(__FILE__ . ':' . $exception->getLine(), $json['exception']['at']);
+        self::assertIsList($json['exception']['trace']);
+        self::assertSame(\LogicException::class, $json['exception']['previous']['class']);
+    }
+
     public function testAnEmptyContextAddsNothingToTheLine(): void
     {
         $stream = self::stream();

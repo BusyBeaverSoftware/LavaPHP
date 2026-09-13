@@ -26,6 +26,21 @@ final class BadReplacement extends LavaProblem
         );
     }
 
+    /**
+     * A list where the map belongs. PHP gives a list — and a numeric-string
+     * key — integer keys, so the replacement names no id at all.
+     */
+    public static function notKeyedById(int $key, string $given): self
+    {
+        return new self(
+            "A test's replace: holds {$given} under the integer key {$key}, which names no service id — "
+                . 'replace: maps an id to its replacement, and a list has no ids.',
+            'Key each replacement by the id it stands in for: replace: [Id::class => $replacement], '
+                . "for example [ClockInterface::class => new FrozenClock('2026-01-01 09:00:00')].",
+            ['key' => $key, 'given' => $given],
+        );
+    }
+
     public static function wrongType(string $id, string $given): self
     {
         return new self(

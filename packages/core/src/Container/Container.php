@@ -53,7 +53,9 @@ final class Container implements ContainerInterface
     private array $traces = [];
 
     /**
-     * @param array<string, mixed> $replacements id => the value `get()` returns for it
+     * @param array<array-key, mixed> $replacements id => the value `get()` returns for it. Integer
+     *        keys are accepted here and reported by {@see replacementProblems()}: a list passed by
+     *        mistake has them, and a TypeError is no way to say so.
      */
     public function __construct(private readonly array $replacements = [])
     {
@@ -200,6 +202,10 @@ final class Container implements ContainerInterface
     {
         $problems = [];
         foreach ($this->replacements as $id => $value) {
+            if (!is_string($id)) {
+                $problems[] = BadReplacement::notKeyedById($id, get_debug_type($value));
+                continue;
+            }
             if (!$this->has($id)) {
                 $problems[] = BadReplacement::unregistered($id);
                 continue;

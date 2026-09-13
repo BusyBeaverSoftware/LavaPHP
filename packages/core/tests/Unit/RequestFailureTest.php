@@ -88,6 +88,41 @@ final class RequestFailureTest extends TestCase
         self::assertSame('error', $logger->entries[0]['level']);
         self::assertSame('unexpected_failure', $logger->entries[0]['context']['code']);
         self::assertStringContainsString('hunter2', $logger->entries[0]['context']['context']['message']);
+
+        // R2-B6: the throwable itself goes to the logger under PSR-3's
+        // `exception` key, so the trace is in the log. The context carries no
+        // trace of its own in production — the log would hold it twice.
+        self::assertInstanceOf(\RuntimeException::class, $logger->entries[0]['context']['exception']);
+        self::assertArrayNotHasKey('trace', $logger->entries[0]['context']['context']);
+    }
+
+    public function testAnUnexpectedFailureNamesTheAppLineThatReachedAThirdPartyThrow(): void
+    {
+        // Lava Notes (R2-B6): `at` named vendor/nyholm/psr7's MessageTrait, and
+        // nothing in the response named the app's own line. The throw site stays
+        // in `at`; `source` is the first frame in code the app wrote.
+        $container = new Container();
+        $container->value('app.bad_header', new class implements MiddlewareInterface {
+            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+            {
+                return Responses::json(['ok' => true])->withHeader('X Avatar', 'x');
+            }
+        });
+
+        $response = (new TestClient(self::rebuilt(self::boot('dev'), $container, ['app.bad_header'])))->get('/boom');
+
+        self::assertSame(500, $response->status());
+        $problem = self::firstProblem($response->json());
+        self::assertSame('unexpected_failure', $problem['code']);
+        self::assertStringContainsString('/vendor/nyholm/psr7/', $problem['context']['at']);
+        self::assertSame(__FILE__, $problem['source']['file']);
+
+        // Outside production a trimmed trace comes along, so a failing test
+        // shows the path without a debugger.
+        self::assertIsList($problem['context']['trace']);
+        self::assertNotEmpty($problem['context']['trace']);
+        self::assertLessThanOrEqual(10, count($problem['context']['trace']));
+        self::assertContainsOnlyString($problem['context']['trace']);
     }
 
     public function testAGlobalMiddlewareMeetsTheThrowableBeforeTheAppDoes(): void

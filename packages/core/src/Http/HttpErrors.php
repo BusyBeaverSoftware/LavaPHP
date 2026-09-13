@@ -28,7 +28,11 @@ use Psr\Http\Message\ServerRequestInterface;
  * `unexpected_status`, an exception's message for `unexpected_failure` — and
  * JSON is what any client without an `Accept` header gets. So a production 5xx
  * keeps its code, sentence and fix, and sends `context` as `{}` and `source` as
- * null ({@see redacts()}); `App` writes the whole problem to the log instead. A
+ * null ({@see redacts()}). When the problem was thrown to `App` — from a handler,
+ * a middleware or a subject resolver — `App` writes the whole problem to the log
+ * instead. A 5xx a handler renders itself through this class is redacted the
+ * same way and logged by nobody, because this class has no logger: throw the
+ * problem rather than rendering it, or log it before calling this. A
  * 4xx keeps everything in every environment: it is the caller's mistake, and
  * the field, the rule and the fix are what let an agent repair its request in
  * one round trip.

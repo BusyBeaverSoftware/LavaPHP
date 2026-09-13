@@ -342,12 +342,18 @@ final class App implements RequestHandlerInterface
         try {
             $logger = $this->container->get(LoggerInterface::class);
             if ($logger instanceof LoggerInterface) {
-                $logger->error($problem->getMessage(), [
+                $context = [
                     'code' => $problem->code(),
                     'fix' => $problem->fix,
                     'context' => $problem->context,
                     'source' => $problem->source?->json(),
-                ]);
+                ];
+                // PSR-3's key for the throwable, so a logger can print its trace:
+                // the problem's own fields name the throw site and nothing above it.
+                if ($problem->getPrevious() !== null) {
+                    $context['exception'] = $problem->getPrevious();
+                }
+                $logger->error($problem->getMessage(), $context);
             }
         } catch (\Throwable) {
             // A logger that cannot write must not turn a rendered 500 into a

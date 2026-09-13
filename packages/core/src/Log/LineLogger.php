@@ -61,11 +61,39 @@ final class LineLogger extends AbstractLogger
         }
         $line = sprintf('[%s] %s: %s', date('c'), $level, (string) $message);
         if ($context !== []) {
+            if (($context['exception'] ?? null) instanceof \Throwable) {
+                $context['exception'] = self::exception($context['exception']);
+            }
             $encoded = json_encode($context, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
             if ($encoded !== false) {
                 $line .= ' ' . $encoded;
             }
         }
         fwrite($this->stream, $line . "\n");
+    }
+
+    /**
+     * PSR-3's `exception` key, as data. Encoded as it is, an exception object
+     * prints as `{}`; as an array it keeps its trace and the entry stays one line.
+     *
+     * @return array<string, mixed>
+     */
+    private static function exception(\Throwable $exception): array
+    {
+        $shape = [
+            'class' => $exception::class,
+            'message' => $exception->getMessage(),
+            'at' => $exception->getFile() . ':' . $exception->getLine(),
+            'trace' => array_map(
+                static fn (array $frame): string => isset($frame['file']) ? $frame['file'] . ':' . ($frame['line'] ?? 0) : '[internal]',
+                $exception->getTrace(),
+            ),
+        ];
+        $previous = $exception->getPrevious();
+        if ($previous !== null) {
+            $shape['previous'] = self::exception($previous);
+        }
+
+        return $shape;
     }
 }

@@ -91,6 +91,20 @@ final class ServiceReplacementTest extends TestCase
         self::assertSame(\DateTimeImmutable::class, $boot->problems->problems()[0]->context['given']);
     }
 
+    public function testReplacementsGivenAsAListAreABootProblemShowingTheKeyedForm(): void
+    {
+        // Lava Notes (R2-B12): an integer key reached the strictly typed has()
+        // and the boot failed as unexpected_failure, blaming Container.php.
+        $boot = TestApp::bootFixture('handler-app', [], [new FrozenClock('2026-09-13 09:00:00')]);
+
+        self::assertInstanceOf(BootFailure::class, $boot);
+        self::assertSame(['bad_replacement'], array_column($boot->problems->json(), 'code'));
+        $problem = $boot->problems->problems()[0];
+        self::assertSame(0, $problem->context['key']);
+        self::assertSame(FrozenClock::class, $problem->context['given']);
+        self::assertStringContainsString('[Id::class => $replacement]', $problem->fix);
+    }
+
     public function testTheContainerAnswersForAReplacedIdAndForWhatDependsOnIt(): void
     {
         $fake = new \ArrayObject(['fake' => true]);
