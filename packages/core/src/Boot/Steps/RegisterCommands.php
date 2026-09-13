@@ -55,6 +55,13 @@ final class RegisterCommands implements BootStep
 
         $this->loadAppCommands($ctx, $registry);
 
+        // A name its envelope's contract id cannot hold is a warning, not a
+        // refusal: this step runs on every boot, a web request's included, and a
+        // CLI naming rule must not stop the site serving.
+        foreach ($registry->nameProblems() as $problem) {
+            $ctx->problems->add($problem);
+        }
+
         $ctx->commands = $registry;
         // Registered as a service so `lava services` shows it, packs can
         // resolve it, and ValidateWiring proves it resolvable like any other id.

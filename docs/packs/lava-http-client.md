@@ -100,16 +100,17 @@ A handler takes `HttpClient` as a typed method parameter, like any other
 service:
 
 ```php
+use App\Rates\RatesToken;
 use Lava\Core\Http\Responses;
 use Lava\HttpClient\HttpClient;
 use Psr\Http\Message\ResponseInterface;
 
 final class RateController
 {
-    public function show(HttpClient $http): ResponseInterface
+    public function show(HttpClient $http, RatesToken $token): ResponseInterface
     {
         $rate = $http->getJson('https://api.example.com/v1/rates?base=EUR', [
-            'Authorization' => 'Bearer ' . $this->token,
+            'Authorization' => 'Bearer ' . $token->value,
         ]);
 
         return Responses::json($rate);
@@ -117,9 +118,19 @@ final class RateController
 }
 ```
 
+A handler is constructed with no arguments, so everything it needs is a method
+parameter — the token too. `RatesToken` is the app's own small class, registered
+from config in `app/Services.php`:
+`$c->singleton(RatesToken::class, static fn (): RatesToken => new RatesToken($ctx->config->needString('app.rates_token')));`.
+A `$this->token` here would read an empty property and send `Bearer ` with no token.
+
 `CurlTransport` is registered separately from `HttpClient` so a caller can have
 one unadorned request — no retries, no status opinion, the response as it
-arrived. It is also the seam a test replaces.
+arrived. Neither id can be registered a second time — the container refuses that
+everywhere — so a different transport goes in through `HttpClient`'s constructor,
+as below. A test that needs the pack's own id to hold a client around a fake
+passes it to `TestApp::boot()`:
+`replace: [HttpClient::class => new HttpClient($fake, new Psr17Factory())]`.
 
 **There is no `ClientInterface` alias.** Aliasing the PSR-18 interface would be
 convenient — type-hint it, get the pack's client — but it would also *occupy*

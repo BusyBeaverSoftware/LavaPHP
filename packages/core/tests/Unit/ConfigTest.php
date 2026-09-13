@@ -38,6 +38,51 @@ final class ConfigTest extends TestCase
         }
     }
 
+    public function testEveryAccessorAMissingKeyFixNamesExists(): void
+    {
+        // The label reads `integer`; the method is `int()`. Deriving one from the
+        // other once told the reader to call `$config->integer()` (Lava Notes, B12).
+        $config = new Config();
+        $calls = [
+            static fn () => $config->needString('app.a'),
+            static fn () => $config->needInt('app.b'),
+            static fn () => $config->needBool('app.c'),
+            static fn () => $config->needArray('app.d'),
+        ];
+
+        foreach ($calls as $call) {
+            try {
+                $call();
+                self::fail('InvalidConfig expected');
+            } catch (InvalidConfig $problem) {
+                self::assertSame(1, preg_match('/\$config->([a-zA-Z]+)\(/', $problem->fix, $match), $problem->fix);
+                self::assertTrue(method_exists(Config::class, $match[1]), "the fix names \$config->{$match[1]}(), which does not exist");
+            }
+        }
+    }
+
+    public function testAKeyFromAFileNothingReadsSaysSo(): void
+    {
+        // `config/cache.php` is not read by core, so "set it there" alone sends the
+        // reader to create a file that changes nothing (Lava Notes, B1).
+        $config = (new Config())->with('app.name', 'Blog', 'config/app.php');
+
+        try {
+            $config->needInt('cache.ttl');
+            self::fail('InvalidConfig expected');
+        } catch (InvalidConfig $problem) {
+            self::assertStringContainsString('No key came from config/cache.php', $problem->fix);
+            self::assertStringContainsString('core reads config/app.php and config/logging.php', $problem->fix);
+        }
+
+        try {
+            $config->needInt('app.port');
+            self::fail('InvalidConfig expected');
+        } catch (InvalidConfig $problem) {
+            self::assertStringNotContainsString('No key came from', $problem->fix);
+        }
+    }
+
     public function testWrongTypeNamesTheFileThatDeclaredIt(): void
     {
         $config = (new Config())->with('app.debug', 5, 'config/app.php');

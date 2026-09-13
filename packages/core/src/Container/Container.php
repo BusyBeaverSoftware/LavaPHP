@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Lava\Core\Container;
 
+use Lava\Core\Problem\BadReplacement;
 use Lava\Core\Problem\CircularService;
 use Lava\Core\Problem\DuplicateService;
+use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ServiceNotRegistered;
 use Lava\Core\Problem\SourceLocation;
 use Psr\Container\ContainerInterface;
@@ -17,9 +19,21 @@ use Psr\Container\ContainerInterface;
  * id is fatal — "override" semantics is the silent-magic class this
  * framework bans.
  *
- * Two read-only introspection uses are allowed and documented: a factory
- * closure's file:line (for diagnostics) and the caller's file:line for
- * value/alias registrations. Nothing is ever constructed by reflection.
+ * Three read-only introspection uses are allowed and documented: a factory
+ * closure's file:line and its declared return type (for diagnostics and the
+ * project map), and the caller's file:line for value/alias registrations.
+ * Nothing is ever constructed by reflection.
+ *
+ * **Replacements are a test's, and only a test's.** A container built with
+ * replacements answers `get()` for those ids with the given values instead of
+ * running the registration. Nothing an app writes can add one: the map is fixed
+ * when the kernel constructs the container, from the `replace:` a test passed to
+ * {@see \Lava\Core\Testing\TestApp::boot()}, and app/Services.php receives a
+ * container that already exists. Registration itself is unchanged — the id is
+ * still registered exactly once, by the code that owns it — so a replacement for
+ * an id nobody registers, or of the wrong type, is a boot problem
+ * ({@see replacementProblems()}) rather than a fake that silently stands in for
+ * nothing.
  */
 final class Container implements ContainerInterface
 {
@@ -37,6 +51,13 @@ final class Container implements ContainerInterface
 
     /** @var array<string, ResolutionTrace> */
     private array $traces = [];
+
+    /**
+     * @param array<string, mixed> $replacements id => the value `get()` returns for it
+     */
+    public function __construct(private readonly array $replacements = [])
+    {
+    }
 
     public function singleton(string $id, \Closure $factory): void
     {
@@ -61,7 +82,20 @@ final class Container implements ContainerInterface
 
     public function get(string $id): mixed
     {
+        // A replacement answers for the id a caller asked for, before aliases
+        // are followed — replacing `LoggerInterface` must replace what a
+        // service type-hinting `LoggerInterface` receives, whatever it aliases.
+        if (array_key_exists($id, $this->replacements)) {
+            $this->attribute($id);
+            return $this->replacements[$id];
+        }
+
         $id = $this->resolveAliases($id);
+        if (array_key_exists($id, $this->replacements)) {
+            $this->attribute($id);
+            return $this->replacements[$id];
+        }
+
         $registration = $this->registrations[$id]
             ?? throw ServiceNotRegistered::of($id, $this->referencedFrom());
 
@@ -128,6 +162,54 @@ final class Container implements ContainerInterface
             $registration->declaredAt->line,
             ($this->traces[$id] ?? null)?->resolvedClass(),
         );
+    }
+
+    /**
+     * The type a singleton or factory declares it builds — its closure's return
+     * type, as written — or null for a value, an alias, or a closure that
+     * declares none.
+     *
+     * {@see describe()} reports the class a resolution actually produced, which
+     * is the right answer for `lava services` and the wrong one for a committed
+     * document: a factory that returns `SmtpMailer` in prod and `NullMailer` in
+     * dev resolves to a different class in each environment, and a map built from
+     * that moved its fingerprint with `--env`. The declaration does not move.
+     */
+    public function declaredType(string $id): ?string
+    {
+        $registration = $this->registrations[$id]
+            ?? throw ServiceNotRegistered::of($id, $this->referencedFrom());
+        if ($registration->factory === null) {
+            return null;
+        }
+
+        return (new \ReflectionFunction($registration->factory))->getReturnType()?->__toString();
+    }
+
+    /**
+     * What is wrong with the replacements this container was built with: one
+     * problem for each id nothing registered, and one for each value that is not
+     * an instance of the class or interface its id names.
+     *
+     * Checked once every registration exists (ValidateWiring asks), because only
+     * then is "nothing registers it" true rather than "not yet".
+     *
+     * @return list<LavaProblem>
+     */
+    public function replacementProblems(): array
+    {
+        $problems = [];
+        foreach ($this->replacements as $id => $value) {
+            if (!$this->has($id)) {
+                $problems[] = BadReplacement::unregistered($id);
+                continue;
+            }
+            if ((class_exists($id) || interface_exists($id)) && !$value instanceof $id) {
+                $problems[] = BadReplacement::wrongType($id, get_debug_type($value));
+            }
+        }
+
+        return $problems;
     }
 
     /** @return array<string, ResolutionTrace> by id — real resolution history */

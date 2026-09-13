@@ -14,6 +14,7 @@ use Lava\Core\Boot\Steps\LoadDotEnv;
 use Lava\Core\Boot\Steps\LoadPackConfig;
 use Lava\Core\Boot\Steps\RegisterCommands;
 use Lava\Core\Boot\Steps\RegisterCoreServices;
+use Lava\Core\Boot\Steps\RegisterDefaultServices;
 use Lava\Core\Boot\Steps\ValidateWiring;
 use Lava\Core\Boot\Steps\WireAppServices;
 use Lava\Core\Boot\Steps\WireModules;
@@ -37,6 +38,7 @@ final class Kernel
         RegisterCoreServices::class,
         WireModules::class,
         WireAppServices::class,
+        RegisterDefaultServices::class,
         BuildRouter::class,
         RegisterCommands::class,
         ValidateWiring::class,
@@ -54,18 +56,32 @@ final class Kernel
         \Lava\Core\Features\Features::class,
         \Lava\Core\Features\FeatureScope::class,
         \Lava\Core\Log\LineLogger::class,
+    ];
+
+    /**
+     * The services core registers only when neither a pack nor app/Services.php
+     * did — see {@see RegisterDefaultServices}. Both are PSR standard interfaces,
+     * the ids an app most often wants to fill with a library of its own.
+     */
+    public const DEFAULT_SERVICES = [
         \Psr\Log\LoggerInterface::class,
+        \Psr\Clock\ClockInterface::class,
     ];
 
     /**
      * Boots an app from its project directory. Never throws for collectable
      * problems: fatal problems yield {@see BootFailure} (which renders the
      * full report); otherwise {@see App} carries any warnings forward.
+     *
+     * @param array<string, mixed> $replace services a TEST substitutes, id => value —
+     *        see {@see \Lava\Core\Testing\TestApp::boot()}. A front controller and
+     *        the CLI pass nothing, and nothing an app writes can add an entry.
      */
-    public static function boot(string $appDir): App|BootFailure
+    public static function boot(string $appDir, array $replace = []): App|BootFailure
     {
         $appDir = rtrim($appDir, '/');
         $ctx = new BootCtx($appDir, new \Lava\Core\Problem\ProblemReport());
+        $ctx->replacements = $replace;
 
         foreach (self::STEPS as $stepClass) {
             $step = new $stepClass();

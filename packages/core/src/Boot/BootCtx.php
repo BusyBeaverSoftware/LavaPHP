@@ -72,6 +72,15 @@ final class BootCtx
      */
     public ?\Lava\Core\Console\CommandRegistry $commands = null;
 
+    /**
+     * Services a test substitutes, id => value, handed to the container when
+     * RegisterCoreServices builds it. Empty for every real boot — see
+     * {@see \Lava\Core\Testing\TestApp::boot()}.
+     *
+     * @var array<string, mixed>
+     */
+    public array $replacements = [];
+
     public function __construct(
         public readonly string $appDir,
         public readonly ProblemReport $problems,

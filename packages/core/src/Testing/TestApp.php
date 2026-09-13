@@ -37,24 +37,42 @@ final class TestApp
     private static array $autoloaded = [];
 
     /**
+     * **`replace:` substitutes a service for this boot only.** Each entry names an
+     * id something already registers and the value it should resolve to:
+     *
+     *     TestApp::boot($dir, replace: [
+     *         ClockInterface::class => new FrozenClock('2026-09-13 09:00'),
+     *         Webhooks::class => $recordingWebhooks,
+     *     ]);
+     *
+     * The app's own wiring runs unchanged, so a fake never has to live in
+     * app/Services.php behind an `if ($ctx->env === 'test')` that production
+     * would also ship. A replacement for an id nothing registers, or of the wrong
+     * type, is a `bad_replacement` boot problem, not a fake standing in for
+     * nothing. Only a boot started here can have replacements: the real front
+     * controller and the CLI call `Kernel::boot($dir)`, and app code receives a
+     * container that already exists.
+     *
      * @param array<string, string> $env variables visible during boot, e.g. ['LAVA_ENV' => 'prod']
+     * @param array<string, mixed> $replace id => the value that id resolves to instead
      */
-    public static function boot(string $appDir, array $env = []): App|BootFailure
+    public static function boot(string $appDir, array $env = [], array $replace = []): App|BootFailure
     {
         $appDir = rtrim($appDir, '/');
         self::autoloadFor($appDir);
 
-        return IsolatedEnvironment::run($env, static fn (): App|BootFailure => Kernel::boot($appDir));
+        return IsolatedEnvironment::run($env, static fn (): App|BootFailure => Kernel::boot($appDir, $replace));
     }
 
     /**
      * Boots a fixture app from tests/fixtures/apps/&lt;name&gt; with the same hermetic contract.
      *
      * @param array<string, string> $env
+     * @param array<string, mixed> $replace
      */
-    public static function bootFixture(string $name, array $env = []): App|BootFailure
+    public static function bootFixture(string $name, array $env = [], array $replace = []): App|BootFailure
     {
-        return self::boot(self::fixturePath($name), $env);
+        return self::boot(self::fixturePath($name), $env, $replace);
     }
 
     public static function fixturePath(string $name): string

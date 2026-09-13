@@ -18,6 +18,7 @@ use Lava\Core\Modules\PackInfo;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
+use Lava\Core\Problem\UnexpectedFailure;
 use Lava\Core\Routing\HandlerInvoker;
 use Lava\Core\Routing\Matched;
 use Lava\Core\Routing\MiddlewarePipeline;
@@ -25,6 +26,7 @@ use Lava\Core\Routing\Router;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * A successfully booted app: the root object HTTP and CLI entry points hold.
@@ -33,6 +35,12 @@ use Psr\Http\Server\RequestHandlerInterface;
  * path renders through the same media (JSON/diagnostics) as boot problems.
  * A request no handler answers still passes through the global middleware:
  * see {@see unrouted()}.
+ *
+ * **Nothing thrown on the request path escapes.** A `LavaProblem` renders as
+ * itself; any other throwable renders as `unexpected_failure`, after the global
+ * middleware has had its chance to answer it. Boot and the CLI already wrapped
+ * what they could not name, and a handler's `PDOException` used to leave this
+ * class as PHP's uncaught exception instead.
  */
 final class App implements RequestHandlerInterface
 {
@@ -171,14 +179,24 @@ final class App implements RequestHandlerInterface
                 // all — `get_class` on a scalar registered under this id would
                 // raise a TypeError from inside the error report, turning a
                 // diagnosable misconfiguration into a blank 500.
-                return HttpErrors::toResponse(new InvalidConfig(
+                return $this->problemResponse(new InvalidConfig(
                     'The service registered under FlagSubjectResolver::class is '
                         . get_debug_type($resolver) . ', which does not implement FlagSubjectResolver.',
                     'Register a class implementing Lava\\Core\\Features\\FlagSubjectResolver in app/Services.php.',
                     ['registered' => get_debug_type($resolver)],
-                ), $request, $this->env);
+                ), $request);
             }
-            $features = $features->forSubject($resolver->subjectFor($request));
+
+            // The resolver is app code, and it runs before any middleware:
+            // whatever it throws is answered here, in the same media as
+            // everything else, rather than leaving the app as a bare exception.
+            try {
+                $features = $features->forSubject($resolver->subjectFor($request));
+            } catch (LavaProblem $problem) {
+                return $this->problemResponse($problem, $request);
+            } catch (\Throwable $throwable) {
+                return $this->problemResponse(UnexpectedFailure::inRequest($request, $throwable), $request);
+            }
         }
 
         // Everything from here answers for this subject: the router, a handler
@@ -209,14 +227,20 @@ final class App implements RequestHandlerInterface
         $plan = $this->router->plan($route->name);
         $args = $result->args;
 
+        // Caught OUTSIDE the pipeline, so every global and route middleware
+        // meets a handler's throwable first, exactly as it meets a problem: an
+        // app's own error page can still answer it. Only what escapes them all
+        // is rendered here.
         try {
             return $pipeline->run(
                 $request,
                 [...$this->globalMiddleware, ...$route->middleware],
                 static fn (ServerRequestInterface $r): ResponseInterface => $invoker->invoke($plan, $r, $args),
             );
-        } catch (\Lava\Core\Problem\LavaProblem $problem) {
-            return HttpErrors::toResponse($problem, $request, $this->env);
+        } catch (LavaProblem $problem) {
+            return $this->problemResponse($problem, $request);
+        } catch (\Throwable $throwable) {
+            return $this->problemResponse(UnexpectedFailure::inRequest($request, $throwable), $request);
         }
     }
 
@@ -256,7 +280,8 @@ final class App implements RequestHandlerInterface
      * Route middleware does not run: there is no route to have declared any.
      * A body that did not parse reaches the layers unparsed. What escapes them
      * renders exactly as before, in the same media as every other problem and
-     * with the 405's `Allow` header.
+     * with the 405's `Allow` header — and a layer that itself throws something
+     * that is not a problem renders as `unexpected_failure`.
      */
     private function unrouted(ServerRequestInterface $request, LavaProblem $problem): ResponseInterface
     {
@@ -267,7 +292,51 @@ final class App implements RequestHandlerInterface
                 static fn (ServerRequestInterface $unrouted): ResponseInterface => throw $problem,
             );
         } catch (LavaProblem $escaped) {
-            return HttpErrors::toResponse($escaped, $request, $this->env);
+            return $this->problemResponse($escaped, $request);
+        } catch (\Throwable $throwable) {
+            return $this->problemResponse(UnexpectedFailure::inRequest($request, $throwable), $request);
+        }
+    }
+
+    /**
+     * A problem as the response the client gets — and, when that response
+     * withholds the details, the whole problem in the log.
+     *
+     * Production sends a server fault without its context or source
+     * ({@see HttpErrors::redacts()}), so the details have to reach someone, or a
+     * production 500 would be undiagnosable. The app's `LoggerInterface` is where
+     * they go: core's `LineLogger` on stderr by default, or whatever logger the
+     * app registered under that id. A 4xx is never logged here — it is the
+     * client's mistake, and its response already carries everything.
+     */
+    private function problemResponse(LavaProblem $problem, ServerRequestInterface $request): ResponseInterface
+    {
+        if (HttpErrors::redacts($problem->httpStatus(), $this->env)) {
+            $this->logWithheld($problem);
+        }
+
+        return HttpErrors::toResponse($problem, $request, $this->env);
+    }
+
+    private function logWithheld(LavaProblem $problem): void
+    {
+        if (!$this->container->has(LoggerInterface::class)) {
+            return;
+        }
+
+        try {
+            $logger = $this->container->get(LoggerInterface::class);
+            if ($logger instanceof LoggerInterface) {
+                $logger->error($problem->getMessage(), [
+                    'code' => $problem->code(),
+                    'fix' => $problem->fix,
+                    'context' => $problem->context,
+                    'source' => $problem->source?->json(),
+                ]);
+            }
+        } catch (\Throwable) {
+            // A logger that cannot write must not turn a rendered 500 into a
+            // blank one: the response is still the client's answer.
         }
     }
 }

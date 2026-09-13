@@ -17,6 +17,7 @@ use Lava\Core\Console\Commands\ServeCommand;
 use Lava\Core\Console\Commands\ServicesCommand;
 use Lava\Core\Console\Commands\TestCommand;
 use Lava\Core\Problem\DuplicateCommand;
+use Lava\Core\Problem\InvalidCommandName;
 
 /**
  * The commands this process can run, keyed by name.
@@ -28,6 +29,14 @@ use Lava\Core\Problem\DuplicateCommand;
  */
 final class CommandRegistry
 {
+    /**
+     * What a command may be called: lowercase words of letters and digits, each
+     * starting with a letter, joined by colons — `routes`, `db:status`,
+     * `blog:publish`. Narrow because the name becomes the envelope's contract id
+     * (`lava.db.status/1`), whose pattern admits nothing else.
+     */
+    public const NAME_PATTERN = '/^[a-z][a-z0-9]*(?::[a-z][a-z0-9]*)*$/';
+
     /** @var array<string, Command> in registration order */
     private array $commands = [];
 
@@ -47,6 +56,29 @@ final class CommandRegistry
             throw DuplicateCommand::of($command->name(), $existing, $command);
         }
         $this->commands[$command->name()] = $command;
+    }
+
+    /**
+     * A warning for every registered command whose name cannot be a contract id
+     * (see {@see NAME_PATTERN}).
+     *
+     * Reported, not refused. The RegisterCommands step asks for these on every
+     * boot — a web request's boot included — and a name that breaks `--json`
+     * envelopes must not stop a website from serving. As a warning it is still in
+     * `lava check`, and `--strict` fails on it.
+     *
+     * @return list<InvalidCommandName>
+     */
+    public function nameProblems(): array
+    {
+        $problems = [];
+        foreach ($this->commands as $command) {
+            if (preg_match(self::NAME_PATTERN, $command->name()) !== 1) {
+                $problems[] = InvalidCommandName::of($command);
+            }
+        }
+
+        return $problems;
     }
 
     public function has(string $name): bool

@@ -10,12 +10,13 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * The context every page template needs, in one place.
  *
- * This exists because `lavaphp/view` exposes exactly two Twig functions and no way
- * to add a global: there is no `addGlobal()`, no extension registration, and the
- * environment is built inside the pack's factory. So a layout that wants the
- * signed-in user and the CSRF token — and a blog layout wants both, since the
- * "Sign out" control is a CSRF-protected form — has to receive them in the
- * context of every single render.
+ * This exists because a Twig global is the wrong place for per-request values.
+ * `ViewRenderer::environment()` does let an app add one, but the renderer is a
+ * singleton: a global holding the signed-in user would still hold it for the next
+ * request the same process serves, and one visitor's name would reach the next.
+ * So a layout that wants the signed-in user and the CSRF token — and a blog layout
+ * wants both, since the "Sign out" control is a CSRF-protected form — receives
+ * them in the context of every single render.
  *
  * Without something like this, every controller in the app ends up repeating
  * `['user' => $auth->user($request), 'csrf' => $auth->csrf($request), …]`, and

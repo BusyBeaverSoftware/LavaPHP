@@ -136,7 +136,10 @@ final class FrameworkReference
                 'lang' => 'php',
                 'note' => 'Returns a callable that registers services on the Container. There is no '
                     . 'auto-wiring: every id is built by visible code, and registering one twice is '
-                    . 'fatal. This is also where an app declares the environment variables it reads.',
+                    . 'fatal. Two standard ids are filled by core only if nothing registered them first — '
+                    . '`Psr\\Log\\LoggerInterface` (a stderr LineLogger) and `Psr\\Clock\\ClockInterface` '
+                    . '(the system clock) — so an app that wants its own simply registers the id here. '
+                    . 'This is also where an app declares the environment variables it reads.',
                 'code' => <<<'PHP'
                     use Lava\Core\Boot\AppContext;
                     use Lava\Core\Config\EnvVar;
@@ -211,9 +214,10 @@ final class FrameworkReference
             'config' => [
                 'file' => 'config/app.php',
                 'lang' => 'php',
-                'note' => 'Every file in `config/` is read as `<filename>.<key>`, so `base_url` here is '
-                    . '`app.base_url` in code. Each value carries its provenance, which is what '
-                    . '`lava config` reports.',
+                'note' => 'Read as `app.<key>`, so `base_url` here is `app.base_url` in code. Core reads '
+                    . '`config/app.php` and `config/logging.php`, and a pack reads the config files it '
+                    . 'declares; any other file in `config/` is not read. Each value carries its '
+                    . 'provenance, which is what `lava config` reports.',
                 'code' => <<<'PHP'
                     return [
                         'env' => 'dev',
@@ -240,7 +244,9 @@ final class FrameworkReference
                 'note' => 'The harness boots the app in-process — no server, no network — and dispatches '
                     . 'PSR-7 requests through the same handler the HTTP entry point uses. A client keeps '
                     . 'cookies between requests the way a browser does, so a test can sign in and stay '
-                    . 'signed in; each new TestClient is a new visitor.',
+                    . 'signed in; each new TestClient is a new visitor. To swap a service for one boot, '
+                    . 'pass `replace: [Id::class => $fake]` — e.g. `ClockInterface::class => new '
+                    . 'FrozenClock(\'2026-01-01 09:00\')` — so a fake never lives in app/Services.php.',
                 'code' => <<<'PHP'
                     namespace App\Tests;
 

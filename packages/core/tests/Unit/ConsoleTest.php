@@ -72,6 +72,17 @@ final class ConsoleTest extends TestCase
         self::assertSame('db:status', $envelope['command']);
     }
 
+    public function testAnEnvelopeWithNoDataStillSendsAnObject(): void
+    {
+        // PHP's empty array encodes as `[]`, a list, and lava-envelope/1 requires
+        // an object — the envelope of an unknown command on an app that could not
+        // boot broke the contract it claims (Lava Notes, B7).
+        $encoded = Envelope::encode(Envelope::of('db:status', 'failed', [], []));
+
+        self::assertStringContainsString('"data":{}', $encoded);
+        self::assertStringContainsString('"problems":[]', $encoded);
+    }
+
     public function testJsonModeEmitsOnlyData(): void
     {
         [$io, $stdout] = $this->io(json: true);

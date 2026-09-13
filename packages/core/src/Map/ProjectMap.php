@@ -32,6 +32,9 @@ use Lava\Core\Problem\StaleMap;
  */
 final readonly class ProjectMap
 {
+    /** The config files core itself reads — see LoadConfig and CollectFlagDefinitions. */
+    private const CORE_CONFIG_FILES = ['config/app.php', 'config/features.php', 'config/logging.php'];
+
     /**
      * @param list<array{name: string, methods: list<string>, path: string, handler: string,
      *             feature: string|null, middleware: list<string>}> $routes
@@ -81,7 +84,11 @@ final readonly class ProjectMap
                 'id' => $id,
                 'kind' => $isAlias ? 'alias' : $record->kind->value,
                 'target' => $isAlias ? $record->id : null,
-                'class' => $isAlias ? null : $record->class,
+                // The DECLARED type, never the class a resolution produced: a
+                // factory that branches on the environment resolves to a
+                // different class in each one, and a map built from that went
+                // stale under every `--env` but the one it was written in.
+                'class' => $isAlias ? null : $app->container->declaredType($id),
                 'at' => self::relative($record->file, $app->appDir) . ':' . $record->line,
             ];
         }
@@ -393,8 +400,9 @@ final readonly class ProjectMap
         }
 
         return "\n## Files\n\n"
-            . "The framework reads a fixed set of paths. Every one is optional except\n"
-            . "`public/index.php`.\n\n"
+            . "The files this app has that the framework reads, every one optional. Config is\n"
+            . "read only from `config/app.php`, `config/features.php`, `config/logging.php` and the\n"
+            . "files an enabled pack declares; any other file in `config/` is not read.\n\n"
             . self::table(['file'], $rows);
     }
 
@@ -421,8 +429,14 @@ final readonly class ProjectMap
             'config/.env',
         ];
 
-        foreach (glob($app->appDir . '/config/*.php') ?: [] as $file) {
-            $files[] = 'config/' . basename($file);
+        // Only config files something reads. Every `config/*.php` used to be
+        // listed, under a heading that says the framework reads these paths — so
+        // a config/cache.php nothing opens read as if it were loaded, the same
+        // wrong promise the skeleton's comment made.
+        foreach (self::CORE_CONFIG_FILES as $file) {
+            if (is_file($app->appDir . '/' . $file)) {
+                $files[] = $file;
+            }
         }
 
         foreach ($app->packs as $manifest) {

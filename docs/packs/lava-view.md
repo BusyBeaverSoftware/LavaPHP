@@ -96,14 +96,18 @@ to create.
 method parameter, like any other service:
 
 ```php
+use App\Tasks\TaskRepository;
+use Lava\Core\Routing\RouteArgs;
 use Lava\View\ViewRenderer;
 use Psr\Http\Message\ResponseInterface;
 
 final class TaskController
 {
-    public function show(RouteArgs $args, ViewRenderer $view): ResponseInterface
+    // Constructed with no arguments: the repository arrives as a parameter, like
+    // the renderer, because it is registered in app/Services.php.
+    public function show(RouteArgs $args, TaskRepository $tasks, ViewRenderer $view): ResponseInterface
     {
-        return $view->render('tasks/show', ['task' => $this->tasks->find($args->int('id'))]);
+        return $view->render('tasks/show', ['task' => $tasks->find($args->int('id'))]);
     }
 
     public function missing(ViewRenderer $view): ResponseInterface

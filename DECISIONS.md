@@ -4249,3 +4249,231 @@ section records both.
     from a fresh home rather than with hand-fetched metadata. A `curl` of the
     file answers for whichever copy its own headers select, and Composer may be
     reading a different one.
+
+## 2026-09-13 — Lava Notes: a third outside build, and the decisions it forced
+
+257. **A third app was built from outside the repository, and every finding was
+    checked before anything changed.** An agent with access only to Packagist
+    `0.1.2`, the GitHub docs and its own `vendor/` built Lava Notes
+    (`/home/five/projects/lavaphp-test-blog-1`, outside this repository): ten
+    features, 58 tests, `lava check --strict` green. It reported 13 bugs and 14
+    feature gaps. Three reviewers reproduced every bug on a fresh `0.1.2` install
+    and checked every claim against the source, this file and the plan; the verdicts
+    sit under each item in that project's `BUGS.md` and `FEATURE-GAPS.md`.
+
+    All 13 bugs were real: 7 in code (B3, B5, B6, B9, B10, B12, B13), 4 deliberate
+    behaviour described wrongly (B1, B2, B8, B11), and 2 partly (B4, B7). Of the
+    gaps, 4 were real (G2, G3, G10, G14), 6 were partly covered and 4 were out of
+    scope by design. The builder could not see this file or `apps/blog`, which
+    answer several of them. The review also found four security flaws in the app's
+    own sign-in and rate-limit code, which is the argument of entry 266. Five
+    questions went to the user; entries 258 to 266 record the answers and the fixes.
+    Rate limiting (G2), conditional GET (G3), `TestClient` uploads and client
+    address (G10) and absolute URLs (G14) remain gaps.
+
+258. **A throwable that is not a problem no longer escapes a request.** (B3.)
+    `App::dispatch()` and `unrouted()` caught only `LavaProblem`, and the front
+    controller has no outer handler, so a handler's `PDOException` left the app as
+    PHP's uncaught exception: an empty 500, a dead test run, or, with
+    `display_errors` on, a 200 carrying the message and the stack trace. Boot
+    (`UnexpectedFailure::of()`) and the CLI (`inCommand()`) already wrapped what
+    they could not name; the request path now does too, with
+    `UnexpectedFailure::inRequest()`.
+
+    It is caught outside the middleware pipeline, so every global and route
+    middleware meets the throwable first and an app's own error page can still
+    answer it. A subject resolver's throwable, and one from a middleware answering
+    an unrouted request, are answered the same way. The problem's sentence and fix
+    are generic on purpose: in production they are all a client sees, and an
+    exception's message is where a driver puts a query or a credential. The class,
+    message and location are in `context`, which production withholds (entry 259).
+
+259. **In production, a server fault's JSON withholds its context and source, and
+    the app logs them.** (The user's decision on B4 and B13, revisiting 243.) Entry
+    243 kept JSON verbose in every environment so an agent could repair its request.
+    That holds for a 4xx and not for a 5xx: `query_failed` carries the SQL and its
+    bound values, `unexpected_status` an upstream's response body,
+    `unexpected_failure` an exception's message, and JSON is what any client without
+    an `Accept` header receives, curl and bots included.
+
+    `HttpErrors::redacts($status, $env)` is true for a 5xx in `prod`. The JSON then
+    keeps `code`, `problem`, `fix` and `severity`, sends `context` as `{}` and
+    `source` as null, and `App` writes the whole problem to its `LoggerInterface`,
+    so nothing is lost. A 4xx keeps everything, and every other environment is
+    unchanged. `DiagnosticsPage` now gates the source line along with the context
+    (B13); its docblock always called sources dev-only. `conventions.md` says all of
+    this, where it used to say "prod hides context", which was true only of the HTML
+    page.
+
+    Rejected: a per-problem allowlist of public context keys. It is more precise,
+    but it touches every problem class, and nothing yet shows a 4xx context leaking.
+    One consequence is worth stating: a production `BootFailure` rendered as JSON
+    also withholds its context, and there is no logger to receive it. `lava check`
+    is where a boot failure is diagnosed.
+
+260. **`BuildRouter` registers the router and the URL generator before it builds
+    handler plans.** (B6.) A plan asks `Container::has()` about each parameter's
+    type, and the two registrations came after the plan loop, so a handler that
+    type-hinted `UrlGenerator` failed boot with `service_not_registered`, whose fix,
+    to register it yourself, was a `duplicate_service`. `KernelBootTest` had a test
+    named for exactly this, but it built a fresh `HandlerInvoker` after boot, so it
+    proved the registration and never the boot-time plan.
+
+    The registrations now run straight after `finalize()`: still after
+    `app/Services.php`, so entry 74's guarantee that an app claiming either id gets
+    `duplicate_service` holds. The `handler-app` fixture has a handler that takes
+    `UrlGenerator` through a real boot.
+
+261. **Core fills `LoggerInterface` and `ClockInterface` only when nothing else
+    registered them.** (The user's decision 5, which asked for "a default logger",
+    and decision 2's clock.) Core registered `LoggerInterface` among its first
+    services, so an app registering Monolog under that id got `duplicate_service`,
+    and `LineLogger`'s docblock promised a swap the container forbids (B8).
+
+    A new step, `RegisterDefaultServices`, runs after every pack and
+    `app/Services.php` and before `BuildRouter`, since a handler may type-hint
+    either id. It aliases `LoggerInterface` to `LineLogger`, and registers
+    `ClockInterface` as `Lava\Core\Clock\SystemClock`, each only if the id is still
+    empty. Nothing is overridden: the id is registered once, by whoever registered
+    it first, so the container's no-override rule stands. `Kernel::DEFAULT_SERVICES`
+    lists the two, and `CORE_SERVICES` no longer includes `LoggerInterface`.
+
+    The clock's id differs from what was put to the user. A Lava-owned id was
+    proposed so that core would not occupy the PSR-20 id, the reasoning of entry 94;
+    a default that yields removes that objection, and the standard id is the one
+    apps and libraries type-hint. `lavaphp/core` now requires `psr/clock` `^1.0`,
+    which is interfaces only. Not done: a `logging.stream` config key, which the
+    user did not choose and which an app-registered logger now covers.
+
+262. **A test can replace a registered service for one boot: `TestApp::boot(…,
+    replace: [...])`.** (The user's decision 2, partly reversing 247.) Entry 247
+    declined container overrides as a second mechanism beside construction-time
+    fakes. Lava Notes showed what that cost: with no other way to swap a service,
+    its fakes lived in `app/Services.php` behind `LAVA_ENV=test`, so a production
+    process started with the wrong environment would have frozen its clock and
+    stopped sending webhooks without a word.
+
+    `Kernel::boot($appDir, $replace)` hands the map to `RegisterCoreServices`, which
+    builds the container with it, and `Container::get()` answers a replaced id,
+    before and after following aliases, with the given value. The guardrails are
+    what separate this from the override 247 rejected. Registration is unchanged:
+    the id is still registered once, by its owner. The map is fixed when the kernel
+    constructs the container, so nothing in `app/Services.php` or a pack can add an
+    entry. `ValidateWiring` reports `bad_replacement` for an id nothing registers,
+    or for a value that is not an instance of the id's class or interface. The front
+    controller and the CLI never pass a map. `Lava\Core\Testing\FrozenClock`
+    (`set()`, `advance()`) is the companion. Not done: showing replacements in `lava
+    services`, since the CLI never boots with any.
+
+263. **A command name is lowercase words of letters and digits joined by colons, and
+    a name outside that is a boot warning.** (The user's decision 4, B9.) The name
+    becomes the envelope's contract id, `lava.<name>/N`, and `lava-envelope/1`
+    admits only letters, digits and dots there, so `blog:publish-due` ran and
+    emitted envelopes that failed their own schema. `RegisterCommands` now reports
+    `invalid_command_name` for every command outside
+    `CommandRegistry::NAME_PATTERN`, and the fix names the nearest valid name, such
+    as `blog:publish:due`. Every core and pack command already complies.
+
+    It was first written as a refusal in `CommandRegistry::add()`, and that was
+    wrong. Commands register on every boot, a web request's included, so the refusal
+    was fatal to the website: rerun against the fix, Lava Notes' own
+    `blog:create-user` stopped the whole app from booting and 57 of its 58 tests
+    failed. A CLI naming rule must not take a site down on upgrade. As a warning the
+    command still registers and runs, `lava check` shows the rename, and `--strict`
+    fails until it is made.
+
+    Rejected for now: widening the pattern to admit hyphens, which is
+    `lava-envelope/2` under the frozen-`/N` rule and belongs with the next envelope
+    change rather than alone; and mapping `-` to `.` in the id, which makes the id
+    impossible to read back into the name.
+
+264. **`select()` refuses anything that is not a column name.** (B5.) Entry 68
+    already called `select('COUNT(*)')` "actively broken", and it was never fixed,
+    refused or documented. The compiler quotes every segment, and SQLite answers an
+    unknown double-quoted identifier with the string itself, so a count came back as
+    the text `'COUNT(*)'` and nothing failed. `select()` now accepts `name`,
+    `table.name`, `*` and `table.*`, and anything else is `bad_query` with a fix
+    that points at `Connection::query()`. An aggregate API is still a gap (G4).
+
+265. **Smaller corrections from the same review.** Each has a regression test that
+    fails on `0.1.2`.
+
+    - **`data` is always a JSON object** (B7). `Envelope::encode()` sends an empty
+      payload as `{}`. An unknown command on an app that could not boot emitted
+      `data: []`, a JSON list, against `lava-envelope/1`. The deliberate parts stay:
+      `unknown_command` comes first and exits 2. So does the per-command `schema`
+      such an envelope claims, which its empty `data` cannot satisfy; that is a
+      known limitation, not something to paper over.
+    - **The map lists declared types, not resolved classes** (B10).
+      `Container::declaredType()` reads a factory's return type, so a factory that
+      returns a different class per environment no longer moves the fingerprint,
+      which is what entry 42 promised. A factory with no return type now shows no
+      class.
+    - **A missing config key's fix names methods that exist** (B12). The labels
+      `integer` and `boolean` map to `int()` and `bool()`, and the test entry 35
+      wrote for validate now covers `Config`. When no key at all came from the file
+      a key names, the fix says that file is not read (B1).
+    - **Only config files that are read are promised or mapped** (B1, deliberate per
+      102). The skeleton's `config/app.php` comment, the framework reference and the
+      map's Files section said every file in `config/` is read. They now name the
+      ones that are: `config/app.php`, `config/logging.php`, `config/features.php`,
+      and the files an enabled pack declares.
+    - **Docs** (B2, B11). `lava-http-client.md` and `HttpClientModule` no longer
+      call `CurlTransport` "the seam a test replaces"; they name the constructor and
+      `replace:`. The view and http-client handler examples no longer read
+      `$this->…` in classes built with no arguments; the http-client one silently
+      sent an empty bearer token.
+
+266. **Sessions and CSRF get a documentation page now, and `lavaphp/session` is the
+    next milestone.** (The user's decision 3.) The plan's assumption 6 keeps them
+    out of v1 and app-owned. Lava Notes wrote its own and shipped three verified
+    flaws: a CSRF token not bound to the session, an open redirect after sign-in (a
+    tab passed the `//` check), and a timing difference that revealed which emails
+    have accounts. `apps/blog` has a reviewed design, but nobody installing from
+    Packagist sees it.
+
+    `docs/sessions-and-csrf.md` walks through that design and its files, shows the
+    pitfalls with wrong and right code, gives a checklist, and says where
+    `apps/blog` itself stops short. The pack is not started here: it needs its own
+    decision on session storage, a signed cookie as `apps/blog` uses or a store
+    behind an interface.
+
+    Writing the page against `apps/blog` found two of the same flaws in it, and both
+    are fixed. `Redirects::safeNext()` rejected `//`, `/\`, CR and LF but not a tab,
+    so `/<TAB>/evil.example` came back unchanged; it now refuses any control
+    character or backslash anywhere. `PasswordHasher`'s decoy was a fixed cost-12
+    hash while the app allows PHP 8.3, whose default is cost 10, which made an
+    unknown address the slow answer; `decoyHash()` now uses that hash only when
+    `PASSWORD_DEFAULT` agrees. `SignInHardeningTest` covers both, and `Page`'s
+    docblock no longer says a Twig global cannot be added: it can, and the reason
+    not to is that it would outlive the request.
+
+267. **What was verified, and what was not.** On this machine, PHP 8.5.4, with the
+    ini shim, after the last change:
+
+    - `composer verify`: 1059 tests, 5724 assertions, 0 skipped; PHPStan level 8 and
+      core at `max` both clean.
+    - `composer coverage`: every pack over its floor (core 89.19%, db 88.98%,
+      http-client 96.69%, validate 98.29%, view 97.19%), 201 child processes
+      captured.
+    - `composer check:floor`: 534 files parse on PHP 8.3, and every changed or new
+      file also lints on 8.4.
+    - `composer check:install` and `composer check:split`: both green, with the
+      three committed maps regenerated.
+    - `apps/blog` (48 tests) and `apps/demo` (24 tests) pass on their own installs.
+    - Every new regression test was run against the `0.1.2` source in a separate
+      worktree and fails there. The throwable tests were rerun with a fixture that
+      boots on `0.1.2`, so their failure is B3's and not B6's; the old `safeNext()`
+      returns `/<TAB>/evil.example` unchanged.
+    - Lava Notes, pointed at this working tree through path repositories, passes all
+      58 of its tests; its map, once regenerated, is current under `dev`, `prod` and
+      `test`; and `lava check --strict` reports only its two hyphenated command
+      names and the one-time map regeneration.
+
+    Not verified: CI, since nothing is pushed; the suite on PHP 8.3 and 8.4, which
+    only CI runs; the new behaviour under FPM or Apache rather than `php -S` and
+    in-process tests; and MySQL or PostgreSQL. Nothing is committed or released:
+    these are breaking changes for an app that registered a hyphenated command,
+    relied on `select()` with an expression, or read `context` from a production
+    5xx, so the next release is a minor, `0.2.0`, with the lockstep constraints
+    bumped together.

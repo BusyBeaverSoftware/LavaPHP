@@ -21,6 +21,17 @@ use Psr\Http\Message\ServerRequestInterface;
  * environment — renders the production page in production. With no environment
  * passed and none recorded, the page is the production one: the default that
  * shows less is the one that cannot put a submitted value in front of a browser.
+ *
+ * **In production, a server fault withholds its context and source in JSON too.**
+ * A 5xx problem's context is where the internals are — the SQL and its bound
+ * values for `query_failed`, an upstream's response body for
+ * `unexpected_status`, an exception's message for `unexpected_failure` — and
+ * JSON is what any client without an `Accept` header gets. So a production 5xx
+ * keeps its code, sentence and fix, and sends `context` as `{}` and `source` as
+ * null ({@see redacts()}); `App` writes the whole problem to the log instead. A
+ * 4xx keeps everything in every environment: it is the caller's mistake, and
+ * the field, the rule and the fix are what let an agent repair its request in
+ * one round trip.
  */
 final class HttpErrors
 {
@@ -106,10 +117,48 @@ final class HttpErrors
         ?ServerRequestInterface $request = null,
         ?string $env = null,
     ): ResponseInterface {
+        $env ??= self::envOf($request);
+
         if (self::wantsJson($request)) {
-            return Responses::json(['problems' => $report->json()], $status);
+            $problems = $report->json();
+            if (self::redacts($status, $env)) {
+                $problems = array_map(self::redacted(...), $problems);
+            }
+
+            return Responses::json(['problems' => $problems], $status);
         }
-        return Responses::html(DiagnosticsPage::render($report, $env ?? self::envOf($request)), $status);
+        return Responses::html(DiagnosticsPage::render($report, $env), $status);
+    }
+
+    /**
+     * Whether a response at this status, in this environment, withholds the
+     * problems' context and source from the client.
+     *
+     * Public because the decision has two consumers that must agree: this class
+     * leaves the details out of the response, and `App` writes them to the log —
+     * a detail withheld from one and missing from the other would make a
+     * production 500 undiagnosable.
+     */
+    public static function redacts(int $status, string $env): bool
+    {
+        return $env === 'prod' && $status >= 500;
+    }
+
+    /**
+     * A problem object with its context and source withheld. The keys stay, so
+     * the shape a client parses is the same in every environment: `context` as
+     * an empty JSON object (an empty PHP array would encode as a list) and
+     * `source` as null.
+     *
+     * @param array<string, mixed> $problem
+     * @return array<string, mixed>
+     */
+    private static function redacted(array $problem): array
+    {
+        $problem['context'] = new \stdClass();
+        $problem['source'] = null;
+
+        return $problem;
     }
 
     /** The environment the request was answered in, or `prod` when nothing recorded one. */

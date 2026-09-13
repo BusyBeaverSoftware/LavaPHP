@@ -77,6 +77,23 @@ final class BuildRouter implements BootStep
         // Compile everything; bad routes are already on the report by name.
         $router->finalize($ctx->problems);
 
+        // The router and its reversal are services like any other, registered
+        // here because this is the step that builds them — and registered at
+        // all so a handler or a pack can reach them BY TYPE instead of closing
+        // over the boot context, which no handler or pack has.
+        //
+        // Order matters twice, and both are load-bearing. After app/Services.php,
+        // so an app that registered these ids gets a duplicate_service naming both
+        // sites rather than silently losing its own. And BEFORE the injection plans
+        // below, because a plan asks the container whether each parameter's type
+        // is registered: registered after them, as they once were, a handler that
+        // type-hinted UrlGenerator failed its plan with a service_not_registered
+        // whose fix — register it yourself — was itself a duplicate_service. A
+        // pack's factory may still depend on UrlGenerator even though the pack's
+        // register() ran earlier: the closure is called at resolution, not there.
+        $ctx->container->singleton(Router::class, static fn (): Router => $router);
+        $ctx->container->singleton(UrlGenerator::class, static fn (): UrlGenerator => new UrlGenerator($router));
+
         // Every distinct ->when() gate must be a defined flag that resolves in
         // this env — a typo in a gate is the classic silent 404, so it fails boot.
         foreach ($this->distinctGateNames($router) as $feature) {
@@ -106,21 +123,6 @@ final class BuildRouter implements BootStep
                 $ctx->problems->add($problem);
             }
         }
-
-        // The router and its reversal are services like any other, registered
-        // here because this is the step that builds them — and registered at
-        // all so a handler or a pack can reach them BY TYPE instead of closing
-        // over the boot context, which no handler or pack has.
-        //
-        // Order matters and is load-bearing: this runs after app/Services.php
-        // (so an app that registered these ids gets a duplicate_service naming
-        // both sites rather than silently losing its own) and before
-        // ValidateWiring (so anything that depends on them is resolved and
-        // checked at boot). A pack's factory may therefore depend on
-        // UrlGenerator even though the pack's register() ran earlier — the
-        // closure is called here, not there.
-        $ctx->container->singleton(Router::class, static fn (): Router => $router);
-        $ctx->container->singleton(UrlGenerator::class, static fn (): UrlGenerator => new UrlGenerator($router));
     }
 
     /** @return list<string> class-strings from the optional app/Middleware.php */

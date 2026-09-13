@@ -13,7 +13,8 @@ use Lava\Core\Problem\ProblemReport;
  * broken apps still render something readable in a browser.
  *
  * In prod only the problem sentence and the fix are shown; everything else
- * (context, sources) is dev-mode information.
+ * is dev-mode information — the context, and the source, which is an absolute
+ * path on the server.
  */
 final class DiagnosticsPage
 {
@@ -67,7 +68,7 @@ HTML;
         $fix = self::e($problem->fix);
 
         $meta = "<code>{$code}</code> · {$severity}";
-        if ($problem->source !== null) {
+        if ($verbose && $problem->source !== null) {
             $meta .= ' · <code>' . self::e((string) $problem->source) . '</code>';
         }
 

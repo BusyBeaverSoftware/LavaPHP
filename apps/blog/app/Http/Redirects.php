@@ -51,9 +51,13 @@ final class Redirects
             return $fallback;
         }
 
-        // A CR or LF has no business in a Location header, and a URL-encoded one
-        // arrives here already decoded.
-        if (str_contains($raw, "\n") || str_contains($raw, "\r")) {
+        // No control character and no backslash, anywhere. A URL parser strips
+        // tab, CR and LF before it reads the URL, so `/<TAB>/evil.example` passed
+        // the check above and reached the browser as `//evil.example` — another
+        // host. A backslash reads as `/` in the same parsers. The CR/LF check this
+        // replaces caught header injection and missed the tab; a URL-encoded
+        // control character arrives here already decoded, so this sees it.
+        if (preg_match('/[\x00-\x1F\x7F\\\\]/', $raw) === 1) {
             return $fallback;
         }
 

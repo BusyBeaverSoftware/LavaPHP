@@ -47,7 +47,7 @@ final class CheckCommandTest extends CommandTestCase
         // asserted rather than derived because this test's job is to notice a
         // count that changed without anyone deciding it should.
         self::assertSame(
-            ['routes' => 4, 'services' => 13, 'features' => 1, 'commands' => 12, 'middleware' => 1],
+            ['routes' => 4, 'services' => 14, 'features' => 1, 'commands' => 12, 'middleware' => 1],
             $envelope['data']['counts'],
         );
     }
@@ -226,7 +226,7 @@ final class CheckCommandTest extends CommandTestCase
 
         self::assertStringContainsString('routes', $text);
         self::assertStringContainsString('tests', $text);
-        self::assertStringContainsString('routes: 4  services: 13  features: 1  commands: 12', $text);
+        self::assertStringContainsString('routes: 4  services: 14  features: 1  commands: 12', $text);
     }
 
     /**

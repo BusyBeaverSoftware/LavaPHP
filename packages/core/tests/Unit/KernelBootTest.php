@@ -17,6 +17,7 @@ use Lava\Core\Boot\Steps\LoadDotEnv;
 use Lava\Core\Boot\Steps\LoadPackConfig;
 use Lava\Core\Boot\Steps\RegisterCommands;
 use Lava\Core\Boot\Steps\RegisterCoreServices;
+use Lava\Core\Boot\Steps\RegisterDefaultServices;
 use Lava\Core\Boot\Steps\ValidateWiring;
 use Lava\Core\Boot\Steps\WireAppServices;
 use Lava\Core\Boot\Steps\WireModules;
@@ -54,6 +55,7 @@ final class KernelBootTest extends TestCase
             RegisterCoreServices::class,
             WireModules::class,
             WireAppServices::class,
+            RegisterDefaultServices::class,
             BuildRouter::class,
             RegisterCommands::class,
             ValidateWiring::class,

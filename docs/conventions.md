@@ -252,4 +252,9 @@ framework's throw site), and a stable snake_case `code`. Problem reports
 collect **all** problems in one pass; nothing fails fast and hides the rest.
 Runtime 404/405 are problems too. Media: JSON for machines (the default when
 no useful Accept header is present), the hand-escaped diagnostics page for
-browsers; prod hides context, dev shows everything.
+browsers. Outside `prod` both show everything. In `prod` the page shows only the
+sentence and the fix, and JSON withholds `context` and `source` for a server fault
+(5xx) — the app writes the whole problem to its `LoggerInterface` instead — while a
+client mistake (4xx) keeps them, because they are how a caller repairs its request.
+A throwable that is not a problem, on any path — boot, a command, a request — is
+wrapped as `unexpected_failure` rather than escaping as a PHP fatal.

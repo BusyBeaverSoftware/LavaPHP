@@ -13,6 +13,7 @@ use Lava\Core\Problem\MethodNotAllowed;
 use Lava\Core\Problem\ProblemReport;
 use Lava\Core\Problem\RouteNotFound;
 use Lava\Core\Problem\Severity;
+use Lava\Core\Problem\SourceLocation;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 
@@ -99,6 +100,23 @@ final class HttpTest extends TestCase
         $prod = DiagnosticsPage::render($report, 'prod');
         self::assertStringNotContainsString('secret_context_key', $prod);
         self::assertStringContainsString('FIX', $prod);
+    }
+
+    public function testTheProductionPageDoesNotShowWhereOnTheServerAProblemIs(): void
+    {
+        // A source is an absolute path on the server; the page's own docblock
+        // always called sources dev-only, and the source line was never gated
+        // (Lava Notes, B13).
+        $report = new ProblemReport();
+        $report->add(new class ('It broke.', 'Fix it.', [], SourceLocation::of('/srv/www/blog/app/Services.php', 12)) extends LavaProblem {
+            public function code(): string
+            {
+                return 'test_http';
+            }
+        });
+
+        self::assertStringContainsString('/srv/www/blog/app/Services.php', DiagnosticsPage::render($report, 'dev'));
+        self::assertStringNotContainsString('/srv/www', DiagnosticsPage::render($report, 'prod'));
     }
 
     public function testBootFailureRendersAsAResponse(): void

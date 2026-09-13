@@ -13,13 +13,14 @@ use Lava\Core\Features\Features;
 use Lava\Core\Features\FeatureScope;
 use Lava\Core\Log\LineLogger;
 use Lava\Core\Problem\InvalidConfig;
-use Psr\Log\LoggerInterface;
 
 /**
  * Registers exactly {@see \Lava\Core\Boot\Kernel::CORE_SERVICES}, in order —
  * nothing else. Module services (M3) and app/Services.php registrations come
  * after, so user wiring can always depend on these ids. A fixture test asserts
  * the container's first ids are exactly the constant, so the two cannot drift.
+ * `LoggerInterface` is not among them: core fills it only when nothing else
+ * did, in {@see RegisterDefaultServices}.
  *
  * Config errors surface HERE, at boot, not lazily on first get(): a bad
  * logging.level is an invalid_config problem with a fix, never a surprise
@@ -35,7 +36,10 @@ final class RegisterCoreServices implements BootStep
         $config = $ctx->config;
         $features = $ctx->features;
 
-        $container = new Container();
+        // The container is built with a test's replacements, if any, because
+        // this is where it is built: nothing later — a pack, app/Services.php —
+        // can add one, which is what keeps replacement a test's tool.
+        $container = new Container($ctx->replacements);
         $container->value('app.dir', $ctx->appDir);
         $container->value('app.env', $ctx->env);
         // `Features` is resolved through the scope, so whoever asks during a
@@ -62,7 +66,6 @@ final class RegisterCoreServices implements BootStep
             $level = 'debug'; // keep later steps running so the report shows this problem alone
         }
         $container->singleton(LineLogger::class, static fn (): LineLogger => new LineLogger($level));
-        $container->alias(LoggerInterface::class, LineLogger::class);
 
         $ctx->container = $container;
         $ctx->appContext = new AppContext($ctx->appDir, $ctx->env, $config, $features);

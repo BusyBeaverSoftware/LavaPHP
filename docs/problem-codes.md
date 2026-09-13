@@ -31,6 +31,7 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `invalid_config` | `InvalidConfig` | a config file returns a non-array, an unknown key/section appears, or a typed accessor finds a wrong type | name the file, the expected shape |
 | `invalid_env_file` | `InvalidEnvFile` | `config/.env` has a malformed line | quote the line and line number |
 | `duplicate_service` | `DuplicateService` | a container id is registered twice | show both registration sites |
+| `bad_replacement` | `BadReplacement` | a test's `TestApp::boot(replace:)` names an id nothing registers, or a value that is not an instance of the id's class or interface | replace only an id `lava services` lists, with an instance of its type |
 | `service_not_registered` | `ServiceNotRegistered` | code resolves an id that was never registered | show the exact registration line to add |
 | `circular_service` | `CircularService` | a service factory (transitively) resolves itself | print the chain |
 | `unknown_feature` | `UnknownFeature` | a flag name was never defined anywhere | suggest the nearest defined name |
@@ -41,7 +42,7 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `missing_pack` | `MissingPack` | a module is listed in `app/Modules.php`, its feature resolves on, but the pack's module class doesn't exist | the exact `composer require lavaphp/<pack>` command |
 | `module_mismatch` | `ModuleMismatch` | a loaded module's `PackInfo` disagrees with its `app/Modules.php` entry (package or feature) | show both values and the entry's line |
 | `invalid_gating` | `InvalidGating` | an audience-targeted flag (rollout/users) gates a boot-lifetime resource (a module) | point at per-request gating (`->when()`) or a deterministic flag |
-| `unexpected_failure` | `UnexpectedFailure` | a non-LavaProblem throwable escaped during boot (e.g. a PHP error in a user config file) | wrap the original message + step |
+| `unexpected_failure` | `UnexpectedFailure` | a non-LavaProblem throwable escaped during boot (e.g. a PHP error in a user config file), while running a command, or while answering a request (a handler, a middleware, a subject resolver) | wrap the original class, message and location; a request answers 500, and in `prod` the response withholds the context and the app logs it |
 | `bad_route_pattern` | `BadRoutePattern` | a route path is malformed (no leading `/`, untyped `{param}`, unknown/duplicate param type, unclosed placeholder) or URL generation passed a value the route would never match | quote the path and the exact syntax to write |
 | `bad_handler` | `BadHandler` | a route handler breaks the handler contract: missing/malformed spec, class not instantiable, constructor takes arguments, method missing/non-public, no or wrong return type, non-injectable parameter | name the handler and the exact signature to write |
 | `bad_middleware` | `BadMiddleware` | a middleware class-string doesn't exist or doesn't implement PSR-15 `MiddlewareInterface` | name the class and the PSR-15 signature |
@@ -52,6 +53,7 @@ readability; see [conventions.md](conventions.md#the-cli-contract).
 | `malformed_body` | `MalformedBody` | a request declared a JSON content type and the body is not valid JSON, or is valid JSON that is not an object | send valid JSON, or send it as a form instead |
 | `unknown_command` | `UnknownCommand` | `lava <name>` named a command this app doesn't have | suggest the nearest registered command, else `lava list` |
 | `duplicate_command` | `DuplicateCommand` | two commands claim the same name (core, a pack, or `app/Commands.php`) | rename or remove the second; when both claim one pack, override `pack()` |
+| `invalid_command_name` | `InvalidCommandName` | a command's name is not lowercase letters and digits joined by colons, so its `lava.<name>/N` envelope id would fail the envelope's own pattern — **severity warn** (the command still runs) | rename it; the fix names the nearest valid name |
 | `missing_entry_point` | `MissingEntryPoint` | `lava serve` found no `public/index.php` to run — checked before the server is announced | copy the canonical one from the `lavaphp/app` skeleton |
 | `missing_test_runner` | `MissingTestRunner` | the app has no `vendor/bin/phpunit` to run its suite with | `Run: composer install --dev`, or set `LAVA_PHPUNIT` |
 | `bad_test_report` | `BadTestReport` | the runner ran but wrote no JUnit report, or wrote one that isn't well-formed XML | run the runner directly; its own output rides in `context` |
@@ -133,7 +135,7 @@ while leaving the tables. Each migration is recorded the moment it succeeds
 instead, so a failed run leaves everything before it applied *and* recorded, and
 saying so is what makes the run resumable rather than mysterious.
 
-M1/M2/M3 status: every code above has its class; all except `unexpected_failure` are
+M1/M2/M3 status: every code above has its class, and every one is
 exercised by fixture/unit tests under `packages/core/tests/` (see
 `tests/Unit/KernelBootTest.php` for the fixture-level ones — `bad-routes-app`
 collects five route problems in one boot; `module-app` exercises the module

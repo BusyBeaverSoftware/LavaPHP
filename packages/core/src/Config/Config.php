@@ -183,12 +183,50 @@ final class Config
             throw new InvalidConfig(
                 "Required config key '{$key}' is not set.",
                 "Set '{$name}' in config/{$file}.php, or read it with a default: \$config->"
-                . strtolower($expected) . "('{$key}', …).",
+                . (self::OPTIONAL_ACCESSORS[$expected] ?? $expected) . "('{$key}', …)."
+                . $this->unreadFileNote($file),
                 ['key' => $key, 'expected' => $expected],
             );
         }
 
         return $this->values[$key];
+    }
+
+    /**
+     * The optional accessor for each type label. The label is what
+     * `context.expected` reports — `integer`, the word a reader expects — and the
+     * method is `int()`. Deriving one from the other printed `$config->integer()`,
+     * a method that does not exist, in the fix meant to repair the call.
+     */
+    private const OPTIONAL_ACCESSORS = [
+        'string' => 'string',
+        'integer' => 'int',
+        'boolean' => 'bool',
+        'array' => 'array',
+    ];
+
+    /**
+     * Why a key was never going to be found, when no key at all came from its file.
+     *
+     * Core reads `config/app.php` and `config/logging.php`; a pack reads only the
+     * files it declares, and only while it is enabled (decision 102). A key in any
+     * other file is not misspelt — it is in a file nothing opens — so "set it in
+     * config/cache.php" would send the reader to create a file that changes
+     * nothing. A file some key did come from is plainly read, and needs no note.
+     */
+    private function unreadFileNote(string $file): string
+    {
+        if (in_array($file, ['app', 'logging'], true)) {
+            return '';
+        }
+        foreach (array_keys($this->values) as $key) {
+            if (str_starts_with($key, $file . '.')) {
+                return '';
+            }
+        }
+
+        return " No key came from config/{$file}.php: core reads config/app.php and config/logging.php, "
+            . 'and a pack reads only the config files it declares, while it is enabled.';
     }
 
     /**

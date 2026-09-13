@@ -85,9 +85,21 @@ final class Envelope
         ];
     }
 
-    /** @param array<string, mixed> $envelope */
+    /**
+     * `data` is an object on the wire even when nothing was put in it. PHP's
+     * empty array encodes as `[]`, a JSON list, and `lava-envelope/1` requires an
+     * object — so an envelope emitted before any payload existed (an unknown
+     * command, a pack command whose app could not boot) broke the one contract
+     * every envelope promises.
+     *
+     * @param array<string, mixed> $envelope
+     */
     public static function encode(array $envelope): string
     {
+        if (($envelope['data'] ?? null) === []) {
+            $envelope['data'] = new \stdClass();
+        }
+
         return json_encode($envelope, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
     }
 }

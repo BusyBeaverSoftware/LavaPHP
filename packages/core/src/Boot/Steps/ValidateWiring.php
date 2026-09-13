@@ -28,6 +28,13 @@ final class ValidateWiring implements BootStep
         }
         $container = $ctx->container;
 
+        // A test's replacements are checked first, and only here: every
+        // registration exists now, so "nothing registers this id" is true
+        // rather than "not yet".
+        foreach ($container->replacementProblems() as $problem) {
+            $ctx->problems->add($problem);
+        }
+
         foreach ($container->ids() as $id) {
             // Never fail-fast: the next registration still gets its turn. But a
             // failing singleton is not cached, so every service that depends on

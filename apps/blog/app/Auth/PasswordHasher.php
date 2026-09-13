@@ -25,9 +25,16 @@ final class PasswordHasher
      * known one in ~50ms. Anyone can then measure which addresses are
      * registered — through an endpoint whose whole job is to not say that.
      *
-     * Verifying against a decoy makes the two paths do the same work.
+     * Verifying against a decoy makes the two paths do the same work — but only
+     * while the decoy costs what a real hash costs. This one is bcrypt at cost 12,
+     * PHP 8.4's default. This app allows PHP 8.3, whose default is cost 10, and
+     * there the decoy was the SLOW path: the same oracle, reversed. So
+     * {@see decoyHash()} uses it only when `PASSWORD_DEFAULT` agrees, and hashes a
+     * fresh decoy with today's default when it does not.
      */
     private const DECOY = '$2y$12$FStTCADQ/WuDiUdxwl78l.P6GcDASdHQwLcO6If1N5BDDzHHGVsEu';
+
+    private ?string $decoy = null;
 
     public function hash(string $plain): string
     {
@@ -42,7 +49,19 @@ final class PasswordHasher
      */
     public function verify(?string $hash, string $plain): bool
     {
-        return password_verify($plain, $hash ?? self::DECOY);
+        return password_verify($plain, $hash ?? $this->decoyHash());
+    }
+
+    /**
+     * The hash an unknown account is verified against: made with the same
+     * algorithm and cost as `hash()` makes today, which is the whole of its job.
+     * Public so a test can hold it to that.
+     */
+    public function decoyHash(): string
+    {
+        return $this->decoy ??= password_needs_rehash(self::DECOY, PASSWORD_DEFAULT)
+            ? password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT)
+            : self::DECOY;
     }
 
     /**

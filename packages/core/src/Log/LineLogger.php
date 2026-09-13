@@ -9,7 +9,15 @@ use Psr\Log\AbstractLogger;
 /**
  * The built-in PSR-3 logger: one line per entry to stderr (or a given
  * stream), timestamped, with context JSON-appended when present. Deliberately
- * minimal — any PSR-3 implementation can be swapped in at the container edge.
+ * minimal.
+ *
+ * It is the app's `LoggerInterface` by default, not by force. Core registers
+ * `LineLogger` itself, and aliases `LoggerInterface` to it only when neither a
+ * pack nor app/Services.php registered that id first ({@see
+ * \Lava\Core\Boot\Steps\RegisterDefaultServices}). So an app that wants Monolog
+ * registers `LoggerInterface` in app/Services.php, and every service that
+ * type-hints the interface receives Monolog — including the log entry `App`
+ * writes for a production 500.
  */
 final class LineLogger extends AbstractLogger
 {
