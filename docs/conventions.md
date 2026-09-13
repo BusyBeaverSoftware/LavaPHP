@@ -171,6 +171,14 @@ global layer can catch it and answer, exactly as it can a handler's problem;
 what no layer catches renders as it always did. Route middleware runs only once
 a route has matched.
 
+Every layer can learn which route matched: `App` puts the match on the request
+before the first middleware runs, and `RouteArgs::of($request)` returns it —
+`->routeName` and the typed params — or `null` for a request no route answered.
+So one middleware can serve many routes by looking the name up in a map the app
+owns (`'admin.posts.edit' => 'edit_posts'`), instead of a middleware class per
+requirement, and a test can walk `Router::routes()` to find a route the map
+forgot.
+
 ## Route paths
 
 `/users/{id:int}` — every param has an explicit type. Builtins: `int`

@@ -4,13 +4,34 @@ declare(strict_types=1);
 
 namespace Lava\Core\Routing;
 
+use Psr\Http\Message\ServerRequestInterface;
+
 /**
  * Typed accessors for the matched route's params. Values were already
  * validated against their param types by the compiled regex — the accessors
  * only convert (int) or pass through (str, uuid).
+ *
+ * It is also how middleware learns the matched route. `App` records it on the
+ * request as {@see ATTRIBUTE} before the first middleware runs, so a layer can
+ * read `RouteArgs::of($request)?->routeName` instead of matching the path a
+ * second time, and one middleware can serve many routes by looking the name up.
  */
 final readonly class RouteArgs
 {
+    /** The request attribute holding the matched route's args. */
+    public const ATTRIBUTE = 'lava.route';
+
+    /**
+     * The route that matched this request, or null when none did — a 404, a
+     * 405 or a body that did not parse, which global middleware also sees.
+     */
+    public static function of(ServerRequestInterface $request): ?self
+    {
+        $args = $request->getAttribute(self::ATTRIBUTE);
+
+        return $args instanceof self ? $args : null;
+    }
+
     /**
      * @param array<string, string|int> $args
      */

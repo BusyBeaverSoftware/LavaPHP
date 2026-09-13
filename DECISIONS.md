@@ -4803,3 +4803,26 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     defaultName()` is deterministic and documented, and a name is what the
     database knows the index by. Dropping a column is still not offered, for the
     reason `SchemaCompiler::addColumns()` gives for changing one.
+
+283. **Middleware can read the matched route from the request (R2-G1, route
+    part).** Roles and capabilities stay app-owned (plan Assumption 6), but the
+    review found the seam a capability check needs was missing: the match reached
+    only the handler, so a check keyed by route took one middleware subclass per
+    requirement or a second `Router::match()` of the path. `App::dispatch()` now
+    puts the match's `RouteArgs` on the request as `RouteArgs::ATTRIBUTE`
+    (`lava.route`) before the pipeline runs, and `RouteArgs::of($request)` reads
+    it back, `null` when no route matched.
+
+    `RouteArgs` rather than a new type, because it already carries
+    `routeName` and the typed params, and a handler already takes it: the same
+    object reaches both, so middleware and handler cannot disagree about which
+    route answered. Middleware arguments (`'can:edit_posts'`) were the other
+    option and were not taken: a middleware id must be a class the container
+    resolves (entry 94's wiring check), and a string with arguments in it is the
+    kind of reference `lava routes` cannot verify at boot. With the attribute,
+    one `RequireCapability` looks the route name up in a map the app owns, and a
+    test can walk `Router::routes()` for a name the map forgot. Entry 242 kept
+    per-request state out of attributes for feature flags; this is the other
+    kind of fact, set once by core and read-only, as `HttpErrors::ENV_ATTRIBUTE`
+    is. An unrouted request (404, 405, unparseable body) carries no attribute,
+    so global middleware can tell the two apart.

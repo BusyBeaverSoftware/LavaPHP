@@ -23,6 +23,7 @@ use Lava\Core\Problem\UnexpectedFailure;
 use Lava\Core\Routing\HandlerInvoker;
 use Lava\Core\Routing\Matched;
 use Lava\Core\Routing\MiddlewarePipeline;
+use Lava\Core\Routing\RouteArgs;
 use Lava\Core\Routing\Router;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -229,6 +230,11 @@ final class App implements RequestHandlerInterface
         // matching stays usable on plan-less routers (tests, URL generation).
         $plan = $this->router->plan($route->name);
         $args = $result->args;
+
+        // On the request before any middleware runs, so a layer can ask which
+        // route answered (a permission keyed by route name, say) rather than
+        // match the path again — see RouteArgs::of().
+        $request = $request->withAttribute(RouteArgs::ATTRIBUTE, $args);
 
         // Caught OUTSIDE the pipeline, so every global and route middleware
         // meets a handler's throwable first, exactly as it meets a problem: an
