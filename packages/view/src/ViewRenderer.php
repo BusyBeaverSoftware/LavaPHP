@@ -12,6 +12,7 @@ use Psr\Http\Message\ResponseInterface;
 use Twig\Environment;
 use Twig\Error\RuntimeError;
 use Twig\Error\SyntaxError;
+use Twig\Loader\FilesystemLoader;
 
 /**
  * Renders a template into a response — the service a handler type-hints.
@@ -72,7 +73,7 @@ final class ViewRenderer
         $template = self::normalize($template);
 
         if (!$this->exists($template)) {
-            throw TemplateNotFound::of($template, $this->templateDir, $this->templates());
+            throw $this->notFound($template);
         }
 
         try {
@@ -114,6 +115,37 @@ final class ViewRenderer
         }
 
         return null;
+    }
+
+    /**
+     * The problem for a template that is not there, naming where it was looked for.
+     *
+     * A `@namespace/…` name is looked up in that namespace's directories — a
+     * theme added through `environment()->getLoader()->addPath($dir, 'theme')` —
+     * not in the pack's own. So its directories and its list come from Twig's
+     * loader: listing the main directory for it sent the reader to the wrong
+     * place (Lava Notes, R2-B15).
+     */
+    private function notFound(string $template): TemplateNotFound
+    {
+        $loader = $this->twig->getLoader();
+        $slash = strpos($template, '/');
+        if (!str_starts_with($template, '@') || $slash === false || !$loader instanceof FilesystemLoader) {
+            return TemplateNotFound::of($template, $this->templateDir, self::templatesIn($this->templateDir));
+        }
+
+        $namespace = substr($template, 1, $slash - 1);
+        $paths = $loader->getPaths($namespace);
+        $available = [];
+        foreach ($paths as $path) {
+            foreach (self::templatesIn($path) as $name) {
+                $available[] = "@{$namespace}/{$name}";
+            }
+        }
+        $available = array_values(array_unique($available));
+        sort($available);
+
+        return TemplateNotFound::inNamespace($template, $namespace, substr($template, $slash + 1), $paths, $available);
     }
 
     /**
@@ -200,15 +232,15 @@ final class ViewRenderer
      *
      * @return list<string>
      */
-    private function templates(): array
+    private static function templatesIn(string $directory): array
     {
-        if (!is_dir($this->templateDir)) {
+        if (!is_dir($directory)) {
             return [];
         }
 
         $found = [];
         $walk = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($this->templateDir, \FilesystemIterator::SKIP_DOTS),
+            new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
         );
         foreach ($walk as $file) {
             if (!$file instanceof \SplFileInfo || !$file->isFile()) {
@@ -218,7 +250,7 @@ final class ViewRenderer
             if (!str_ends_with($path, '.twig')) {
                 continue;
             }
-            $found[] = substr($path, strlen($this->templateDir) + 1);
+            $found[] = substr($path, strlen($directory) + 1);
             if (count($found) >= 500) {
                 break;
             }

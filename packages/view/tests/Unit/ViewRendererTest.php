@@ -12,6 +12,7 @@ use Lava\View\Tests\Support\Templates;
 use Lava\View\TwigFactory;
 use Lava\View\ViewRenderer;
 use PHPUnit\Framework\TestCase;
+use Twig\Loader\FilesystemLoader;
 use Twig\TwigFunction;
 
 /**
@@ -170,6 +171,30 @@ final class ViewRendererTest extends TestCase
         }
 
         self::fail('a missing template should raise template_not_found');
+    }
+
+    public function testAMissingNamespacedTemplateNamesThatNamespacesDirectory(): void
+    {
+        // Lava Notes (R2-B15): a theme added as a Twig namespace was reported
+        // with only the pack's main directory — the wrong place to look.
+        $theme = Templates::make(['layout.twig' => 'theme', 'parts/nav.twig' => 'nav']);
+        try {
+            $twig = TwigFactory::of($this->templates->dir(), '', true);
+            $loader = $twig->getLoader();
+            self::assertInstanceOf(FilesystemLoader::class, $loader);
+            $loader->addPath($theme->dir(), 'theme');
+
+            (new ViewRenderer($twig, $this->templates->dir()))->renderToString('@theme/missing');
+            self::fail('a missing template should raise template_not_found');
+        } catch (TemplateNotFound $problem) {
+            self::assertStringStartsWith("No template '@theme/missing.twig' in {$theme->dir()}.", $problem->getMessage());
+            self::assertSame($theme->dir(), $problem->context['directory']);
+            self::assertSame(['@theme/layout.twig', '@theme/parts/nav.twig'], $problem->context['available']);
+            self::assertStringContainsString($theme->dir() . '/missing.twig', $problem->fix);
+            self::assertStringNotContainsString($this->templates->dir() . '/', $problem->getMessage() . $problem->fix);
+        } finally {
+            $theme->remove();
+        }
     }
 
     public function testAnEmptyDirectorySaysSoRatherThanListingNothing(): void

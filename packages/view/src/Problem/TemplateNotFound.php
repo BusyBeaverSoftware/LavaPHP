@@ -49,6 +49,43 @@ final class TemplateNotFound extends LavaProblem
         );
     }
 
+    /**
+     * The same problem for a `@namespace/…` name, which Twig looks up in that
+     * namespace's directories and nowhere else — so those are the ones named.
+     *
+     * @param string $relative the name inside the namespace — `layout.twig` for `@theme/layout.twig`
+     * @param list<string> $paths the namespace's directories, as Twig's loader holds them
+     * @param list<string> $available every template in them, as `@namespace/…` names
+     */
+    public static function inNamespace(string $template, string $namespace, string $relative, array $paths, array $available): self
+    {
+        if ($paths === []) {
+            return new self(
+                "No template '{$template}': no directory is registered for the Twig namespace '@{$namespace}'.",
+                "Register the namespace before rendering — \$view->environment()->getLoader()->addPath(\$directory, '{$namespace}') "
+                . '— or correct the namespace in the name.',
+                ['template' => $template, 'namespace' => $namespace, 'directories' => [], 'available' => []],
+            );
+        }
+
+        $listed = $available === []
+            ? "The namespace's directories hold no template yet."
+            : 'Available: ' . implode(', ', array_slice($available, 0, 12))
+                . (count($available) > 12 ? ' … (' . count($available) . ' in total)' : '') . '.';
+
+        return new self(
+            "No template '{$template}' in " . implode(', ', $paths) . ". {$listed}",
+            "Create {$paths[0]}/{$relative}, or call render() with one of the names above.",
+            [
+                'template' => $template,
+                'namespace' => $namespace,
+                'directory' => $paths[0],
+                'directories' => $paths,
+                'available' => $available,
+            ],
+        );
+    }
+
     public function code(): string
     {
         return 'template_not_found';
