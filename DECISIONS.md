@@ -4702,3 +4702,38 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     wrong result, which argues for shipping it soon, but none of that makes it a
     patch under the rule. Nothing was merged, tagged or given upgrade notes; the
     README section and the lockstep constraints wait for that decision.
+
+280. **`0.3.0` is prepared as a minor; the user chose it over `0.2.1`.** Entry 279
+    put the question, and the answer followed entry 268's rule: the round-2 fixes
+    ask four things of an upgrading app, so the version is `0.3.0`, and
+    docs/releasing.md now says a minor stays a minor even when every change in it
+    fixes a silent wrong result.
+
+    - The lockstep constraints move together, as in entry 268: `lavaphp/core`
+      `^0.3.0` in the four packs and the skeleton, every `lavaphp/*` requirement in
+      the root, `apps/demo` and `apps/blog` at `^0.3.0`, each path repository's
+      version pin at `0.3.0`, and the root lock updated with `composer update
+      'lavaphp/*'`, which moved only those five entries. Both apps' local installs
+      were updated the same way; their locks are not committed.
+    - The README has an "Upgrading from 0.2 to 0.3" section above the 0.1 one:
+      regenerate the map, move expressions out of every column position, check
+      `Schema::table()` migrations that declare indexes (a database migrated on 0.2
+      lacks them), read a boot failure's details from its context, and optionally
+      copy the front controller's `error_log()` block.
+    - Verified on `release-prep/0.3.0`: `composer verify` (1101 tests, 5922
+      assertions, nothing skipped, both PHPStan runs clean), `composer coverage`
+      (every floor met), `composer check:floor` (538 files on PHP 8.3),
+      `composer check:install` (all eight targets) and `composer check:split` (an
+      app built from the mirrors alone checks green).
+
+    One false red on the way: `check:install` run without the SQLite shim failed
+    `demo` and `blog` with `incomplete_test_report` — their database tests error
+    in `setUpBeforeClass` with no driver, and the JUnit report carries no
+    `<error>`. The same run on `main` failed identically, and with
+    `PHP_INI_SCAN_DIR` set every target passed. It is this machine, not the
+    release; the problem's own fix text named the cause.
+
+    Not done here: merging into `main`, pushing the branch for CI (step 6),
+    tagging and publishing. The prepared commit sits on `release-prep/0.3.0`, on
+    top of `fix/round2`; `main` is still `13537af`. A push of `main` runs the split
+    workflow and updates every mirror, so it waits for the user.

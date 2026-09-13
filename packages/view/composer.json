@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "lavaphp/core": "^0.2.0",
+        "lavaphp/core": "^0.3.0",
         "twig/twig": "^3.28"
     },
     "require-dev": {

@@ -40,6 +40,42 @@ and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 
+### Upgrading from 0.2 to 0.3
+
+`0.3.0` fixes results that were silently wrong, and some of the fixes are
+refusals. Require every `lavaphp/*` package at `^0.3.0` together, then:
+
+- **Run `lava map` once.** An alias row now names where `alias()` was called
+  rather than where its target was registered — core's default
+  `LoggerInterface` among them — and a factory declaring `self` or `static` shows
+  its class, so a committed `AGENTS.md` reads stale until it is regenerated.
+- **Move expressions out of every column position.** `where*()`, `orderBy()`,
+  both sides of a join and its table, and the keys of `insert()` and `update()`
+  now refuse what is not a column name with `bad_query`, as `select()` already
+  did. Write those with `whereRaw()`, `Connection::query()` or
+  `Connection::statement()`. Names may now use any letter and a schema prefix
+  (`prénom`, `main.users.name`).
+- **Check migrations that call `Schema::table()` with indexes.** `index()`,
+  `unique()` and a column's `->unique()` are created now; before, they were
+  dropped without a word. A database migrated on 0.2 does not have them, so add
+  them in a new migration, and expect a unique index over rows that already
+  collide to fail. `primary()` in `table()` is refused.
+- **Read a boot failure's details from its context.** `unexpected_failure` at
+  boot and a config file that throws no longer put the exception's message in the
+  sentence or an absolute path in the fix; both are in `context`, which
+  `lava check` prints. A test asserting on the old sentence reads
+  `context['message']` instead.
+- **Copy the new block in `public/index.php`** if you want it: in `prod` a boot
+  failure's report is written to the server's error log, since the response no
+  longer carries it.
+- **Nothing to do.** A request failure now names the app's own line as `source`
+  and carries a short trace outside `prod`; the default logger prints the
+  exception; problem JSON with invalid UTF-8 is substituted instead of throwing;
+  a `@namespace/…` template that is missing names that namespace's directories;
+  and `invalid_command_name` never suggests a name another command has.
+
+The reasoning for each is in [DECISIONS.md](DECISIONS.md), entries 270–280.
+
 ### Upgrading from 0.1 to 0.2
 
 `0.2.0` changes things an app may have to act on. Require every `lavaphp/*`

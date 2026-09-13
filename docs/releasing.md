@@ -27,8 +27,10 @@ worth stating exactly, because "pre-1.0" is otherwise read as "no promises":
 A change an app has to act on — a refusal where there was none, a response
 that carries less, a map that reads stale — goes out in a minor, never a patch.
 A `^0.1.0` constraint stops below `0.2.0`, so an app upgrades by choosing to.
-`0.2.0` is the first such minor; the README lists what upgrading to it asks of
-an app.
+`0.2.0` was the first such minor and `0.3.0` the second; the README lists what
+upgrading to each asks of an app. A minor stays a minor even when every change
+in it fixes a silent wrong result — `0.3.0` was planned as `0.2.1` until the
+list of what it asks of an app was written down (DECISIONS.md 279, 280).
 
 ## Before the tag
 
@@ -87,7 +89,7 @@ composer install    # the monorepo, for steps 1–3
 ## The tag
 
 ```
-git tag -a 0.2.0 -m "0.2.0"
+git tag -a 0.3.0 -m "0.3.0"
 ```
 
 Push it only when the release is meant to be published — the push is what makes
@@ -113,7 +115,7 @@ each package is published from a read-only mirror of its own directory — see
 [Publishing](#publishing). The tag is still the release act: the split workflow
 pushes it to every mirror, and Packagist learns of it there.
 
-Cross-package constraints are lockstep: `^0.2.0` appears in the five packages
+Cross-package constraints are lockstep: `^0.3.0` appears in the five packages
 that depend on core, so a minor release bumps them together or the packs
 resolve to a core older than the one they were tested against.
 
