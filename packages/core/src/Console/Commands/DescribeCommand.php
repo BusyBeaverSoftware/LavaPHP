@@ -113,7 +113,10 @@ final class DescribeCommand extends AppCommand
         if ($app->container->has($selector)) {
             $record = $app->container->describe($selector);
             $trace = $app->container->traces()[$selector] ?? null;
-            return ['service', $record->json() + [
+            // The record answers for an alias's target; file and line are where
+            // the selector itself was registered, as in `lava services`.
+            $at = $app->container->declaredAt($selector);
+            return ['service', ['file' => $at->file, 'line' => $at->line] + $record->json() + [
                 'alias_of' => $record->id !== $selector ? $record->id : null,
                 'dependencies' => $trace?->dependencies() ?? [],
                 'dependents' => $trace?->dependents() ?? [],

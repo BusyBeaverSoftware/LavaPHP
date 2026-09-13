@@ -26,7 +26,10 @@
                     "description": "For an alias, the id it resolves to; null otherwise.",
                     "anyOf": [{ "type": "string" }, { "type": "null" }]
                   },
-                  "file": { "type": "string" },
+                  "file": {
+                    "type": "string",
+                    "description": "Where this id was registered. For an alias, the alias() call, not its target's registration (which has its own row)."
+                  },
                   "line": { "type": "integer", "minimum": 1 },
                   "class": {
                     "description": "The concrete class resolved, once it has been; null before that, and for aliases and values.",

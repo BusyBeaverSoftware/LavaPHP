@@ -167,6 +167,23 @@ final class Container implements ContainerInterface
     }
 
     /**
+     * Where an id was registered — for an alias, the `alias()` call itself.
+     *
+     * {@see describe()} follows aliases and answers for the target, which is
+     * right for what an id resolves to and wrong for where it was wired: core's
+     * default `LoggerInterface` alias read as registered with `LineLogger` in
+     * RegisterCoreServices, and an app aliasing an id to a pack's service named
+     * the pack's file as its own wiring.
+     */
+    public function declaredAt(string $id): SourceLocation
+    {
+        $registration = $this->registrations[$id]
+            ?? throw ServiceNotRegistered::of($id, $this->referencedFrom());
+
+        return $registration->declaredAt;
+    }
+
+    /**
      * The type a singleton or factory declares it builds — its closure's return
      * type, as written — or null for a value, an alias, or a closure that
      * declares none.
@@ -176,6 +193,12 @@ final class Container implements ContainerInterface
      * document: a factory that returns `SmtpMailer` in prod and `NullMailer` in
      * dev resolves to a different class in each environment, and a map built from
      * that moved its fingerprint with `--env`. The declaration does not move.
+     *
+     * As written, except that `self`, `static` and `parent` are named: a closure
+     * written inside a class may return `static`, and a map row reading `static`
+     * names nothing a reader can open. The closure's scope class is fixed where
+     * it was written, so the name moves with the environment no more than the
+     * declaration does.
      */
     public function declaredType(string $id): ?string
     {
@@ -185,7 +208,22 @@ final class Container implements ContainerInterface
             return null;
         }
 
-        return (new \ReflectionFunction($registration->factory))->getReturnType()?->__toString();
+        $function = new \ReflectionFunction($registration->factory);
+        $declared = $function->getReturnType()?->__toString();
+        $scope = $function->getClosureScopeClass();
+        if ($declared === null || $scope === null) {
+            return $declared;
+        }
+
+        return preg_replace_callback(
+            '/(?<![\w\\\\])(self|static|parent)(?![\w\\\\])/',
+            static function (array $match) use ($scope): string {
+                $parent = $scope->getParentClass();
+
+                return $match[1] !== 'parent' ? $scope->getName() : ($parent === false ? 'parent' : $parent->getName());
+            },
+            $declared,
+        ) ?? $declared;
     }
 
     /**

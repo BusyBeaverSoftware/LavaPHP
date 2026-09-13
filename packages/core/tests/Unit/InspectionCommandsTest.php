@@ -70,6 +70,15 @@ final class InspectionCommandsTest extends CommandTestCase
         // describe() follows aliases, so the CLI has to notice the difference.
         self::assertSame('alias', $byId['Psr\Log\LoggerInterface']['kind']);
         self::assertSame('Lava\Core\Log\LineLogger', $byId['Psr\Log\LoggerInterface']['target']);
+
+        // …wired where alias() was called, not where the target was registered
+        // (R2-B11): the default logger is filled by RegisterDefaultServices.
+        self::assertStringEndsWith('RegisterDefaultServices.php', $byId['Psr\Log\LoggerInterface']['file']);
+        self::assertStringEndsWith('RegisterCoreServices.php', $byId['Lava\Core\Log\LineLogger']['file']);
+
+        [, $described] = $this->json('ok-app', ['describe', 'Psr\Log\LoggerInterface']);
+        self::assertSame('Lava\Core\Log\LineLogger', $described['data']['match']['alias_of']);
+        self::assertStringEndsWith('RegisterDefaultServices.php', $described['data']['match']['file']);
     }
 
     public function testServicesListsOnlyWhatHandlersCanTypeHint(): void

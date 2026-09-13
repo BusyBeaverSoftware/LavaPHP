@@ -80,6 +80,9 @@ final readonly class ProjectMap
             // describe() follows aliases, so a returned id that differs from the
             // requested one means this id points at that target.
             $isAlias = $record->id !== $id;
+            // Where this id was wired — an alias's own alias() call, not its
+            // target's registration, which has a row of its own.
+            $at = $app->container->declaredAt($id);
             $services[] = [
                 'id' => $id,
                 'kind' => $isAlias ? 'alias' : $record->kind->value,
@@ -89,7 +92,7 @@ final readonly class ProjectMap
                 // different class in each one, and a map built from that went
                 // stale under every `--env` but the one it was written in.
                 'class' => $isAlias ? null : $app->container->declaredType($id),
-                'at' => self::relative($record->file, $app->appDir) . ':' . $record->line,
+                'at' => self::relative($at->file, $app->appDir) . ':' . $at->line,
             ];
         }
 

@@ -44,13 +44,16 @@ final class ServicesCommand extends AppCommand
             // the requested one means this id is an alias of that target.
             $isAlias = $record->id !== $id;
             $trace = $traces[$id] ?? null;
+            // The id's own registration, not the record's: for an alias the
+            // record is the target's, and so is its line.
+            $at = $app->container->declaredAt($id);
 
             $records[] = [
                 'id' => $id,
                 'kind' => $isAlias ? 'alias' : $record->kind->value,
                 'target' => $isAlias ? $record->id : null,
-                'file' => $record->file,
-                'line' => $record->line,
+                'file' => $at->file,
+                'line' => $at->line,
                 'class' => $isAlias ? null : $record->class,
                 'dependencies' => $trace?->dependencies() ?? [],
                 'dependents' => $trace?->dependents() ?? [],
@@ -58,7 +61,7 @@ final class ServicesCommand extends AppCommand
             $rows[] = [
                 $id,
                 $isAlias ? 'alias' : $record->kind->value,
-                $record->file . ':' . $record->line,
+                $at->file . ':' . $at->line,
                 implode(' ', $trace?->dependencies() ?? []),
             ];
         }
