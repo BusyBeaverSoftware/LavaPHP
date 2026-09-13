@@ -4737,3 +4737,48 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     tagging and publishing. The prepared commit sits on `release-prep/0.3.0`, on
     top of `fix/round2`; `main` is still `13537af`. A push of `main` runs the split
     workflow and updates every mirror, so it waits for the user.
+
+281. **`0.3.0` is released.** The user gave the go-ahead after `52cb14e` had passed
+    all nine CI jobs on `release-prep/0.3.0` (run 34784057259). `main` was
+    fast-forwarded from `13537af` and pushed at 22:06:20 UTC; CI (34785785058) and
+    split (34785785052) both passed, and each mirror's `main` equalled a local
+    `git subtree split` of its directory. Only then was the tag cut and pushed, at
+    22:07:46; the tag's split (34785858544) and CI (34785858556) passed too.
+
+    Packagist updated itself a third time: every mirror's webhook got `202`
+    between 22:07:56 and 22:08:01, and a fresh `composer show -a` saw `0.3.0` for
+    `db`, `validate`, `view`, `http-client` and `app` by 22:09:44. It saw
+    `lavaphp/core` at 22:15:50, eight minutes later, with nobody pressing
+    **Update**. At 22:09 the cause was visible again: of the four copies of
+    `repo.packagist.org/p2/lavaphp/core.json`, the zstd one — what Composer asks
+    for — still carried `Last-Modified` 06:21:27, the `0.2.0` tag, while gzip,
+    brotli and uncompressed carried 22:08:03 and listed `0.3.0`. A `create-project`
+    in docker at 22:10 failed to resolve `lavaphp/core ^0.3.0` for the same reason.
+    Three releases, and core is the only package that has lagged on any of them.
+
+    One false green on the way, and it is the checklist's to prevent: the first
+    poll ran `composer show -a` from this repository's root, where the root
+    manifest's path repositories pin every package at `0.3.0`, and it reported all
+    six present at 22:08:37, seven minutes before Packagist served core. The
+    poll's own fresh Composer home did not help, because the path repositories
+    are in the project, not the home. docs/releasing.md now says to run the check
+    in an empty directory.
+
+    Installed from Packagist once core was served:
+    - PHP 8.5.4, 22:16 UTC, fresh Composer home and cache: `create-project
+      lavaphp/app` took `0.3.0`, `composer require` of the four packs locked all
+      five at `0.3.0`, and `lava check --strict` passed every section.
+    - `php:8.3-cli` (8.3.33) and `php:8.4-cli` (8.4.25), the deeper check entry
+      255 ran on `0.1.1` and entry 269 skipped: the same install with all four
+      packs enabled, a `views/` directory and `DATABASE_DSN` on a SQLite file;
+      `lava db:new create_notes_table`, then a second migration whose
+      `Schema::table()` adds a nullable `slug` and `unique('slug')`. `lava
+      db:migrate` applied both, `lava db:status` listed them, and `sqlite_master`
+      held `notes_slug_unique` — the index entry 270 found `0.2.0` dropping
+      without a word. `lava map` and `lava check --strict` then passed with four
+      packs, sixteen services and sixteen commands.
+
+    `fix/round2` (never pushed) and `release-prep/0.3.0` were deleted locally and
+    on GitHub once `git merge-base --is-ancestor` confirmed `main` contains both.
+    Not run for this release: the MySQL and PostgreSQL live tests, locally or in
+    CI.
