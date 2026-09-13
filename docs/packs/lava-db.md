@@ -213,8 +213,13 @@ order fails at DDL time and rolling them back in the wrong order fails too.
 one to the compiler for a single caller would be a feature the schema layer
 does not otherwise offer.
 
-`table()` **adds columns and nothing else** — no indexes, no constraint
-changes, and no altering a column that already exists. Changing a column's type
+`table()` **adds columns and indexes, and nothing else** — no primary key, no
+other constraint changes, and no altering a column that already exists. An
+`index()` or `unique()` there may cover a column the table already has, and a
+column's own `->unique()` is created too; `primary()` is refused with
+`bad_schema`, because SQLite cannot add one without rebuilding the table.
+(Before 0.2.1, `table()` dropped every index declaration without a word.)
+Changing a column's type
 or nullability means creating a new table and copying, which is a migration you
 should write deliberately rather than one a DSL should perform silently.
 
