@@ -4826,3 +4826,23 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     kind of fact, set once by core and read-only, as `HttpErrors::ENV_ATTRIBUTE`
     is. An unrouted request (404, 405, unparseable body) carries no attribute,
     so global middleware can tell the two apart.
+
+284. **Route patterns use one regex delimiter everywhere (R2-B2, missed in 0.3.0).**
+    Found while building redirect routes (entry 285). Entry 279 recorded section
+    A of the round-2 list as fixed, and R2-B2 was not: no commit touched the
+    router. `pattern()` checked a fragment and `UrlGenerator::url()` checked a
+    value inside `/…/`, while `compile()` and `match()` used `#…#`. A `/` in a
+    fragment ended the pattern early, so `[a-z]+(?:/[a-z]+)*` was refused with a
+    fix that pointed away from the cause — and `url()` for any param of core's
+    own `str` type, `[^/]+`, warned and threw `bad_route_pattern` for every value.
+    No test generated a `str` URL, and the blog's routes use custom types, so
+    nobody saw it. A `#` failed the other way: accepted, then never matched.
+
+    `Router::anchored()` now builds the one whole-value regex, `#^(?:…)$#`, that
+    `pattern()` and `url()` use, and `compile()` escapes a fragment's unescaped
+    `#` the same way, so a fragment means the same in all four places. An
+    escaped `\/`, which the blog wrote to get past the refusal, is still a slash.
+    `finalize()` also compiles each route's whole regex once: fragments valid
+    alone can still clash (two groups of one name), and such a route used to warn
+    and miss on every request; it is now `bad_route_pattern` at boot and is not
+    compiled.

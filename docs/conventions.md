@@ -183,7 +183,11 @@ forgot.
 
 `/users/{id:int}` — every param has an explicit type. Builtins: `int`
 (`\d+`), `str` (one segment), `uuid`, `path` (spans slashes). Custom types via
-`$r->pattern('word', '[a-z]+')` before first use. HEAD is never auto-mapped to
+`$r->pattern('word', '[a-z]+')` before first use; a fragment is a regex without
+delimiters or anchors, and may contain `/` (a type that spans segments) or `#`,
+which mean the same when the route is matched and when its URL is generated.
+A route whose types do not compile together is `bad_route_pattern` at boot.
+HEAD is never auto-mapped to
 GET — declare `Method::Head` if a route should answer HEAD. URL generation
 (`UrlGenerator::url()`) validates every value against its param type: a
 generated URL can never point at a path the router wouldn't match.

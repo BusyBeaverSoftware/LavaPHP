@@ -72,7 +72,7 @@ final class Router
         // Probe-compile the fragment by matching against ''. The @ silences
         // preg's own raw diagnostic for invalid fragments — the BadRoutePattern
         // below is the report we want, in the user's grammar with a fix.
-        if ($regex === '' || @preg_match('/^(?:' . $regex . ')$/', '') === false) {
+        if ($regex === '' || @preg_match(self::anchored($regex), '') === false) {
             throw new BadRoutePattern(
                 "Param type '{$name}' has an invalid regex fragment '{$regex}'.",
                 "Provide a valid regex fragment without delimiters or anchors — e.g. '[a-z0-9_]{2,32}'.",
@@ -154,6 +154,17 @@ final class Router
                     throw BadHandler::routeHasNone($name, $parts['path']);
                 }
                 [$regex, $params] = $this->compile($parts['path']);
+
+                // Each fragment compiled on its own in pattern(); together they
+                // can still clash, and a route regex that does not compile would
+                // warn and miss on every request instead of failing here, once.
+                if (@preg_match('#^' . $regex . '$#', '') === false) {
+                    throw BadRoutePattern::of(
+                        $parts['path'],
+                        'its compiled pattern is not a valid regex',
+                        'Check the custom types it uses: a fragment must not name a group of its own, and must be valid on its own.',
+                    );
+                }
             } catch (\Lava\Core\Problem\LavaProblem $problem) {
                 $problems->add($problem);
                 continue;
@@ -169,6 +180,7 @@ final class Router
                 $params,
             );
         }
+
         $this->builders = [];
         $this->finalized = true;
     }
@@ -274,6 +286,26 @@ final class Router
     }
 
     /**
+     * A fragment as a whole-value regex, `#^(?:…)$#`, with its `#` escaped.
+     *
+     * pattern(), compile(), match() and URL generation all use this one
+     * delimiter (Lava Notes, R2-B2). They used to mix two: a fragment was
+     * checked and turned into URLs inside `/…/`, where a `/` ended the pattern
+     * (so `[a-z]+(?:/[a-z]+)*` was refused and core's own `str`, `[^/]+`, could
+     * not generate a URL), and matched inside `#…#`, where a `#` did.
+     */
+    public static function anchored(string $fragment): string
+    {
+        return '#^(?:' . self::escapeDelimiter($fragment) . ')$#';
+    }
+
+    /** Every `#` a backslash does not already escape, escaped. */
+    private static function escapeDelimiter(string $fragment): string
+    {
+        return preg_replace('/(?<!\\\\)((?:\\\\\\\\)*)#/', '$1\\#', $fragment) ?? $fragment;
+    }
+
+    /**
      * Compiles a path into a regex and its param map.
      *
      * @return array{0: string, 1: array<string, string>} [regex without delimiters, params]
@@ -314,7 +346,7 @@ final class Router
                     "The types are int, str, uuid, path — register customs with \$r->pattern('{$type}', '…')",
                 );
             }
-            $regex .= "(?P<{$name}>{$fragment})";
+            $regex .= '(?P<' . $name . '>' . self::escapeDelimiter($fragment) . ')';
             $params[$name] = $type;
             $cursor = $close + 1;
         }

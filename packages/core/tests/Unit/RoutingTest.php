@@ -254,6 +254,57 @@ final class RoutingTest extends TestCase
         }
     }
 
+    public function testAFragmentMeansTheSameWhenCheckedMatchedAndTurnedIntoAUrl(): void
+    {
+        // Lava Notes R2-B2: pattern() and url() used `/…/`, match() used `#…#`.
+        $r = new Router();
+        $r->pattern('catpath', '[a-z]+(?:/[a-z]+)*');
+        $r->pattern('tag', '[a-z#]+');
+        $r->pattern('escaped', '[a-z\#]+');
+        $r->get('/category/{path:catpath}', 'categories.show')->handler(['MatcherOnly', 'category']);
+        $r->get('/tags/{tag:tag}', 'tags.show')->handler(['MatcherOnly', 'tag']);
+        $r->get('/escaped/{tag:escaped}', 'escaped.show')->handler(['MatcherOnly', 'escaped']);
+        $r->get('/people/{name:str}', 'people.show')->handler(['MatcherOnly', 'person']);
+        $report = new ProblemReport();
+        $r->finalize($report);
+        self::assertTrue($report->isEmpty());
+        $url = new UrlGenerator($r);
+
+        $category = $r->match('GET', '/category/tech/php');
+        self::assertInstanceOf(Matched::class, $category);
+        self::assertSame('tech/php', $category->args->str('path'));
+        self::assertSame('/category/tech/php', $url->url('categories.show', ['path' => 'tech/php']));
+
+        foreach (['tags.show' => '/tags/c#', 'escaped.show' => '/escaped/c#'] as $name => $path) {
+            self::assertInstanceOf(Matched::class, $r->match('GET', $path), $path);
+            self::assertSame($path, $url->url($name, ['tag' => 'c#']));
+        }
+
+        self::assertSame('/people/ada-lovelace', $url->url('people.show', ['name' => 'ada-lovelace']), "Core's own str type, [^/]+.");
+        try {
+            $url->url('people.show', ['name' => 'ada/lovelace']);
+            self::fail('A str param still refuses a slash.');
+        } catch (BadRoutePattern $problem) {
+            self::assertStringContainsString("does not match type 'str'", $problem->getMessage());
+        }
+    }
+
+    public function testARouteWhoseTypesDoNotCompileTogetherIsRefusedAtFinalize(): void
+    {
+        $r = new Router();
+        $r->pattern('named', '(?P<slug>[a-z]+)');
+        $r->get('/posts/{slug:named}', 'posts.show')->handler(['MatcherOnly', 'show']);
+        $r->get('/ok', 'ok')->handler(['MatcherOnly', 'ok']);
+        $report = new ProblemReport();
+        $r->finalize($report);
+
+        $problems = $report->problems();
+        self::assertCount(1, $problems);
+        self::assertInstanceOf(BadRoutePattern::class, $problems[0]);
+        self::assertStringContainsString("'/posts/{slug:named}' is invalid: its compiled pattern is not a valid regex", $problems[0]->getMessage());
+        self::assertSame(['ok'], $r->names(), 'Refused once at boot, not warned about on every request.');
+    }
+
     public function testUrlGenerationRoundTripsEveryParamType(): void
     {
         $url = new UrlGenerator($this->router());

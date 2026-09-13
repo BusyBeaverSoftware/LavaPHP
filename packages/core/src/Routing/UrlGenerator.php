@@ -49,7 +49,7 @@ final class UrlGenerator
             }
             $value = (string) $params[$name];
             $fragment = $this->router->paramRegex($type);
-            if ($fragment === null || preg_match('/^(?:' . $fragment . ')$/', $value) !== 1) {
+            if ($fragment === null || preg_match(Router::anchored($fragment), $value) !== 1) {
                 throw new BadRoutePattern(
                     "Value '{$value}' for param '{$name}' does not match type '{$type}' of route '{$routeName}'.",
                     "Use a value the route would match — the type's pattern is '{$fragment}'.",
