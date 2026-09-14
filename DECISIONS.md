@@ -5327,3 +5327,100 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
 
     **Needs a user decision.** Adding a listener from a pack or from a test, and priorities, both run against entry
     292's "the file is everything".
+
+305. **`count()` never keeps an ORDER BY in the counted subquery (R3-B7).** Entry 288
+    kept the inner ORDER BY "unless a limit or offset depends on it". Nothing does:
+    an order decides WHICH rows a limit and an offset keep, never how many, since
+    the count of a page is `min(limit, max(0, total − offset))` whatever the order,
+    and the builder has no `DISTINCT` or `GROUP BY` for order to matter to. Kept, it
+    broke the count. The inner column list is `1`, so an order by a select alias
+    names a column the subquery does not have: MySQL and PostgreSQL refuse that
+    (inferred; no server was run), and SQLite, which reads an unknown quoted name
+    as a string, refuses an alias such as `id` over a join as ambiguous while
+    `fetch()` of the same query works (observed). `Compiler::select()` now emits
+    the ORDER BY only when it is not counting. A count that ran returns the same
+    number and one that failed now runs; only a test that pinned the compiled
+    string changed. This amends 288's reasoning, not its shape.
+
+306. **A same-name refusal's fix is the reader's own call with one alias nothing
+    uses (R3-B6, the text half).** Entry 288 promised "a fix that writes the
+    alias". The fix wrote two columns and an alias built from the second, so it
+    dropped every other argument and alias in the call, and could name an alias the
+    call already used: following it was refused again, with the same suggestion.
+    `BadQuery::sameResultName()` now takes both sides (column, alias, which
+    argument), the arguments as given, and every name the call's columns come back
+    under, the arguments after the clash included. The suggestion is the first of
+    `table_column`, `table_column_2`, … not taken, compared without case so it
+    cannot collide with the case refusal below once that exists. The fix reprints
+    the whole call with only that one change, an aliased side is named as written,
+    and `context.suggested` carries the rewritten arguments. A test feeds each
+    refused call's `suggested` back through `select()` and requires it to pass with
+    every column kept.
+
+    Not done here: refusing result names that differ only in case. SQLite names a
+    column reference by the table's declared name, so `select('posts.ID',
+    'users.id')` returns one `id` and loses the other silently. Refusing it makes a
+    call that returns rows today throw, which is a minor (the same upgrade note
+    0.4.0 carried for the same-name refusal), so it waits for 0.5.0. The review's
+    "all three databases fold case" does not hold for a compiler that quotes every
+    identifier; the silent loss is SQLite's.
+
+307. **View problems about `view.namespaces` and `view.extensions` name
+    config/view.php (R3-B14).** Entry 287 put both keys in config/view.php and kept
+    their codes; three texts still pointed elsewhere. `template_not_found` for a
+    namespace with no directories now says to declare it under 'namespaces' in
+    config/view.php, lists the declared namespaces (`context.declared`, from the
+    loader, without `__main__`), and no longer offers the pre-287 `addPath()` call.
+    An unregistered id in `view.extensions` is checked with `has()` in the
+    renderer's factory before `get()`, and raised as `service_not_registered` with
+    `config/view.php` as `referenced_from` and as the source (line 1, the
+    framework's line for a whole-file problem), with a fix naming the 'extensions'
+    entry; the container's own problem named the pack's factory as where the id was
+    asked for. The problem is built in the pack from `ServiceNotRegistered::of()`'s
+    message and context plus a pack fix and a source, through the public
+    constructor, so it needs nothing core 0.4.0 lacks. A map or a list with a gap in
+    `view.extensions` is now named by its key ("got a map, with the key 'shout'",
+    "got the key 1 where 0 belongs") rather than by the type of a value that was
+    fine. Same codes at the same moments. The two core classes the helper uses are
+    written fully qualified, because an import line would have moved
+    `ViewModule.php:87`, which every committed map records.
+
+308. **`ViewRenderer::namespaces()` (R3-G5).** An app that lets a page choose its
+    theme checked the name against a second list of themes. `ViewModule` already
+    read `view.namespaces`; it passes the result to `ViewRenderer` as a trailing
+    optional constructor argument, and `namespaces()` returns each declared name in
+    config order with its absolute directories. It reports the configuration, not
+    the loader: the main directory is not a namespace there, and a path added
+    through `environment()` is not listed. Reading the loader instead
+    (`getNamespaces()`, `getPaths()`) was the alternative; it includes `__main__`
+    and whatever code added later, which is not what "the themes this app declares"
+    means. Additive, so a patch; no new class.
+
+309. **`IsolatedEnvironment` restores what a run removed from `getenv()` (R3-B17).**
+    Entry 247 promised TestApp and TestConsole give the environment back "exactly as
+    it found it". `restore()` walked `getenv()` as it was after the run, so a name
+    that was gone by then was never visited: the `LAVA_ENV` and `LAVA_FEATURE_*` the
+    run itself clears, and anything the work unset. `$_ENV` and `$_SERVER` came
+    back and `getenv()` did not, so the three sources disagreed and a child process
+    inherited the loss. A second pass over the snapshot puts each missing or changed
+    value back. The existing tests compared `false` with `false`, because the suite
+    runs with nothing exported; the new ones export what they check, including a
+    child process through `printenv`, and unset it again.
+
+310. **conventions.md: what a typed `forget()` middleware catches at boot (R3-B15).**
+    Entry 290 documented resetting memoizing services from a global middleware that
+    takes each by type, and conventions.md said that turns "a forgotten method into
+    an error at boot". Boot constructs the middleware and never calls `forget()`;
+    PHP checks a method when the call runs. The typed parameter catches a missing
+    registration at boot; a renamed method is found by PHPStan at level 2 and up
+    (level 0 does not) or by the first request. The sentence says so. Docs only.
+
+311. **translation.md: `expects` is what the rules table lists (R3-B16).** Entry 26
+    made `expects` for `min`/`max` `{"bound":n,"of":…}`, and lava-validate.md's table
+    lists every rule's value; translation.md said it is "the rule's bound, such as
+    `254` for `max(254)`", and its loop passed the array to a translator, which
+    printed "Array". The page now points at the table, gives the shapes for `max`,
+    `required`, `in` and `email`, and its loop passes `bound` and `of`. No
+    docs-snippet harness exists, so the loop was run once by hand against real
+    `max`, `min`, `required`, `email`, `in` and `regex` failures with a `{placeholder}`
+    translator: no warning and no "Array" (scratch script `verify-r3/b16-doc-loop.php`).
