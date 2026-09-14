@@ -433,6 +433,40 @@ final class KernelBootTest extends TestCase
         self::assertStringContainsString('not a LavaPHP wiring problem', $boom->fix);
     }
 
+    public function testACycleIsReportedOnceHoweverManyOfItsServicesTheSweepResolves(): void
+    {
+        // Lava Notes R3-B2: the sweep resolves every id, and each service on a
+        // cycle, or depending on one, threw its own rotation of the chain.
+        $dir = sys_get_temp_dir() . '/lava-cycles-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($dir . '/app', 0o777, true));
+        file_put_contents($dir . '/app/Services.php', <<<'PHP'
+            <?php
+            use Lava\Core\Container\Container;
+            return function (Container $c): void {
+                $c->singleton('app.a', static fn (Container $c) => new \ArrayObject([$c->get('app.b')]));
+                $c->singleton('app.b', static fn (Container $c) => new \ArrayObject([$c->get('app.a')]));
+                $c->singleton('app.p', static fn (Container $c) => new \ArrayObject([$c->get('app.a')]));
+                $c->singleton('app.x', static fn (Container $c) => new \ArrayObject([$c->get('app.y')]));
+                $c->singleton('app.y', static fn (Container $c) => new \ArrayObject([$c->get('app.z')]));
+                $c->singleton('app.z', static fn (Container $c) => new \ArrayObject([$c->get('app.x')]));
+            };
+            PHP);
+
+        try {
+            $result = TestApp::boot($dir);
+
+            self::assertInstanceOf(BootFailure::class, $result);
+            $problems = $result->problems->problems();
+            self::assertSame(['circular_service', 'circular_service'], array_map(static fn (LavaProblem $p): string => $p->code(), $problems));
+            self::assertSame(['app.a', 'app.b', 'app.a'], $problems[0]->context['chain'], 'Two services, one cycle, and app.p only depends on it.');
+            self::assertSame(['app.x', 'app.y', 'app.z', 'app.x'], $problems[1]->context['chain'], 'Three services, one cycle.');
+        } finally {
+            @unlink($dir . '/app/Services.php');
+            @rmdir($dir . '/app');
+            @rmdir($dir);
+        }
+    }
+
     public function testRedefiningAPackGateFlagInConfigIsReported(): void
     {
         $result = TestApp::bootFixture('redefined-pack-flag-app');

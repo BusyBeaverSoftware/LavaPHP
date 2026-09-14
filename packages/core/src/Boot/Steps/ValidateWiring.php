@@ -7,6 +7,7 @@ namespace Lava\Core\Boot\Steps;
 use Lava\Core\Boot\BootCtx;
 use Lava\Core\Boot\BootStep;
 use Lava\Core\Features\FlagSubjectResolver;
+use Lava\Core\Problem\CircularService;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\UnexpectedFailure;
@@ -39,8 +40,9 @@ final class ValidateWiring implements BootStep
             // Never fail-fast: the next registration still gets its turn. But a
             // failing singleton is not cached, so every service that depends on
             // it re-runs its factory and re-throws the same problem — once per
-            // dependent. The sweep reports the diagnosis once; the second
-            // resolution adds nothing a reader can act on.
+            // dependent, and once per service on a cycle. The sweep reports the
+            // diagnosis once; the second resolution adds nothing a reader can
+            // act on.
             try {
                 $container->get($id);
             } catch (LavaProblem $problem) {
@@ -75,8 +77,39 @@ final class ValidateWiring implements BootStep
 
     private static function report(BootCtx $ctx, LavaProblem $problem): void
     {
-        if (!$ctx->problems->includes($problem)) {
-            $ctx->problems->add($problem);
+        if ($ctx->problems->includes($problem)) {
+            return;
         }
+
+        // A cycle's chain starts wherever the sweep came in: at A for
+        // A -> B -> A, at B for B -> A -> B, and at P for a P that only depends
+        // on it. Each is a different context, so the report's own identity
+        // would keep one copy per service; the cycle is one mistake with one
+        // fix (Lava Notes, R3-B2).
+        if ($problem instanceof CircularService) {
+            foreach ($ctx->problems->problems() as $reported) {
+                if ($reported instanceof CircularService && self::cycle($reported) === self::cycle($problem)) {
+                    return;
+                }
+            }
+        }
+
+        $ctx->problems->add($problem);
+    }
+
+    /** @return list<string> the ids on the cycle itself, sorted, without the path that led into it */
+    private static function cycle(CircularService $problem): array
+    {
+        $chain = $problem->context['chain'] ?? null;
+        $ids = is_array($chain) ? array_values(array_filter($chain, is_string(...))) : [];
+        if ($ids === []) {
+            return [];
+        }
+
+        $start = array_search($ids[count($ids) - 1], $ids, true);
+        $members = array_slice($ids, is_int($start) ? $start : 0, -1);
+        sort($members);
+
+        return $members;
     }
 }
