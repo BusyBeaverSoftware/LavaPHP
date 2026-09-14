@@ -4911,3 +4911,34 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     Not taken: a per-render "prefer this directory" argument, which would be
     request state on a shared loader (entry 242), and extension class names the
     pack instantiates itself, which is the auto-wiring pillar 1 rules out.
+
+288. **`select()` takes aliases and refuses two columns under one name;
+    `Connection::count()` counts a SELECT (R2-G8).** Aliases never worked
+    (0.1 quoted `name AS author` as one identifier) and entry 264 refused them
+    with every other non-name. The damage the review found was elsewhere:
+    `select('posts.id', 'users.id')` over a join returned one `id`, the user's,
+    because a fetched row is keyed by name and PDO keeps the last duplicate.
+
+    `select()` now takes alias maps beside names, `select('posts.id', ['author'
+    => 'users.name'])`, kept in the order given and compiled to `AS`. An alias
+    is one name (the column pattern's single segment), and the column it names
+    passes the same `ColumnName` check with no `*`. `SelectQuery` carries the
+    aliases by position in a new trailing `aliases` argument, so every existing
+    `new SelectQuery(...)` still compiles as before. Before a name is accepted
+    the builder works out the name each column comes back under, the alias or
+    the last segment, and two alike are `bad_query` with a fix that writes the
+    alias. A `*` is not counted, because which names it brings is the
+    database's to say; the docs say a join under `*` can still lose a column.
+
+    The aggregate half is one verb, not an aggregate API. `count(Statement)`
+    wraps the SELECT, `SELECT COUNT(*) AS "count" FROM (SELECT 1 …) AS
+    "counted"`, so a join, a limit and an offset count the way they fetch; the
+    blog's repositories did exactly this by hand. The inner column list is `1`
+    because MySQL refuses a derived table whose `*` names a column twice, and
+    the inner ORDER BY is dropped unless a limit or offset depends on it.
+    `count()` of a write is `bad_query`. `SUM`, `MAX` and `GROUP BY` stay with
+    `query()`: each would need a result-type and grouping story, and nobody has
+    asked for one yet.
+
+    For an app upgrading: a `select()` that names two same-named columns now
+    fails where it used to return wrong data silently.

@@ -307,14 +307,42 @@ $rows = $db->fetch($query);   // list<array<string,mixed>>
 A query is a value, not a handle: building one touches no database, so a
 statement can be built in one place, inspected or asserted in another, and
 executed in a third. `Connection` is what executes it — `fetch()`,
-`fetchOne()`, `scalar()`, `run()`, `execute()`, `query()` and `statement()` for
-raw SQL, `transaction()` for a closure, and `lastInsertId()`.
+`fetchOne()`, `scalar()`, `count()`, `run()`, `execute()`, `query()` and
+`statement()` for raw SQL, `transaction()` for a closure, and `lastInsertId()`.
 
 `table()` gives `select()`, `where()` / `orWhere()`, `whereNull()` /
 `whereNotNull()`, `whereIn()` / `whereNotIn()`, `whereBetween()`, `whereRaw()`,
 `whereGroup()` (each with an `or` variant), `innerJoin()`, `leftJoin()`,
 `orderBy()`, `limit()`, `offset()`, and the terminals `toSelect()`, `insert()`,
 `insertMany()`, `update()`, `delete()`.
+
+### Choosing columns, and counting rows
+
+`select()` takes column names and alias maps, in the order given:
+
+```php
+$db->table('posts')
+    ->select('posts.id', 'posts.title', ['author' => 'users.name', 'author_id' => 'users.id'])
+    ->innerJoin('users', 'users.id', 'posts.user_id');
+// SELECT "posts"."id", "posts"."title", "users"."name" AS "author", "users"."id" AS "author_id" FROM "posts" …
+```
+
+Two columns that would come back under one name are `bad_query`:
+`select('posts.id', 'users.id')` would return one `id`, whichever came last,
+because a fetched row is keyed by name. Alias one of them, as the fix says. A
+`*` brings names only the database knows, so it is not checked, and a join
+under `*` can still lose a column that way.
+
+`$db->count($query)` is how many rows `fetch($query)` would return, limit and
+offset included, without fetching them:
+
+```php
+$total = $db->count($db->table('posts')->where('published', Operator::Eq, true));
+```
+
+It compiles to `SELECT COUNT(*) AS "count" FROM (SELECT 1 FROM … ) AS "counted"`,
+which counts a join or a page the way it fetches. It is the one aggregate the
+builder has; `SUM`, `MAX` and `GROUP BY` go through `query()`.
 
 ### Grouping
 
@@ -358,7 +386,8 @@ says "not known", which is what a caller needs to branch on.
   author` — would be quoted as one identifier, and SQLite answers an unknown
   quoted identifier with the string itself, so the query would compare or
   return that string instead of failing. Write those with `whereRaw()`,
-  `query()` or `statement()`. The check is on the shape of the name, not its
+  `query()` or `statement()`, a count with `count()`, and an alias with
+  `select(['author' => 'users.name'])`. The check is on the shape of the name, not its
   existence: a typo in a valid-looking name (`where('emial', …)`) still reaches
   SQLite, which reads it as the string `'emial'` when no such column exists;
 - a null comparison written as an equality — `where('x', Operator::Eq, null)`,
