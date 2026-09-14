@@ -13,6 +13,7 @@ use Lava\Core\Problem\ProblemReport;
 use Lava\Core\Routing\Router;
 use Lava\Core\Testing\TestApp;
 use Lava\Core\Testing\TestClient;
+use Lava\Core\Testing\TestConsole;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -127,6 +128,66 @@ final class RedirectRouteTest extends TestCase
             self::assertNotContains('old', $router->names(), $case);
             self::assertNull($router->redirectTarget('old'), $case);
         }
+    }
+
+    public function testARedirectToARouteWhoseGateIsOffIsAbsentWithIt(): void
+    {
+        // Lava Notes R3-B5: it answered 301 into a 404.
+        $off = (new TestClient(self::app()))->get('/b/hello');
+        self::assertSame(404, $off->status());
+        self::assertFalse($off->hasHeader('Location'));
+        self::assertSame('route_not_found', $off->json()['problems'][0]['code']);
+
+        $app = TestApp::bootFixture('redirect-app', ['LAVA_FEATURE_BETA_POSTS' => 'on']);
+        self::assertInstanceOf(App::class, $app, $app instanceof BootFailure ? $app->text() : '');
+        $on = (new TestClient($app))->get('/b/hello');
+        self::assertSame([301, '/beta/hello'], [$on->status(), $on->header('Location')]);
+    }
+
+    public function testARedirectAskedForTheAddressItLeadsToFailsAtItsLineInsteadOfLooping(): void
+    {
+        // Lava Notes R3-B4: `/g/{section:str}/{slug:str}` also matches the URLs of
+        // `/g/pages/{slug:str}`, and is registered first.
+        $client = new TestClient(self::app());
+
+        $moved = $client->get('/g/intro/hello');
+        self::assertSame([301, '/g/pages/hello'], [$moved->status(), $moved->header('Location')]);
+
+        $loop = $client->get('/g/pages/hello');
+        self::assertSame(500, $loop->status());
+        self::assertFalse($loop->hasHeader('Location'));
+        $problem = $loop->json()['problems'][0];
+        self::assertSame('bad_redirect', $problem['code']);
+        self::assertStringContainsString("'guides.section' leads to '/g/pages/hello', the address it was asked for", $problem['problem']);
+        self::assertStringEndsWith('redirect-app/app/Routes.php', $problem['source']['file']);
+        self::assertSame(self::lineOf("'guides.section'"), $problem['source']['line']);
+    }
+
+    public function testACapturedValueStartingWithASlashNeverSendsTheVisitorToAnotherHost(): void
+    {
+        // Lava Notes R3-B1: this answered `Location: //evil.example/x`.
+        $response = (new TestClient(self::app()))->get('/docs//evil.example/x');
+
+        self::assertSame([301, '/%2Fevil.example/x'], [$response->status(), $response->header('Location')]);
+    }
+
+    public function testDescribeNamesWhereARedirectLeads(): void
+    {
+        // Lava Notes R3-G3: only the map said.
+        $console = new TestConsole(TestApp::autoloadFixture('redirect-app'));
+
+        self::assertSame(['to' => 'posts.show', 'status' => 308], $console->json('describe', 'posts.dated')->data()['match']['redirect']);
+        self::assertNull($console->json('describe', 'posts.show')->data()['match']['redirect']);
+    }
+
+    private static function lineOf(string $needle): int
+    {
+        foreach (file(TestApp::fixturePath('redirect-app') . '/app/Routes.php') ?: [] as $i => $text) {
+            if (str_contains($text, $needle)) {
+                return $i + 1;
+            }
+        }
+        self::fail("No line of the fixture's routes contains {$needle}.");
     }
 
     public function testAStatusThatIsNotARedirectIsRefusedWhereItIsWritten(): void

@@ -22,13 +22,14 @@ final class BadHandler extends LavaProblem
     }
 
     /** The route was registered without chaining ->handler() — nothing would be dispatched to it. */
-    public static function routeHasNone(string $routeName, string $path): self
+    public static function routeHasNone(string $routeName, string $path, ?SourceLocation $source = null): self
     {
         return new self(
             "Route '{$routeName}' ({$path}) has no handler.",
             "Chain ->handler([\App\YourController::class, 'method'])"
             . " or ->handler('App\your_function') onto the route.",
             ['route' => $routeName, 'path' => $path],
+            $source,
         );
     }
 }

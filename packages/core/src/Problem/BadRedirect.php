@@ -65,6 +65,21 @@ final class BadRedirect extends LavaProblem
         );
     }
 
+    /**
+     * At request time: the redirect was asked for the address it leads to. Its
+     * own pattern also matches its target's URLs and it is registered first, so
+     * it would answer that address with itself forever.
+     */
+    public static function loops(string $name, string $to, string $location, ?SourceLocation $source = null): self
+    {
+        return new self(
+            "Redirect route '{$name}' leads to '{$location}', the address it was asked for: its path also matches the URLs of '{$to}', and it is registered before '{$to}'.",
+            "Give the redirect a path that the URLs of '{$to}' cannot match, or register it after '{$to}'.",
+            ['route' => $name, 'to' => $to, 'location' => $location],
+            $source,
+        );
+    }
+
     /** @param array<string, string> $captured the redirect's own params, name => type */
     public static function param(string $name, string $to, string $param, string $type, array $captured, ?SourceLocation $source = null): self
     {

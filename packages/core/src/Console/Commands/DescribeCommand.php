@@ -105,8 +105,11 @@ final class DescribeCommand extends AppCommand
         $route = $app->router->route($selector);
         if ($route !== null) {
             $plan = $app->router->plan($selector);
+            // `redirect` names where a redirect route leads, as the map does, rather
+            // than leaving only the handler every redirect shares (R3-G3).
             return ['route', $route->json() + $plan->json() + [
                 'state' => $route->feature === null || $app->features->on($route->feature) ? 'active' : 'disabled',
+                'redirect' => $app->router->redirectTarget($selector),
             ]];
         }
 

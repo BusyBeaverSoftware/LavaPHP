@@ -305,6 +305,61 @@ final class RoutingTest extends TestCase
         self::assertSame(['ok'], $r->names(), 'Refused once at boot, not warned about on every request.');
     }
 
+    public function testEveryRouteProblemPointsAtTheLineThatCausedIt(): void
+    {
+        // Lava Notes R3-B13: only bad_redirect carried a source.
+        $r = new Router();
+        $r->pattern('named', '(?P<slug>[a-z]+)');
+        $lines = [];
+        $lines[] = __LINE__ + 1;
+        $r->get('/unknown/{x:nosuchtype}', 'unknown')->handler('f');
+        $lines[] = __LINE__ + 1;
+        $r->get('/untyped/{x}', 'untyped')->handler('f');
+        $lines[] = __LINE__ + 1;
+        $r->get('/clash/{slug:named}', 'clash')->handler('f');
+        $lines[] = __LINE__ + 1;
+        $r->get('/nohandler', 'nohandler');
+        $report = new ProblemReport();
+        $r->finalize($report);
+
+        $problems = $report->problems();
+        self::assertSame(['bad_route_pattern', 'bad_route_pattern', 'bad_route_pattern', 'bad_handler'], array_map(static fn ($p): string => $p->code(), $problems));
+        foreach ($problems as $i => $problem) {
+            self::assertSame([__FILE__, $lines[$i]], [$problem->source?->file, $problem->source?->line], $problem->getMessage());
+        }
+
+        $refusals = [
+            [__LINE__, static fn (Router $r) => $r->get('nope', 'x')],
+            [__LINE__, static fn (Router $r) => $r->get('/x', 'BadName')],
+            [__LINE__, static fn (Router $r) => $r->add('/x', 'x')],
+            [__LINE__, static fn (Router $r) => $r->pattern('UPPER', 'x')],
+            [__LINE__, static fn (Router $r) => $r->pattern('int', '\d+')],
+            [__LINE__, static fn (Router $r) => $r->pattern('frag', '(unclosed')],
+        ];
+        foreach ($refusals as [$line, $refusal]) {
+            try {
+                $refusal(new Router());
+                self::fail("The call on line {$line} must be refused.");
+            } catch (BadRoutePattern $problem) {
+                self::assertSame([__FILE__, $line], [$problem->source?->file, $problem->source?->line], $problem->getMessage());
+            }
+        }
+    }
+
+    public function testAGeneratedUrlIsAlwaysAPathOnThisSite(): void
+    {
+        // Lava Notes R3-B1: `//host` and `/\host` are other hosts to a browser.
+        $r = new Router();
+        $r->get('/{rest:path}', 'page')->handler('f');
+        $r->get('/{name:str}/edit', 'edit')->handler('f');
+        $r->finalize(new ProblemReport());
+        $url = new UrlGenerator($r);
+
+        self::assertSame('/%2Fevil.example/x', $url->url('page', ['rest' => '/evil.example/x']));
+        self::assertSame('/%5Cevil.example/edit', $url->url('edit', ['name' => '\evil.example']));
+        self::assertSame('/a//b', $url->url('page', ['rest' => 'a//b']), 'Only a slash or backslash right after the leading one names a host.');
+    }
+
     public function testUrlGenerationRoundTripsEveryParamType(): void
     {
         $url = new UrlGenerator($this->router());

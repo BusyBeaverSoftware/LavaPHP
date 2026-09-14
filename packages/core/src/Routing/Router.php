@@ -61,6 +61,7 @@ final class Router
                 "Param type name '{$name}' is invalid.",
                 "Param type names are snake_case — e.g. \$r->pattern('handle', '[a-z0-9_]{2,32}').",
                 ['type' => $name],
+                self::caller(),
             );
         }
         if (isset($this->patterns[$name])) {
@@ -71,6 +72,7 @@ final class Router
                     ? "Choose a different name — builtins are: " . implode(', ', array_keys(self::BUILTIN_PATTERNS)) . '.'
                     : "Remove one of the two \$r->pattern('{$name}', …) calls.",
                 ['type' => $name, 'builtin' => $isBuiltin],
+                self::caller(),
             );
         }
         // Probe-compile the fragment by matching against ''. The @ silences
@@ -81,6 +83,7 @@ final class Router
                 "Param type '{$name}' has an invalid regex fragment '{$regex}'.",
                 "Provide a valid regex fragment without delimiters or anchors — e.g. '[a-z0-9_]{2,32}'.",
                 ['type' => $name, 'regex' => $regex],
+                self::caller(),
             );
         }
         $this->patterns[$name] = $regex;
@@ -93,13 +96,14 @@ final class Router
             throw new \LogicException('The router is finalized; routes can no longer be added.');
         }
         if (!str_starts_with($path, '/')) {
-            throw BadRoutePattern::of($path, 'paths must start with /', "Write the path as '/{$path}'");
+            throw BadRoutePattern::of($path, 'paths must start with /', "Write the path as '/{$path}'", self::caller());
         }
         if (preg_match('/^[a-z][a-z0-9_.]*$/', $name) !== 1) {
             throw new BadRoutePattern(
                 "Route name '{$name}' is invalid.",
                 "Route names are lowercase and dot-separated — e.g. 'users.show'.",
                 ['name' => $name],
+                self::caller(),
             );
         }
         if ($methods === []) {
@@ -107,6 +111,7 @@ final class Router
                 $path,
                 'no HTTP method declared',
                 "Pass the methods: \$r->add('{$path}', '{$name}', Method::Get, …).",
+                self::caller(),
             );
         }
         if (isset($this->builders[$name]) || isset($this->routes[$name])) {
@@ -175,6 +180,12 @@ final class Router
         return $this->redirects[$name] ?? null;
     }
 
+    /** Where a route was registered: the `$r->get(…)` line in app/Routes.php or a pack's routes. */
+    public function declaredAt(string $name): ?SourceLocation
+    {
+        return $this->declaredAt[$name] ?? null;
+    }
+
     /**
      * Compiles every pending builder into a Route. Bad routes become problems
      * on the shared report and are skipped — one bad route never hides the
@@ -184,11 +195,14 @@ final class Router
     {
         foreach ($this->builders as $name => $builder) {
             $parts = $builder->parts();
+            // Every problem about a route points at the line that registered it,
+            // as a redirect's does (R3-B13).
+            $source = $this->declaredAt[$name] ?? null;
             try {
                 if ($parts['handler'] === null) {
-                    throw BadHandler::routeHasNone($name, $parts['path']);
+                    throw BadHandler::routeHasNone($name, $parts['path'], $source);
                 }
-                [$regex, $params] = $this->compile($parts['path']);
+                [$regex, $params] = $this->compile($parts['path'], $source);
 
                 // Each fragment compiled on its own in pattern(); together they
                 // can still clash, and a route regex that does not compile would
@@ -198,6 +212,7 @@ final class Router
                         $parts['path'],
                         'its compiled pattern is not a valid regex',
                         'Check the custom types it uses: a fragment must not name a group of its own, and must be valid on its own.',
+                        $source,
                     );
                 }
             } catch (\Lava\Core\Problem\LavaProblem $problem) {
@@ -265,6 +280,7 @@ final class Router
     /**
      * Matches a request against the compiled routes, in registration order.
      * Gated routes whose flag is off are skipped entirely — off means absent.
+     * A redirect is gated by its target's flag as well as its own.
      *
      * @return Matched|RouteNotFound|MethodNotAllowed the two misses are problems,
      *         so they render identically in every medium.
@@ -283,8 +299,7 @@ final class Router
             if (preg_match('#^' . $route->regex . '$#', $path, $captures) !== 1) {
                 continue;
             }
-            if ($route->feature !== null
-                && ($features === null || !$features->on($route->feature))) {
+            if (!$this->gateOpen($route, $features)) {
                 continue; // the gate is off — the route is absent
             }
             $pathMatched = true;
@@ -307,6 +322,24 @@ final class Router
             return MethodNotAllowed::of($method, $path, array_keys($allowed));
         }
         return RouteNotFound::of($method, $path);
+    }
+
+    /**
+     * Whether a matched route is present for this subject: its own `->when()`
+     * gate, and for a redirect its target's too. A redirect to a route that is
+     * absent would answer a 301 into a 404, so while the target's gate is off
+     * the old address is absent with it (R3-B5).
+     */
+    private function gateOpen(Route $route, ?Features $features): bool
+    {
+        $target = isset($this->redirects[$route->name]) ? ($this->routes[$this->redirects[$route->name]['to']] ?? null) : null;
+        foreach ([$route->feature, $target?->feature] as $feature) {
+            if ($feature !== null && ($features === null || !$features->on($feature))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function route(string $name): ?Route
@@ -385,9 +418,11 @@ final class Router
     /**
      * Compiles a path into a regex and its param map.
      *
+     * @param SourceLocation|null $source where the route was registered, for its problems
+     *
      * @return array{0: string, 1: array<string, string>} [regex without delimiters, params]
      */
-    private function compile(string $path): array
+    private function compile(string $path, ?SourceLocation $source): array
     {
         $regex = '';
         $params = [];
@@ -395,7 +430,7 @@ final class Router
         while (($open = strpos($path, '{', $cursor)) !== false) {
             $close = strpos($path, '}', $open);
             if ($close === false) {
-                throw BadRoutePattern::of($path, 'unclosed placeholder', 'Close it: {name:type}');
+                throw BadRoutePattern::of($path, 'unclosed placeholder', 'Close it: {name:type}', $source);
             }
             $regex .= preg_quote(substr($path, $cursor, $open - $cursor), '#');
             $spec = substr($path, $open + 1, $close - $open - 1);
@@ -405,15 +440,16 @@ final class Router
                     $path,
                     "param '{$spec}' has no explicit type",
                     "Write {name:type} — the types are int, str, uuid, path, plus any \$r->pattern() type",
+                    $source,
                 );
             }
             $name = substr($spec, 0, $colon);
             $type = substr($spec, $colon + 1);
             if (preg_match('/^[a-z][a-z0-9_]*$/', $name) !== 1) {
-                throw BadRoutePattern::of($path, "param name '{$name}' must be snake_case", "Write {<snake_case>:{$type}}");
+                throw BadRoutePattern::of($path, "param name '{$name}' must be snake_case", "Write {<snake_case>:{$type}}", $source);
             }
             if (isset($params[$name])) {
-                throw BadRoutePattern::of($path, "param '{$name}' appears twice", 'Use a distinct name for each placeholder');
+                throw BadRoutePattern::of($path, "param '{$name}' appears twice", 'Use a distinct name for each placeholder', $source);
             }
             $fragment = $this->patterns[$type] ?? null;
             if ($fragment === null) {
@@ -421,6 +457,7 @@ final class Router
                     $path,
                     "unknown param type '{$type}'",
                     "The types are int, str, uuid, path — register customs with \$r->pattern('{$type}', '…')",
+                    $source,
                 );
             }
             $regex .= '(?P<' . $name . '>' . self::escapeDelimiter($fragment) . ')';

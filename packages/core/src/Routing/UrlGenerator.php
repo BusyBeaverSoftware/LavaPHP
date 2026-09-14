@@ -70,6 +70,15 @@ final class UrlGenerator
             );
         }
 
+        // A path whose second character is a slash or a backslash is not a path
+        // to a browser: `//evil.example/x` and `/\evil.example` both name another
+        // host. A value can put either there, a `path` value starting with `/` or
+        // a `str` value starting with `\`, so that character is percent-encoded
+        // and the URL stays on this site (Lava Notes, R3-B1).
+        if (strlen($out) > 1 && ($out[1] === '/' || $out[1] === '\\')) {
+            $out = '/' . rawurlencode($out[1]) . substr($out, 2);
+        }
+
         return $out;
     }
 }
