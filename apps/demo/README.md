@@ -150,7 +150,7 @@ for an agent.
 | Every route declared, none inferred | zero magic | `app/Routes.php` |
 | Every service built by visible code | zero magic | `app/Services.php` |
 | A pack gated by a flag, not by a `require` | pack decoupling | `app/Modules.php`, `config/features.php` |
-| Four packs, one app, no coupling between them | packs | `TaskRepository` uses `lavaphp/db`; `TasksController` uses `lavaphp/validate`; `TasksPageController` uses `lavaphp/view`; `Upstream` uses `lavaphp/http-client` |
+| Five packs, one app, no coupling between them | packs | `TaskRepository` uses `lavaphp/db`; `TasksController` uses `lavaphp/validate` and, on completion, dispatches through `lavaphp/events` to the listeners in `app/Listeners.php`; `TasksPageController` uses `lavaphp/view`; `Upstream` uses `lavaphp/http-client` |
 | All validation problems at once | errors as a loop | `TasksController::store` |
 | An app-owned problem code with a fix | errors as a loop | `app/Problem/TaskNotFound.php` |
 | A generated map that cannot disagree with `lava routes` | project map | `AGENTS.md` |

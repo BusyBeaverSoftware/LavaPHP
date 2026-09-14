@@ -148,7 +148,7 @@ jobs:
         # what a real install looks like.
         run: |
           rm -rf /tmp/demo && mkdir -p /tmp/demo/packages /tmp/demo/apps
-          cp -r packages/core packages/db packages/validate packages/view packages/http-client /tmp/demo/packages/
+          cp -r packages/core packages/db packages/validate packages/view packages/http-client packages/events /tmp/demo/packages/
           cp -r apps/demo /tmp/demo/apps/demo
           rm -rf /tmp/demo/apps/demo/vendor /tmp/demo/apps/demo/composer.lock
           cd /tmp/demo/apps/demo

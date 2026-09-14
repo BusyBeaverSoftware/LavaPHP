@@ -5053,3 +5053,14 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     registration, which `docs/releasing.md` now lists for a maintainer before the
     first tag that includes the pack. Also not done: an async or queued
     dispatcher, listener priorities beyond file order, and wildcard keys.
+
+293. **The demo dogfoods lavaphp/events.** `apps/demo` promises every shipped
+    pack, and the fifth now has a use there that a reader would copy:
+    `TasksController::complete()` dispatches `TaskCompleted` after the row is
+    updated, and `app/Listeners.php` sends it to `LogCompletion`, a service that
+    takes the app's `LoggerInterface`. A missing task dispatches nothing. The
+    test boots the app with a recording logger in `replace:`, the seam a test
+    uses for any listener's dependency. The demo's manifest requires the pack
+    through a path repository, CI's demo job copies `packages/events`, the map
+    gained its Events section, and `lava check --strict` and `check:install`
+    pass for the demo, the skeleton and the blog.

@@ -56,6 +56,15 @@ return function (Container $c, AppContext $ctx): void {
         ),
     );
 
+    // A listener is a service like any other too: app/Listeners.php names it
+    // for an event, and this is where it gets what it needs.
+    $c->singleton(
+        \App\Tasks\LogCompletion::class,
+        static fn (Container $c): \App\Tasks\LogCompletion => new \App\Tasks\LogCompletion(
+            $c->get(\Psr\Log\LoggerInterface::class),
+        ),
+    );
+
     // Middleware is a service like any other. Listing it in app/Middleware.php
     // is not enough: the router resolves each class-string from the container
     // at request time, so naming one that was never registered is a boot

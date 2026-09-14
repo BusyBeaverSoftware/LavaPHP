@@ -6,10 +6,12 @@ namespace App\Http;
 
 use App\Problem\TaskNotFound;
 use App\Tasks\Task;
+use App\Tasks\TaskCompleted;
 use App\Tasks\TaskRepository;
 use Lava\Core\Http\HttpErrors;
 use Lava\Core\Http\Responses;
 use Lava\Core\Routing\RouteArgs;
+use Lava\Events\EventDispatcher;
 use Lava\Validate\Validation\Field;
 use Lava\Validate\Validation\Validator;
 use Psr\Http\Message\ResponseInterface;
@@ -98,6 +100,7 @@ final class TasksController
         ServerRequestInterface $request,
         RouteArgs $args,
         TaskRepository $tasks,
+        EventDispatcher $events,
     ): ResponseInterface {
         $id = $args->int('id');
         $task = $tasks->complete($id);
@@ -105,6 +108,9 @@ final class TasksController
         if ($task === null) {
             return HttpErrors::toResponse(TaskNotFound::of($id), $request);
         }
+
+        // What follows a completion is app/Listeners.php's to say, not this handler's.
+        $events->dispatch(new TaskCompleted($task));
 
         return Responses::json(['task' => $task->json()]);
     }

@@ -28,4 +28,5 @@ return [
     ModuleRef::of(\Lava\Validate\ValidateModule::class, package: 'lavaphp/validate', feature: 'validate'),
     ModuleRef::of(\Lava\View\ViewModule::class, package: 'lavaphp/view', feature: 'views'),
     ModuleRef::of(\Lava\HttpClient\HttpClientModule::class, package: 'lavaphp/http-client', feature: 'http_client'),
+    ModuleRef::of(\Lava\Events\EventsModule::class, package: 'lavaphp/events', feature: 'events'),
 ];
