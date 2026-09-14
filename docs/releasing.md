@@ -27,8 +27,8 @@ worth stating exactly, because "pre-1.0" is otherwise read as "no promises":
 A change an app has to act on — a refusal where there was none, a response
 that carries less, a map that reads stale — goes out in a minor, never a patch.
 A `^0.1.0` constraint stops below `0.2.0`, so an app upgrades by choosing to.
-`0.2.0` was the first such minor and `0.3.0` the second; the README lists what
-upgrading to each asks of an app. A minor stays a minor even when every change
+`0.2.0` was the first such minor, `0.3.0` the second and `0.4.0` the third; the
+README lists what upgrading to each asks of an app. A minor stays a minor even when every change
 in it fixes a silent wrong result — `0.3.0` was planned as `0.2.1` until the
 list of what it asks of an app was written down (DECISIONS.md 279, 280).
 
@@ -89,7 +89,7 @@ composer install    # the monorepo, for steps 1–3
 ## The tag
 
 ```
-git tag -a 0.3.0 -m "0.3.0"
+git tag -a 0.4.0 -m "0.4.0"
 ```
 
 Push it only when the release is meant to be published — the push is what makes
@@ -99,8 +99,9 @@ it a release, and a pushed tag is not reversible in the way a local one is.
 learns about a tag from a webhook on a package that is *already registered*, so
 the order runs the other way from what "the push makes it a release" suggests:
 register the package, put the webhook in place, and only then is a tag push
-visible to the world. All six packages have had that webhook since 2026-09-13
-(DECISIONS.md 254). `0.1.1` predates it, and reached Packagist only because a
+visible to the world. The six packages published before 0.4.0 have had that
+webhook since 2026-09-13 (DECISIONS.md 254); `lavaphp/events` gets its own when
+it is registered. `0.1.1` predates it, and reached Packagist only because a
 maintainer pressed **Update** on each package's page (DECISIONS.md 253).
 
 Two consequences worth expecting. The push triggers a **full duplicate run of
@@ -115,7 +116,7 @@ each package is published from a read-only mirror of its own directory — see
 [Publishing](#publishing). The tag is still the release act: the split workflow
 pushes it to every mirror, and Packagist learns of it there.
 
-Cross-package constraints are lockstep: `^0.3.0` appears in the six packages
+Cross-package constraints are lockstep: `^0.4.0` appears in the six packages
 that depend on core, so a minor release bumps them together or the packs
 resolve to a core older than the one they were tested against.
 
@@ -136,11 +137,12 @@ Seven packages are published, each from a read-only mirror of its directory:
 The mirror names are set once, at the top of `.github/workflows/split.yml`. A
 package's name comes from its `composer.json`, never from its mirror.
 
-`lavaphp/events` is new since 0.3.0 and has no mirror yet. Before the first tag
-that includes it, a maintainer creates `BusyBeaverSoftware/lava-events`, adds its
-deploy key and the `SPLIT_KEY_EVENTS` secret, and registers it on Packagist, as
-in [Setting up the mirrors](#setting-up-the-mirrors). Until the secret exists,
-`split.yml` skips the package with a notice, and the tag reaches the other six.
+`lavaphp/events` joined in 0.4.0. Its mirror, its write deploy key and the
+`SPLIT_KEY_EVENTS` secret were created on 2026-09-14 (DECISIONS.md 294), so a
+push of `main` fills it like the others. It still has to be registered on
+Packagist, as in step 4 of [Setting up the mirrors](#setting-up-the-mirrors),
+before a tag that includes it: a tag reaches a mirror Packagist does not know
+about, and nobody can install it.
 
 **Every manifest under `packages/` is publishable as it sits.** None carries a
 `repositories` block: in a published package that block is ignored when the

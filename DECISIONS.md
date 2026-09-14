@@ -5064,3 +5064,32 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     through a path repository, CI's demo job copies `packages/events`, the map
     gained its Events section, and `lava check --strict` and `check:install`
     pass for the demo, the skeleton and the blog.
+
+294. **`0.4.0` is prepared, and `lavaphp/events` has a mirror.** The user asked
+    for both. The version is a minor under entry 268's rule, because an upgrading
+    app has two things to do: run `lava map` (entry 289 added a core service and
+    moved `RegisterCoreServices`' lines), and alias any `select()` that names two
+    same-named columns, which is now refused (entry 288).
+
+    - The lockstep constraints moved together, as in entries 268 and 280:
+      `lavaphp/core` `^0.4.0` in the six packs and the skeleton, every
+      `lavaphp/*` requirement in the root, `apps/demo` and `apps/blog` at
+      `^0.4.0`, and each path repository's pin at `0.4.0`. The root lock was
+      updated with `composer update 'lavaphp/*'`, which moved only those six
+      entries, and both apps' local installs were updated the same way.
+    - The README gains "Upgrading from 0.3 to 0.4", and docs/releasing.md names
+      0.4.0 in its version history, its tag example and its lockstep sentence.
+    - The mirror: `gh repo create BusyBeaverSoftware/lava-events`, public, issues
+      and wiki off, described like the other six. An ed25519 key was generated
+      in the session's scratchpad; its public half is the mirror's read-write
+      deploy key, titled as the others are, and its private half is LavaPHP's
+      `SPLIT_KEY_EVENTS` secret. Both key files were shredded afterwards. The
+      mirror is empty until a push of `main` carrying `packages/events` runs the
+      split. Registering it on Packagist, and the GitHub sync that adds its
+      webhook, need the maintainer's Packagist account and remain to be done.
+
+    Verified on `release-prep/0.4.0`: `composer verify` (1146 tests, nothing
+    skipped, both PHPStan runs clean), `composer coverage` (every floor met,
+    `events` at 96.67%), `composer check:floor` (586 files on PHP 8.3),
+    `composer check:install` (all nine targets at 0.4.0) and `composer
+    check:split` (an app built from the seven mirrors alone checks green).

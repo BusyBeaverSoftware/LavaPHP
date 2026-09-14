@@ -41,6 +41,28 @@ and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 
+### Upgrading from 0.3 to 0.4
+
+`0.4.0` adds more than it changes, but two things ask something of an app.
+Require every `lavaphp/*` package at `^0.4.0` together, then:
+
+- **Run `lava map` once.** Core registers one more service,
+  `Lava\Core\Boot\RuntimeFacts`, and the lines that register core's services
+  moved, so a committed `AGENTS.md` reads stale until it is regenerated.
+- **Alias columns that share a name in `select()`.** `select('posts.id',
+  'users.id')` used to return one `id`, whichever came last; it is now
+  `bad_query`. Alias one of them: `select('posts.id', ['user_id' => 'users.id'])`.
+- **Nothing to do, and something to use.** URL generation works for `{name:str}`
+  params, which 0.3.0 refused for every value, and a custom route type may contain
+  `/` or `#`. A route whose custom types do not compile together is now refused
+  at boot instead of missing on every request. New: `$r->redirect()` routes,
+  `RouteArgs::of($request)` for middleware, `Schema::dropIndex()`,
+  `Connection::count()` and alias maps in `select()`, `namespaces` and
+  `extensions` in `config/view.php`, `RuntimeFacts` for a status page,
+  `TestConsole(replace:)`, and the `lavaphp/events` pack.
+
+The reasoning for each is in [DECISIONS.md](DECISIONS.md), entries 282–294.
+
 ### Upgrading from 0.2 to 0.3
 
 `0.3.0` fixes results that were silently wrong, and some of the fixes are
