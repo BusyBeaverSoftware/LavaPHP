@@ -105,6 +105,11 @@ through something that takes `EventDispatcher`, such as a renderer whose Twig
 extension dispatches: the dispatcher fetches the listeners on its first
 dispatch, so it is not part of any listener's construction.
 
+A listener is built once, when boot builds the provider, whatever its
+registration kind: one registered with `$c->factory()` is still a single
+instance that every dispatch reaches. Register listeners with `$c->singleton()`,
+and keep what belongs to one dispatch on the event rather than on the listener.
+
 ## Dispatch
 
 A handler, or any service, takes `Lava\Events\EventDispatcher`:
@@ -120,7 +125,14 @@ public function complete(RouteArgs $args, TaskRepository $tasks, EventDispatcher
 ```
 
 `dispatch()` returns the event it was given, so a listener can set a value on
-it for the caller to read. An event implementing
+it for the caller to read. That is the filter pattern: a mutable event carries
+the value, each listener may change it, and the caller reads the result.
+
+Listeners run in their position in `app/Listeners.php`, and that is the only
+order. There are no priorities, deliberately: the file stays the whole story of
+what runs and in what order.
+
+An event implementing
 `Psr\EventDispatcher\StoppableEventInterface` reaches no further listener once
 `isPropagationStopped()` is true. A listener that throws stops the dispatch, and
 the exception reaches the caller and the app's middleware as it would from a
