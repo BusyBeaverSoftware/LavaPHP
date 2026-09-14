@@ -5217,3 +5217,113 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     `array<string, Flag>` to `array<string, mixed>`, since the check is only
     reachable with a value the old type forbade; nothing an app passes today
     stops working.
+
+300. **The events dispatcher fetches its provider on the first dispatch (Lava Notes, R3-B2).**
+
+    **The bug.** Building `ListenerProvider` builds every listener, and `EventDispatcher`'s factory took the provider
+    when it was built. The pack therefore added `EventDispatcher -> ListenerProvider -> every listener` to the
+    construction graph. A listener whose own dependencies reach the dispatcher closed a cycle the app never wrote:
+    - a `Publisher` that dispatches `PostPublished`, taken by a listener of that event;
+    - a Twig extension in `view.extensions` that dispatches, while a listener renders.
+
+    Boot failed with `circular_service`. The blog restructured twice around it.
+
+    **The change.**
+    - The dispatcher is built with `DeferredListenerProvider`, which is pack-internal and `@internal`. It holds a closure
+      that fetches `ListenerProvider` from the container on the first `getListenersForEvent()`, and keeps it.
+    - The provider factory is unchanged. The boot sweep still builds it, so every listener is resolved and checked at
+      boot, and `bad_listener` and `service_not_registered` are still boot problems.
+    - `EventDispatcher`'s constructor (`ListenerProviderInterface`) is unchanged.
+
+    **Why it is in-rules.**
+    - The plan allows laziness written by hand in the owning class, and this is one closure inside the pack's own
+      wiring.
+    - It is not a framework-made proxy.
+    - The container is not held by the provider, which entry 292 kept out.
+
+    **What changes.**
+    - One visible side effect: `lava services` no longer shows the `EventDispatcher -> ListenerProvider` edge before
+      the first dispatch.
+    - The registration lines that committed maps record (`EventsModule.php:56`, `:58` and `:76`) do not move, so this
+      is a patch.
+
+    **Rejected.** Reading a listener's `__invoke()` from a factory's declared type without building the listener. A
+    declared type can be an interface or missing, and the check would stop proving the real instance.
+
+301. **The boot sweep reports a service cycle once (Lava Notes, R3-B2).**
+
+    **The bug.** `ValidateWiring` resolves every id, and `Container::get()` starts a cycle's chain at whichever id was
+    asked for. `A -> B -> A`, `B -> A -> B`, and `P -> A -> B -> A` for a `P` that only depends on the cycle each had
+    their own `context.chain`. The report's identity (`code|context`) kept every one of them: two copies for a
+    two-service cycle, five for the events pack's cycle through a renderer. That broke the sweep's own promise to report
+    a diagnosis once.
+
+    **The change.** Before adding a `circular_service`, the sweep compares its cycle with every one already reported and
+    skips it when they match.
+    - A cycle is the chain from the first occurrence of the repeated id, without the repeat, sorted.
+    - The first chain found is the one kept.
+    - Distinct cycles are each still reported.
+    - The comparison is private to `ValidateWiring`, and no public API is added.
+
+    **Class.** Patch: a boot that failed still fails, with fewer copies of the same problem.
+
+302. **An `Error` from `app/Listeners.php`, or from a module's `register()`, is named where it was thrown (Lava Notes,
+    R3-B8).**
+
+    **The bug.** `WireModules` caught every `\Error` from wiring a module, whether it came from `new` or from
+    `register()`. It reported each one as "Module class … cannot be instantiated", with the parameterless-constructor
+    fix, at `app/Modules.php`. A parse error or `TypeError` in `app/Listeners.php`, which `EventsModule::register()`
+    reads, arrived there, and so did an `\Error` from any pack's `register()`.
+
+    **Events.** `ListenerMap::load()` catches `\Error` around the `require` and throws `invalid_listeners_file`, through
+    `InvalidListenersFile::unreadable()`.
+    - The source is the error's line when the error is in the listeners file, and the file's line 1 otherwise.
+    - The context names the error class, its message and where it was thrown.
+    - The error is chained as the previous exception.
+    - The code is unchanged: it is still the pack's one artifact code (entry 292).
+
+    **Core.** `WireModules` catches `\Error` only around `new`, which keeps the constructor problem for the case it was
+    written for.
+    - Anything else a module throws (`pack()`, the cross-check or `register()`) becomes `unexpected_failure`, which
+      already names the step and the throwable's file and line.
+    - The next module still wires. Before, a non-`\Error` escaped the step: the kernel reported the same
+      `unexpected_failure`, but the modules after it, and every disabled pack's manifest, were skipped.
+
+    **Class.** Patch: only a boot that already fails reports differently. The events half needs nothing new from core,
+    so lavaphp/events 0.4.1 behaves the same on core 0.4.0.
+
+303. **A listener nobody registered is sourced at `app/Listeners.php` (Lava Notes, R3-B9, in part).**
+
+    **The bug.** `ServiceNotRegistered::of()` has no source parameter, and names the file only as the relative
+    `referenced_from: app/Listeners.php`. conventions.md promises an absolute `source.file`.
+
+    **The change.** The pack rebuilds the problem with the same message, fix and context, and with the absolute
+    listeners file at line 1 as its source.
+    - Line 1 is the pack's and core's convention for problems about a whole data file.
+    - No core API is added, so this works on core 0.4.0.
+    - `SourceLocation` is written fully qualified in `EventsModule`: a `use` line would move the registration lines
+      that committed maps record.
+
+    **Not done: every listener mistake in one boot.** The pack still stops at its first unknown key and first failing
+    listener. Raising several needs a core throwable that carries a list of problems, unpacked by `ValidateWiring` and
+    `WireModules`. That is new core API with a lockstep bump, and it goes to 0.5.0. Entry lines inside the file (a
+    `PhpToken` scan) are not proposed, because nothing in the framework does that today.
+
+304. **Documented: a listener is built once, a mutable event is the filter, and file order is the only order (Lava
+    Notes, R3-B10 and R3-G1).**
+
+    **A listener is one instance.** It is built once, when boot builds the provider, whatever its registration kind:
+    one registered with `factory()` is still a single instance that every dispatch reaches. That is by design
+    (entry 292: the provider holds the resolved listeners). The docs now say to register listeners with `singleton()`
+    and to keep per-dispatch state on the event.
+
+    **Refusing `factory` listeners is not done here.** Refusing a `factory`-kind listener with `bad_listener` would stop
+    apps that boot today from booting. It is a minor, and a decision for 0.5.0.
+
+    **The filter pattern is named.** `dispatch()` returns the event, so a mutable event is the filter: listeners change
+    it and the caller reads the result.
+
+    **Order.** Listeners run in their position in `app/Listeners.php`, and there are deliberately no priorities.
+
+    **Needs a user decision.** Adding a listener from a pack or from a test, and priorities, both run against entry
+    292's "the file is everything".
