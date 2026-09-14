@@ -4964,3 +4964,31 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     registration line and no map was rebuilt with it, which `composer verify`
     cannot see and `check:install` would have. For an app upgrading, `lava map`
     is on the list again.
+
+290. **Mail, translation, uploads and request lifetime are documented, not built
+    (R2-G5, R2-G6, R2-G9, R2-G12).** Each review found the framework already had
+    the seam and no page said so.
+
+    - `docs/mail.md`: symfony/mailer registered in `app/Services.php` with a
+      declared `MAILER_DSN`, plain-text bodies through `renderToString()` inside
+      `{% autoescape false %}` (lavaphp/view's escaping is not configurable), the
+      timing oracle a synchronous send opens on a reset form, and a recording
+      transport swapped in with `replace:`. Every snippet was run against
+      symfony/mailer 7: the transport records, a CR/LF address is refused, a
+      long line goes out quoted-printable, `null://null` resolves.
+    - `docs/translation.md`: a translator as a service and a Twig extension
+      listed in `view.extensions` (entry 287), the locale from the render
+      context through `needs_context` (checked against Twig), never a global
+      (entry 242), and form errors translated from `validation_failed`'s
+      `field`, `rule` and `expects`. The review suggested message keys on the
+      built-in rules; the context already carries the rule's name and bound, so
+      translating by rule needs no new validate API, and none was added.
+    - `docs/uploads.md`: files validated with `Field::any()->custom()` beside the
+      form, the type sniffed from the bytes, the pixel cap tied to
+      `memory_limit` (as the blog's `MediaLibrary` now does), content-hashed
+      storage outside `public/` written after every size exists, a route whose
+      param type admits only stored names, `nosniff`, and EXIF.
+    - `conventions.md` "Request lifetime": the front controller boots per
+      request, one `TestClient` (or a worker) shares singletons across requests,
+      and a memo is reset by a global middleware that names each service by
+      type. No scoped lifetime was added, as the review advised.

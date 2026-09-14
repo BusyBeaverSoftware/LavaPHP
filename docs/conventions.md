@@ -138,6 +138,25 @@ hand-edited: change the app and run `lava map`.
   `current()` when it runs; a `Features` taken in a constructor is boot's
   anonymous resolver.
 
+## Request lifetime
+
+The shipped front controller (`public/index.php`) boots the kernel for every
+request. Under `php -S`, `lava serve` and PHP-FPM each request gets a fresh
+container, so every singleton lives for exactly one request; boot constructs
+them all, which is the accepted price of validating the wiring eagerly. There
+is no request-scoped lifetime in the container, and `FeatureScope` is the one
+piece of request state core holds, bounded by `App::handle()`.
+
+One `App` answers many requests in two places, and there singletons are shared
+between requests: a test that sends several requests through one `TestClient`,
+and a worker runtime, which LavaPHP does not ship. A service that remembers
+something for the current request, such as a settings lookup or the current
+menu, is right in production and wrong in that test unless it is reset. Make
+the reset explicit: give the service a `forget()` method, and have a global
+middleware take each such service as a constructor parameter and call it at the
+start of every request. Naming each service by type turns a forgotten method
+into an error at boot, where a loop with `method_exists()` would skip it.
+
 ## The reflection boundary
 
 Reflection happens only at boot, read-only, in exactly two places:

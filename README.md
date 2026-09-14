@@ -22,7 +22,7 @@ packages/http-client lavaphp/http-client — small HTTP client (ext-curl)
 packages/app         lavaphp/app         — application skeleton (composer create-project target)
 apps/demo            — dogfood demo app, the canonical example
 apps/blog            — a blog with sign-in, built the way a consumer builds one
-docs/                — conventions, per-pack docs, sessions and CSRF, stable JSON schemas for every CLI command
+docs/                — conventions, per-pack docs, sessions and CSRF, mail, translation, uploads, stable JSON schemas for every CLI command
 ```
 
 ## Installing
