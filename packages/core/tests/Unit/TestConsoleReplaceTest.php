@@ -42,5 +42,13 @@ final class TestConsoleReplaceTest extends TestCase
         // app that cannot boot — here, the replacement.
         self::assertSame(ExitCode::Usage, $result->exitCode());
         self::assertSame(['unknown_command', 'bad_replacement'], $result->problemCodes());
+        self::assertSame([], $result->data(), 'An envelope for a command that was never found has no data keys (DECISIONS 265).');
+
+        // A core command exists without the app, so it answers for itself: the
+        // replacement is the envelope's first problem and the exit is 1 (R3-B18).
+        $core = (new TestConsole($appDir, replace: ['App\ReplaceConsole\Nothing' => new Greeter('x')]))->json('routes');
+        self::assertSame(ExitCode::Failure, $core->exitCode());
+        self::assertSame(['bad_replacement'], $core->problemCodes());
+        self::assertSame(['routes' => []], $core->data());
     }
 }

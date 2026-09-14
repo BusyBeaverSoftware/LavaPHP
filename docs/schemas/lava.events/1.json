@@ -14,7 +14,7 @@
           "required": ["file", "events"],
           "properties": {
             "file": {
-              "description": "app/Listeners.php when the app has one; null when it has none, or when the app did not boot.",
+              "description": "app/Listeners.php when the app has one; null when it has none.",
               "anyOf": [{ "const": "app/Listeners.php" }, { "type": "null" }]
             },
             "events": {

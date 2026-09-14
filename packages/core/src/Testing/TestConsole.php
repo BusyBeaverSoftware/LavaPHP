@@ -41,7 +41,9 @@ final class TestConsole
      * @param string $appDir the app's root — the directory holding `app/` and `config/`
      * @param array<string, string> $env variables visible to every command this console runs
      * @param array<string, mixed> $replace services a test substitutes, id => value; an id nothing
-     *        registers, or a value of the wrong type, is `bad_replacement` in the command's envelope
+     *        registers, or a value of the wrong type, is `bad_replacement`. A core command reports it
+     *        first, exit 1. A pack's or an app's command exists only once the app boots, so it
+     *        reports `unknown_command` first and `bad_replacement` after it, exit 2
      */
     public function __construct(
         private readonly string $appDir,

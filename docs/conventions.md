@@ -217,7 +217,10 @@ A route whose types do not compile together is `bad_route_pattern` at boot.
 HEAD is never auto-mapped to
 GET — declare `Method::Head` if a route should answer HEAD. URL generation
 (`UrlGenerator::url()`) validates every value against its param type: a
-generated URL can never point at a path the router wouldn't match.
+generated URL can never point at a path the router wouldn't match, nor at
+another host. A value that would put `/` or `\` right after the leading slash
+(`//host` or `/\host`, which a browser reads as another site) has that one
+character percent-encoded.
 
 **Matching is exact, trailing slash included.** `/2026` and `/2026/` are two
 paths, and nothing redirects one to the other on its own. To accept an old or
@@ -228,7 +231,11 @@ query string kept; `status:` also takes 302, 303, 307 or 308. It is an ordinary
 route, so `->when()` and `->middleware()` apply, `lava routes` lists it and the
 map shows `redirect to posts.show (301)`. A target that does not exist, does not
 answer GET, is itself a redirect, or has a param the redirect does not capture
-with the same type is `bad_redirect` at boot.
+with the same type is `bad_redirect` at boot. A redirect whose target is gated
+off by `->when()` is absent with it, so the old address is a 404 rather than a
+301 into one. A redirect registered before a route whose URLs its own path also
+matches is asked for that route's address and would lead to itself: that request
+fails with `bad_redirect` at the redirect's line instead of looping.
 
 Routes register in order: `app/Routes.php` first, then each enabled module's
 `routes()` in `app/Modules.php` order — on any path overlap the app's
@@ -275,8 +282,13 @@ one home, `Envelope::schema()`, so a bump cannot be half-applied.
   for a flag list makes most. The refusal names the flag, lists what the command
   does accept, and points at `lava <cmd> --help`. A flag after `--` is a
   positional argument and never reaches the check.
-- **`data` keys are promised on every exit path**, including a failed boot. A
-  consumer never branches on a shape that is only sometimes there.
+- **`data` keys are promised on every exit path of a core command**, including
+  a failed boot. A consumer never branches on a shape that is only sometimes
+  there. A pack's or an app's command exists only once the app boots, so when
+  the boot fails there is no such command to answer: the envelope carries
+  `unknown_command` first and the boot's own problems after it, with `data: {}`
+  and exit `2`, under the schema the command would have used, which that empty
+  `data` cannot satisfy (DECISIONS 265).
 - **`problems` is ordered to act on**: severity is the major key — fatals
   before warnings — and within one severity, runnable fixes (`Run: …`) first.
   Severity has to win: `stale_map`'s fix is a runnable command, but it is a

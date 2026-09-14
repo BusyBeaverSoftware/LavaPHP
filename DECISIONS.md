@@ -5131,3 +5131,79 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     `feat/round2-gaps` (local only) and `release-prep/0.4.0` were deleted locally
     and on GitHub once `git merge-base --is-ancestor` confirmed `main` contains
     both. Not run for this release: the MySQL and PostgreSQL live tests.
+
+296. **Round-3 routing fixes: a redirect stays on this site, is absent with its
+    target, and fails rather than loops; every route problem has its line.**
+    Lava Notes R3-B1, R3-B4, R3-B5 and R3-B13, each reproduced by the round-3
+    maintainer review (2026-09-14) before it was fixed.
+
+    - **R3-B1, the open redirect.** `UrlGenerator::url()` percent-encodes the
+      second character of a path that starts `//` or `/\`, so
+      `$r->redirect('/docs/{rest:path}', …, to: 'page')` into `/{rest:path}`
+      answers `/%2Fevil.example/x`, not `//evil.example/x`. In `url()` rather
+      than only in `RedirectHandler`, because every link a view or handler
+      builds goes through it, and a generated `href="//evil.example"` is the
+      same hole one click later. Only that character: encoding every value is
+      R3-B3, which changes URLs apps already emit and waits for a minor. When
+      R3-B3 decodes the matched path, this encoding must survive it, or `%2F`
+      becomes `//` again. `RedirectHandler` has no second shape check: `url()`
+      cannot return such a path, and a refusal no request can reach is code no
+      test can exercise.
+    - **R3-B4, the loop, at request time.** A redirect whose built location
+      equals the request's path throws `bad_redirect` at the redirect's line (a
+      500) instead of answering 301 with the same address. This catches every
+      shadowing shape, including `/{section:str}/{slug:str}` registered before
+      `/pages/{slug:str}`, which no static comparison of the two paths sees.
+      The boot-time refusal of a redirect whose path has its target's shape
+      would stop apps that boot today, so it waits for a minor.
+    - **R3-B5, a gated target.** `Router::match()` gates a redirect by its
+      target's `->when()` flag as well as its own, so while the target is off
+      the old address is absent: a later route can still match it, and a miss
+      is the ordinary 404 through the unrouted path. The review suggested the
+      handler throw `route_not_found`; that would run the redirect's own
+      middleware first and report a miss after a match. Copying the gate onto
+      the redirect in `finalize()` would change its `feature` in `lava routes`
+      and the map. Left as it is: `lava routes --all` still calls such a
+      redirect `active`.
+    - **R3-B13, sources.** `finalize()` passes each route's registration site
+      into `compile()`, the compile check and `BadHandler::routeHasNone()`
+      (a new optional parameter); the refusals in `add()` and `pattern()` pass
+      the call site, as `redirect()` and `DuplicateRouteName` already did.
+      `Router::declaredAt()` is now public, for `RedirectHandler` and
+      `BuildRouter`.
+
+    Tests: `RoutingTest` pins the source line of every finalize and
+    registration refusal and the encoded URLs; `RedirectRouteTest` drives the
+    three redirect cases through `TestClient` on `redirect-app`, which gains a
+    gated target, a shadowing redirect and a rooted catch-all.
+
+297. **A handler's unregistered service is reported at its route, and a
+    switched-off pack's id says to turn the pack on** (Lava Notes R3-B12).
+    `BuildRouter` catches `service_not_registered` from a handler's injection
+    plan and re-raises it through `ServiceNotRegistered::forRoute()`: the
+    context gains `route`, and the source is the route's registration line, as
+    lava-events.md already promised. When the id lives in the namespace of a
+    module in `BootCtx::$disabledModules`, the fix names the package and its
+    feature and says not to register the id; the context gains
+    `disabled_pack` and `feature`. The old fix, "register it in
+    app/Services.php", became `duplicate_service` the moment the pack was on,
+    the class of defect entry 260 fixed for `UrlGenerator`. The namespace test
+    is sound because `ModuleRef` requires `Lava\<Pack>\<Pack>Module`. The
+    message is unchanged. Not done: a service factory that reaches a disabled
+    pack's id through the container keeps the ordinary fix. `BuildRouter`'s
+    two registration lines (94, 95) did not move, so no map goes stale.
+
+298. **`lava describe` says where a redirect leads, and a pack command's
+    failed-boot envelope is documented as it is** (Lava Notes R3-G3, R3-B18).
+    - `describe`'s route match gains `redirect: {to, status}`, null for any
+      other route. `match` is an open object, so `lava.describe/1` holds. The
+      same key on `lava routes --json` rows needs `lava.routes/2`, since
+      `/1` closes the row; that is a minor and waits.
+    - R3-B18 changed no behaviour. The wire already sends `data: {}`, and
+      `unknown_command` first with exit 2 is entry 265 and M4 slice 3. Three
+      texts promised otherwise and now say what happens: conventions.md scopes
+      "data keys on every exit path" to core commands and states the pack and
+      app command case; `lava.events/1` drops "or when the app did not boot"
+      from `file`, a path the CLI never takes (a description, so no `/2`); and
+      `TestConsole`'s `$replace` says where `bad_replacement` lands and with
+      which exit. `TestConsoleReplaceTest` pins both shapes.
