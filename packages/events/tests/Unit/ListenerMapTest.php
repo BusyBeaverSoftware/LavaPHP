@@ -86,4 +86,31 @@ final class ListenerMapTest extends TestCase
             }
         }
     }
+
+    public function testAFileThatCannotBeReadIsInvalidListenersFileAtTheErrorsLine(): void
+    {
+        // Lava Notes R3-B8: an \Error from the file reached boot as the module
+        // failing to construct, sourced at app/Modules.php.
+        $cases = [
+            'a parse error' => ['[', \ParseError::class, 2, 'Fix line 2 of the file'],
+            'a TypeError in the file' => ["str_repeat('x', 'y')", \TypeError::class, 2, 'Fix line 2 of the file'],
+            'a TypeError the file reached elsewhere' => ['new \\' . Shipped::class . '([])', \TypeError::class, 1, 'Support/Fixtures.php:'],
+        ];
+
+        foreach ($cases as $case => [$returned, $error, $line, $fix]) {
+            $dir = $this->appWith($returned);
+            try {
+                ListenerMap::load($dir);
+                self::fail("Read a file with {$case}.");
+            } catch (InvalidListenersFile $problem) {
+                self::assertSame('invalid_listeners_file', $problem->code(), $case);
+                self::assertStringStartsWith("The listeners file {$dir}/app/Listeners.php could not be read: ", $problem->getMessage(), $case);
+                self::assertStringContainsString($fix, $problem->fix, $case);
+                self::assertSame($error, $problem->context['error'], $case);
+                self::assertInstanceOf($error, $problem->getPrevious(), $case);
+                self::assertSame("{$dir}/app/Listeners.php", $problem->source?->file, $case);
+                self::assertSame($line, $problem->source->line, $case);
+            }
+        }
+    }
 }

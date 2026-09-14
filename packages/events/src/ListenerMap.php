@@ -41,7 +41,7 @@ final readonly class ListenerMap
     /**
      * The app's listeners, or none when it has no `app/Listeners.php`.
      *
-     * @throws InvalidListenersFile when the file does not return a map of names to ids
+     * @throws InvalidListenersFile when the file does not parse, or does not return a map of names to ids
      */
     public static function load(string $appDir): self
     {
@@ -50,8 +50,14 @@ final readonly class ListenerMap
             return new self([]);
         }
 
-        // Required in a closure with no scope, so the file sees nothing of this class.
-        $returned = (static fn (string $path): mixed => require $path)($file);
+        // Required in a closure with no scope, so the file sees nothing of this
+        // class. An `\Error` from it is the file's mistake: left to escape, it
+        // would reach boot as the module failing to construct (R3-B8).
+        try {
+            $returned = (static fn (string $path): mixed => require $path)($file);
+        } catch (\Error $error) {
+            throw InvalidListenersFile::unreadable($file, $error);
+        }
         if (!is_array($returned)) {
             throw InvalidListenersFile::notAMap($file, get_debug_type($returned));
         }

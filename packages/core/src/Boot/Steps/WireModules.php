@@ -14,6 +14,7 @@ use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\MissingPack;
+use Lava\Core\Problem\UnexpectedFailure;
 
 /**
  * Wires the enabled packs, in app/Modules.php order, between the core
@@ -39,14 +40,11 @@ final class WireModules implements BootStep
                 $ctx->modules[$ref->moduleClass] = self::wire($ref, $ctx->container, $ctx->appContext);
             } catch (LavaProblem $problem) {
                 $ctx->problems->add($problem);
-            } catch (\Error $error) {
-                // `new` on a constructor with required parameters lands here.
-                $ctx->problems->add(new InvalidConfig(
-                    "Module class {$ref->moduleClass} cannot be instantiated: {$error->getMessage()}",
-                    'Module constructors must be parameterless — dependencies arrive as register() arguments.',
-                    ['module_class' => $ref->moduleClass],
-                    $ref->declaredAt,
-                ));
+            } catch (\Throwable $throwable) {
+                // From the module's pack() or register(), or a file register()
+                // reads: not the constructor, so it is named where it was
+                // thrown, like any other boot failure (Lava Notes, R3-B8).
+                $ctx->problems->add(UnexpectedFailure::of(self::class, $throwable));
             }
         }
 
@@ -74,7 +72,17 @@ final class WireModules implements BootStep
             // CheckModules verified this; the guard keeps the message exact if steps ever reorder.
             throw MissingPack::of($ref);
         }
-        $module = new $ref->moduleClass();
+        try {
+            $module = new $ref->moduleClass();
+        } catch (\Error $error) {
+            // `new` on a constructor with required parameters lands here.
+            throw new InvalidConfig(
+                "Module class {$ref->moduleClass} cannot be instantiated: {$error->getMessage()}",
+                'Module constructors must be parameterless — dependencies arrive as register() arguments.',
+                ['module_class' => $ref->moduleClass],
+                $ref->declaredAt,
+            );
+        }
         if (!$module instanceof Module) {
             throw new InvalidConfig(
                 "Module class {$ref->moduleClass} does not implement Lava\Core\Modules\Module.",

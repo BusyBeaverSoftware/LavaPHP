@@ -131,6 +131,20 @@ final class EventsModuleBootTest extends TestCase
         }
     }
 
+    public function testAListenersFileThatRaisesAnErrorFailsTheBootAtItsLine(): void
+    {
+        // Lava Notes R3-B8: reported as "Module class Lava\Events\EventsModule
+        // cannot be instantiated", with the constructor fix, at app/Modules.php.
+        $failure = $this->boot([], [], [], ['app/Listeners.php' => "<?php\nreturn [str_repeat('x', 'y') => []];\n"]);
+
+        self::assertInstanceOf(BootFailure::class, $failure);
+        $problems = $failure->problems->problems();
+        self::assertSame(['invalid_listeners_file'], array_map(static fn ($problem): string => $problem->code(), $problems));
+        self::assertStringContainsString('must be of type int, string given', $problems[0]->getMessage());
+        self::assertStringEndsWith('/app/Listeners.php', (string) $problems[0]->source?->file);
+        self::assertSame(2, $problems[0]->source?->line);
+    }
+
     public function testAListenerMayDependOnTheServiceThatDispatchesItsEvent(): void
     {
         // Lava Notes R3-B2: the dispatcher took the provider when it was built,

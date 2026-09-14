@@ -467,6 +467,89 @@ final class KernelBootTest extends TestCase
         }
     }
 
+    public function testAnErrorFromAModulesRegisterIsNamedWhereItWasThrownNotAsItsConstructor(): void
+    {
+        // Lava Notes R3-B8: every \Error from wiring a module was reported as
+        // "cannot be instantiated", with the constructor fix, at app/Modules.php,
+        // and it was the module's register() that threw.
+        $dir = sys_get_temp_dir() . '/lava-module-errors-' . bin2hex(random_bytes(6));
+        self::assertTrue(mkdir($dir . '/app/pack', 0o777, true));
+        $modules = <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace Lava\RegisterFails {
+                final class RegisterFailsModule implements \Lava\Core\Modules\Module
+                {
+                    public function pack(): \Lava\Core\Modules\PackInfo
+                    {
+                        return \Lava\Core\Modules\PackInfo::of('lavaphp/register-fails', 'register_fails');
+                    }
+
+                    public function register(\Lava\Core\Container\Container $container, \Lava\Core\Boot\AppContext $ctx): void
+                    {
+                        $container->value('register_fails.length', strlen([]));
+                    }
+                }
+            }
+
+            namespace Lava\NeedsArgs {
+                final class NeedsArgsModule implements \Lava\Core\Modules\Module
+                {
+                    public function __construct(private readonly string $dsn)
+                    {
+                    }
+
+                    public function pack(): \Lava\Core\Modules\PackInfo
+                    {
+                        return \Lava\Core\Modules\PackInfo::of('lavaphp/needs-args', 'needs_args');
+                    }
+
+                    public function register(\Lava\Core\Container\Container $container, \Lava\Core\Boot\AppContext $ctx): void
+                    {
+                        $container->value('needs_args.dsn', $this->dsn);
+                    }
+                }
+            }
+            PHP;
+        file_put_contents($dir . '/app/pack/modules.php', $modules);
+        file_put_contents($dir . '/app/Modules.php', <<<'PHP'
+            <?php
+            require_once __DIR__ . '/pack/modules.php';
+            use Lava\Core\Modules\ModuleRef;
+            return [
+                ModuleRef::of(\Lava\RegisterFails\RegisterFailsModule::class, package: 'lavaphp/register-fails', feature: 'register_fails'),
+                ModuleRef::of(\Lava\NeedsArgs\NeedsArgsModule::class, package: 'lavaphp/needs-args', feature: 'needs_args'),
+            ];
+            PHP);
+
+        try {
+            $result = TestApp::boot($dir);
+
+            self::assertInstanceOf(BootFailure::class, $result);
+            $problems = $result->problems->problems();
+            self::assertSame(['unexpected_failure', 'invalid_config'], array_map(static fn (LavaProblem $p): string => $p->code(), $problems));
+
+            $line = 1 + substr_count((string) strstr($modules, 'strlen(', true), "\n");
+            self::assertSame(WireModules::class, $problems[0]->context['step']);
+            self::assertSame(\TypeError::class, $problems[0]->context['exception']);
+            self::assertSame("{$dir}/app/pack/modules.php:{$line}", $problems[0]->context['at']);
+            self::assertStringNotContainsString('cannot be instantiated', $problems[0]->getMessage());
+
+            // The next module still got its turn, and a constructor that needs
+            // arguments is still the constructor problem.
+            self::assertStringContainsString('Lava\NeedsArgs\NeedsArgsModule cannot be instantiated', $problems[1]->getMessage());
+            self::assertSame("{$dir}/app/Modules.php", $problems[1]->source?->file);
+        } finally {
+            @unlink($dir . '/app/pack/modules.php');
+            @unlink($dir . '/app/Modules.php');
+            @rmdir($dir . '/app/pack');
+            @rmdir($dir . '/app');
+            @rmdir($dir);
+        }
+    }
+
     public function testRedefiningAPackGateFlagInConfigIsReported(): void
     {
         $result = TestApp::bootFixture('redefined-pack-flag-app');

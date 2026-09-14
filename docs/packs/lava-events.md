@@ -136,6 +136,7 @@ that wants a dispatcher of its own, as lavaphp/http-client leaves
 
 | Mistake | Problem |
 |---|---|
+| `app/Listeners.php` does not parse, or raises an `Error` while it is read | `invalid_listeners_file`, at the error's line |
 | `app/Listeners.php` returns something other than a map of class names to an id or a non-empty list of ids | `invalid_listeners_file` |
 | a key that is not a class or an interface | `bad_listener` |
 | a listener id nothing registered | `service_not_registered`, naming `app/Listeners.php` |

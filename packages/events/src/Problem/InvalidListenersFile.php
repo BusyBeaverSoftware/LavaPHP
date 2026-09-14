@@ -48,6 +48,27 @@ final class InvalidListenersFile extends LavaProblem
         );
     }
 
+    /**
+     * The file could not be read at all: it does not parse, or an `\Error`
+     * (a `TypeError`, a call to an undefined function) left it while it ran.
+     * Sourced at the error's line when the error is in this file, and at the
+     * file otherwise, never at app/Modules.php where the pack is enabled
+     * (Lava Notes, R3-B8).
+     */
+    public static function unreadable(string $file, \Error $error): self
+    {
+        $here = realpath($error->getFile()) === realpath($file);
+
+        return new self(
+            "The listeners file {$file} could not be read: {$error->getMessage()}",
+            ($here ? "Fix line {$error->getLine()} of the file" : "Fix the error at {$error->getFile()}:{$error->getLine()}, which the file reached")
+                . ', so that it returns a map: ' . self::SHAPE,
+            ['file' => $file, 'error' => $error::class, 'message' => $error->getMessage(), 'at' => $error->getFile() . ':' . $error->getLine()],
+            SourceLocation::of($file, $here ? $error->getLine() : 1),
+            $error,
+        );
+    }
+
     public function code(): string
     {
         return 'invalid_listeners_file';
