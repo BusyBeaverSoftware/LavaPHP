@@ -5466,3 +5466,46 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     repositories, updated all six packages to 0.4.1 with no change of its own
     and passed `lava check --strict` with its 230 tests (one skipped for GD) and
     its map current.
+
+313. **`0.4.1` is released, with a security advisory for the open redirect.**
+    The user said "yes tag and yes to the security advisory if it's necessary".
+    `030d1f3` had passed CI on its branch (run 34805345304) and on `main`
+    (34805421980), where the split filled all seven mirrors (34805422070). The
+    annotated tag went on it and was pushed at 15:14:19 UTC; the tag's split
+    (34860845044) and CI (34860845137) both passed.
+
+    Packagist updated itself for all seven. A fresh `composer show -a` from an
+    empty directory saw `0.4.1` for six packages by 15:15:38 and for
+    `lavaphp/core` at 15:24:57, the core-only lag of entries 256, 269 and 281,
+    self-healed without pressing Update.
+
+    Installed from Packagist, with a fresh Composer home: `create-project
+    lavaphp/app` and `require` of the five packs locked all six `lavaphp/*`
+    packages at `0.4.1` on PHP 8.5.4 and in `php:8.3-cli` (8.3.33) and
+    `php:8.4-cli` (8.4.25). In each, a scratch app with
+    `$r->redirect('/docs/{rest:path}', 'docs.old', to: 'page')` into
+    `/{rest:path}` answered `GET /docs//evil.example/x` with
+    `Location: /%2Fevil.example/x` (0.4.0 answered `//evil.example/x`), and
+    `lava check --strict` passed. Lava Notes, which has no remote, took `0.4.1`
+    with `composer update 'lavaphp/*'` alone, passed `lava check --strict` (230
+    tests, one skipped for GD, map current), and records the release in its
+    round-3 reports.
+
+    **The advisory was necessary.** R3-B1 is an open redirect (CWE-601) in a
+    published package, reachable in 0.4.0 by any visitor through a redirect
+    route, and in every earlier version wherever an app builds a link with
+    `url()` from a value an attacker controls, for a route whose path starts
+    with a parameter: 0.1.1's `url()` appended a `path` value unchecked, as
+    0.4.0's did. So it was published as
+    [GHSA-x76q-3p93-qcc2](https://github.com/BusyBeaverSoftware/LavaPHP/security/advisories/GHSA-x76q-3p93-qcc2)
+    at 15:28:18 UTC, after 0.4.1 was installable: `lavaphp/core` `< 0.4.1`,
+    patched in `0.4.1`, CVSS 3.1 `AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N` (6.1,
+    medium), with the two vulnerable functions, the reproduction, the patch, a
+    workaround and the fix commit. No CVE was requested. It reaches the GitHub
+    Advisory Database, and `composer audit`, only after GitHub reviews it. The
+    README's 0.4.1 notes and docs/releasing.md link it.
+
+    `fix/round3` was deleted locally and on GitHub once `git merge-base
+    --is-ancestor` confirmed `main` contains it; the two worktree branches the
+    fixes came from were deleted after `git cherry` showed every commit landed.
+    Not run for this release: the MySQL and PostgreSQL live tests.

@@ -45,6 +45,8 @@ at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has h
 
 `0.4.1` fixes what Lava Notes' third review found, and asks nothing of an app:
 `composer update 'lavaphp/*'`, and a committed `AGENTS.md` stays current.
+The open redirect below is advisory
+[GHSA-x76q-3p93-qcc2](https://github.com/BusyBeaverSoftware/LavaPHP/security/advisories/GHSA-x76q-3p93-qcc2).
 
 - **An open redirect is closed.** In 0.4.0, a route whose path starts with a
   param could be given a value starting with `/` or `\`, and `url()` built
