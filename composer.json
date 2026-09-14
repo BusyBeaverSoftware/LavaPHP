@@ -28,6 +28,11 @@
             "type": "path",
             "url": "packages/http-client",
             "options": { "versions": { "lavaphp/http-client": "0.3.0" } }
+        },
+        "lavaphp/events": {
+            "type": "path",
+            "url": "packages/events",
+            "options": { "versions": { "lavaphp/events": "0.3.0" } }
         }
     },
     "require": {
@@ -36,6 +41,7 @@
     "require-dev": {
         "lavaphp/core": "^0.3.0",
         "lavaphp/db": "^0.3.0",
+        "lavaphp/events": "^0.3.0",
         "lavaphp/http-client": "^0.3.0",
         "lavaphp/validate": "^0.3.0",
         "lavaphp/view": "^0.3.0",
@@ -51,7 +57,8 @@
             "Lava\\Db\\Tests\\": "packages/db/tests/",
             "Lava\\Validate\\Tests\\": "packages/validate/tests/",
             "Lava\\View\\Tests\\": "packages/view/tests/",
-            "Lava\\HttpClient\\Tests\\": "packages/http-client/tests/"
+            "Lava\\HttpClient\\Tests\\": "packages/http-client/tests/",
+            "Lava\\Events\\Tests\\": "packages/events/tests/"
         }
     },
     "scripts": {

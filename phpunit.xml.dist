@@ -20,6 +20,7 @@
     <testsuite name="validate"><directory>packages/validate/tests</directory></testsuite>
     <testsuite name="view"><directory>packages/view/tests</directory></testsuite>
     <testsuite name="http-client"><directory>packages/http-client/tests</directory></testsuite>
+    <testsuite name="events"><directory>packages/events/tests</directory></testsuite>
   </testsuites>
   <source>
     <include>
@@ -28,6 +29,7 @@
       <directory>packages/validate/src</directory>
       <directory>packages/view/src</directory>
       <directory>packages/http-client/src</directory>
+      <directory>packages/events/src</directory>
     </include>
   </source>
 </phpunit>

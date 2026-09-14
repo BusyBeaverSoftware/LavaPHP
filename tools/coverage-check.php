@@ -140,6 +140,7 @@ foreach ($arguments as $argument) {
  *
  *   packages/core         87.91%  ->  85.00
  *   packages/db           88.64%  ->  85.00
+ *   packages/events       96.67%  ->  94.00   (measured 2026-09-13, 1146 tests)
  *   packages/http-client  96.69%  ->  94.00
  *   packages/validate     98.29%  ->  96.00
  *   packages/view         97.73%  ->  95.00
@@ -159,6 +160,7 @@ foreach ($arguments as $argument) {
 const FLOORS = [
     'packages/core' => 85.0,
     'packages/db' => 85.0,
+    'packages/events' => 94.0,
     'packages/http-client' => 94.0,
     'packages/validate' => 96.0,
     'packages/view' => 95.0,

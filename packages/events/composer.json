@@ -1,0 +1,24 @@
+{
+    "name": "lavaphp/events",
+    "description": "LavaPHP events pack — a PSR-14 dispatcher whose listeners are declared in app/Listeners.php, checked at boot and listed in the map.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "psr/event-dispatcher": "^1.0",
+        "lavaphp/core": "^0.3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.5"
+    },
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": { "Lava\\Events\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Lava\\Events\\Tests\\": "tests/" }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

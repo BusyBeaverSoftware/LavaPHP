@@ -10,7 +10,7 @@ declare(strict_types=1);
  *
  * Run it with `composer check:install`, or name the targets:
  * `composer check:install -- db app`. Targets: core, db, validate, view,
- * http-client, app (the skeleton), demo, blog.
+ * http-client, events, app (the skeleton), demo, blog.
  *
  * ── Why this exists ─────────────────────────────────────────────────────────
  *
@@ -61,6 +61,7 @@ $targets = [
     'validate' => ['dir' => 'packages/validate', 'kind' => 'package', 'env' => []],
     'view' => ['dir' => 'packages/view', 'kind' => 'package', 'env' => []],
     'http-client' => ['dir' => 'packages/http-client', 'kind' => 'package', 'env' => []],
+    'events' => ['dir' => 'packages/events', 'kind' => 'package', 'env' => []],
     'app' => ['dir' => 'packages/app', 'kind' => 'skeleton', 'env' => []],
     'demo' => ['dir' => 'apps/demo', 'kind' => 'app', 'env' => []],
     // The blog does not boot without a session secret. This one signs nothing
@@ -101,7 +102,7 @@ foreach ($names as $name) {
     try {
         // Every library package is copied, so a path repository always has a
         // sibling to point at; the target is copied beside them in its own place.
-        foreach (['core', 'db', 'validate', 'view', 'http-client'] as $package) {
+        foreach (['core', 'db', 'validate', 'view', 'http-client', 'events'] as $package) {
             copyFreshClone($root, "packages/{$package}", $scratch);
         }
         copyFreshClone($root, $target['dir'], $scratch);

@@ -4994,8 +4994,8 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
       type. No scoped lifetime was added, as the review advised.
 
 291. **A pack can add a section to the map (`ProvidesMapSection`), which the
-    events pack needs.** Entry 290's user decision for R2-G3 was a PSR-14 pack
-    whose listeners `lava map` lists. The map is compiled from core's four
+    events pack needs.** The user's decision for R2-G3 (entry 292) was a PSR-14
+    pack whose listeners `lava map` lists. The map is compiled from core's four
     registries, and a pack's listener registry is none of them, so a pack needs a
     way to contribute. It follows `ProvidesRoutes` and `ProvidesCommands`: an
     optional module interface, `mapSection(App $app): ?MapSection`, asked with
@@ -5010,3 +5010,46 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     committed maps confirm by staying current. A container value under a
     well-known id was the other way to pass the facts, and it is the
     lookup-by-convention pillar 1 rules out.
+
+292. **`lavaphp/events`: PSR-14 events whose listeners are declared in
+    `app/Listeners.php`, checked at boot, and listed (R2-G3).** Hooks had no
+    decision either way, and the review recommended direct service calls. The
+    user chose the other option it named: an events pack with one registry file,
+    boot-time checks and a place in `lava map`, and no string hook names. The
+    pack is the sixth that depends on core, and on nothing else but
+    `psr/event-dispatcher`.
+
+    - **The registry is a file, and the file is everything.** `app/Listeners.php`
+      returns event class (or interface) => a listener id or a list of them. An
+      event reaches the listeners of every key it is an instance of, in file
+      order, each listener once. No listener is registered anywhere else, so the
+      file, `lava events` (`lava.events/1`) and the map's Events section
+      (entry 291) describe all that runs. A wrong shape is the pack's one
+      artifact code, `invalid_listeners_file`, as db has `invalid_migration_file`.
+    - **A listener is an invokable service.** It is registered in
+      `app/Services.php` like any other, so its dependencies come through its
+      factory and `lava services` shows it. While boot builds `ListenerProvider`,
+      in ValidateWiring, every listener is resolved and its `__invoke()` read
+      with reflection: the first parameter must be typed as the event, a parent,
+      an interface it implements, or `object`, and any other must be optional.
+      Anything else is `bad_listener`, and an unregistered id is
+      `service_not_registered` naming the file. That makes reflection's third
+      boot-time use, recorded in conventions.md. The check is per key, and it
+      caught the fixture's own first draft: a listener typed for `TaskCompleted`
+      listed under an interface other events implement.
+    - **Dispatch is PSR-14 as written.** In order, synchronous, a stoppable
+      event asked before each listener, a listener's exception not caught. The
+      provider holds the resolved listeners rather than the container.
+    - **Three ids, not the PSR one.** `ListenerMap`, `ListenerProvider`,
+      `EventDispatcher`; `EventDispatcherInterface` stays free for an app's own
+      dispatcher, for lavaphp/http-client's reason about `ClientInterface`.
+
+    Wired into every gate: the root manifest and lock, the phpunit suites,
+    PHPStan's paths, `check:install` (a standalone install passes), `check:split`,
+    the coverage floors (96.67% measured, floor 94.00), CI's isolated-install
+    list, `split.yml`'s matrix, core's packed-app fixture (so JsonSchemaTest sees
+    the command) and the docs. Not done, and not doable from here: the
+    `BusyBeaverSoftware/lava-events` mirror, its deploy key and its Packagist
+    registration, which `docs/releasing.md` now lists for a maintainer before the
+    first tag that includes the pack. Also not done: an async or queued
+    dispatcher, listener priorities beyond file order, and wildcard keys.

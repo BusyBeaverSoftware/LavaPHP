@@ -43,6 +43,7 @@ jobs:
           - { package: validate, secret: SPLIT_KEY_VALIDATE }
           - { package: view, secret: SPLIT_KEY_VIEW }
           - { package: http-client, secret: SPLIT_KEY_HTTP_CLIENT }
+          - { package: events, secret: SPLIT_KEY_EVENTS }
           - { package: app, secret: SPLIT_KEY_APP }
     steps:
       - uses: actions/checkout@v4

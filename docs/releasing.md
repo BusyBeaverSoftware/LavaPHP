@@ -115,13 +115,13 @@ each package is published from a read-only mirror of its own directory — see
 [Publishing](#publishing). The tag is still the release act: the split workflow
 pushes it to every mirror, and Packagist learns of it there.
 
-Cross-package constraints are lockstep: `^0.3.0` appears in the five packages
+Cross-package constraints are lockstep: `^0.3.0` appears in the six packages
 that depend on core, so a minor release bumps them together or the packs
 resolve to a core older than the one they were tested against.
 
 ## Publishing
 
-Six packages are published, each from a read-only mirror of its directory:
+Seven packages are published, each from a read-only mirror of its directory:
 
 | Directory | Package | Mirror |
 |---|---|---|
@@ -130,10 +130,17 @@ Six packages are published, each from a read-only mirror of its directory:
 | `packages/validate` | `lavaphp/validate` | `BusyBeaverSoftware/lava-validate` |
 | `packages/view` | `lavaphp/view` | `BusyBeaverSoftware/lava-view` |
 | `packages/http-client` | `lavaphp/http-client` | `BusyBeaverSoftware/lava-http-client` |
+| `packages/events` | `lavaphp/events` | `BusyBeaverSoftware/lava-events` |
 | `packages/app` | `lavaphp/app` | `BusyBeaverSoftware/lava-app` |
 
 The mirror names are set once, at the top of `.github/workflows/split.yml`. A
 package's name comes from its `composer.json`, never from its mirror.
+
+`lavaphp/events` is new since 0.3.0 and has no mirror yet. Before the first tag
+that includes it, a maintainer creates `BusyBeaverSoftware/lava-events`, adds its
+deploy key and the `SPLIT_KEY_EVENTS` secret, and registers it on Packagist, as
+in [Setting up the mirrors](#setting-up-the-mirrors). Until the secret exists,
+`split.yml` skips the package with a notice, and the tag reaches the other six.
 
 **Every manifest under `packages/` is publishable as it sits.** None carries a
 `repositories` block: in a published package that block is ignored when the

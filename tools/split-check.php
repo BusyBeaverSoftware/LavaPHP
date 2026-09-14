@@ -14,7 +14,7 @@ declare(strict_types=1);
  * commands against it:
  *
  *     composer create-project lavaphp/app consumer
- *     composer require lavaphp/db lavaphp/validate lavaphp/view lavaphp/http-client
+ *     composer require lavaphp/db lavaphp/validate lavaphp/view lavaphp/http-client lavaphp/events
  *     vendor/bin/lava check --strict
  *
  * and every lavaphp/* package in the consumer's lock has to have come from its
@@ -49,8 +49,8 @@ if ($root === false) {
     exit(1);
 }
 
-$packages = ['core', 'db', 'validate', 'view', 'http-client', 'app'];
-$packs = ['lavaphp/db', 'lavaphp/validate', 'lavaphp/view', 'lavaphp/http-client'];
+$packages = ['core', 'db', 'validate', 'view', 'http-client', 'events', 'app'];
+$packs = ['lavaphp/db', 'lavaphp/validate', 'lavaphp/view', 'lavaphp/http-client', 'lavaphp/events'];
 
 $version = monorepoVersion($root);
 $parts = explode('.', $version);

@@ -85,7 +85,7 @@ jobs:
         # PUBLISHED, and only then is the copy given path repositories to its
         # siblings — the packages carry none, because a published package
         # cannot (DECISIONS.md 229) — and installed.
-        run: php tools/install-check.php core db validate view http-client
+        run: php tools/install-check.php core db validate view http-client events
 
   skeleton:
     name: Prove lavaphp/app boots green from a fresh install

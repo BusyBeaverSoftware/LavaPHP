@@ -9,7 +9,7 @@ An open-source PHP framework designed for **agent-first usage**: an AI agent (or
 3. **Generated project map** — `lava map` compiles the running app into `AGENTS.md` (routes, services, features, env vars, schema). A build artifact, like a lockfile: always current, never hand-edited.
 4. **Errors as a feedback loop** — every framework failure is a `LavaProblem` carrying *what* failed, *where* (file:line), the *failing input*, and an *imperative fix*. One error message = one self-correction round trip.
 
-LavaPHP is a small core plus hard-decoupled packs (`lavaphp/db`, `lavaphp/validate`, `lavaphp/view`, `lavaphp/http-client`), each a separate Composer package depending only on core. A deterministic feature-flag system gates every pack at boot and app features per request — and the app *tells you* when a pack is missing, with the exact command to install it.
+LavaPHP is a small core plus hard-decoupled packs (`lavaphp/db`, `lavaphp/validate`, `lavaphp/view`, `lavaphp/http-client`, `lavaphp/events`), each a separate Composer package depending only on core. A deterministic feature-flag system gates every pack at boot and app features per request — and the app *tells you* when a pack is missing, with the exact command to install it.
 
 ## Repository layout
 
@@ -19,6 +19,7 @@ packages/db          lavaphp/db          — query builder, schema DSL, migratio
 packages/validate    lavaphp/validate    — typed validation DSL
 packages/view        lavaphp/view        — Twig integration
 packages/http-client lavaphp/http-client — small HTTP client (ext-curl)
+packages/events      lavaphp/events      — PSR-14 events, listeners declared in app/Listeners.php
 packages/app         lavaphp/app         — application skeleton (composer create-project target)
 apps/demo            — dogfood demo app, the canonical example
 apps/blog            — a blog with sign-in, built the way a consumer builds one
@@ -36,7 +37,7 @@ cd my-app
 ```
 
 and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
-`lavaphp/view`, `lavaphp/http-client`. Each package is published from a
+`lavaphp/view`, `lavaphp/http-client`, `lavaphp/events`. Each package is published from a
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 

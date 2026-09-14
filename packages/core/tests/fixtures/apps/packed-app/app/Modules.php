@@ -27,4 +27,5 @@ use Lava\Core\Modules\ModuleRef;
  */
 return [
     ModuleRef::of(\Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
+    ModuleRef::of(\Lava\Events\EventsModule::class, package: 'lavaphp/events', feature: 'events'),
 ];

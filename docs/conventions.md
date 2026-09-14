@@ -23,10 +23,11 @@ that" — zero-config apps are valid and boot green.
 | `public/index.php` | entry point | — (the canonical one is in lavaphp/app) | — |
 | `config/database.php` | optional | `array` (string keys) — **lavaphp/db** | `invalid_config` |
 | `app/Database/Migrations/*.php` | optional | `return new class extends Migration {…};` — **lavaphp/db** | `invalid_migration_file` |
+| `app/Listeners.php` | optional | `array` of event class => listener id or list of ids — **lavaphp/events** | `invalid_listeners_file` |
 
-The last two rows are contributed by a pack rather than by core: the file path,
-the expected shape, and the code all belong to `lavaphp/db`, and core never reads
-them. The convention is the part that generalises — a pack declares a fixed
+The last three rows are contributed by packs rather than by core: the file path,
+the expected shape, and the code all belong to `lavaphp/db` or `lavaphp/events`,
+and core never reads them. The convention is the part that generalises — a pack declares a fixed
 path under `app/` or `config/` and one problem code for a wrong shape, so an
 agent learns where to look once per artifact and never has to read the pack's
 source to find out. Core's own loader (`Boot/Steps/LoadPackConfig`) reads a
@@ -161,11 +162,13 @@ into an error at boot, where a loop with `method_exists()` would skip it.
 
 ## The reflection boundary
 
-Reflection happens only at boot, read-only, in exactly two places:
+Reflection happens only at boot, read-only, in exactly three places:
 
 1. handler signatures → injection plans (`HandlerInvoker::plan`, frozen onto
    the router; dispatch is pure lookup + call);
-2. factory closures → file:line for introspection.
+2. factory closures → file:line for introspection;
+3. a listener's `__invoke()` → whether it can take the events `app/Listeners.php`
+   lists it for (**lavaphp/events**, while boot builds its listener provider).
 
 Never at runtime, never to construct objects, never for auto-wiring. The
 container is explicit registrations only.
