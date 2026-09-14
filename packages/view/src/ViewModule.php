@@ -84,7 +84,7 @@ final class ViewModule implements Module
 
         $container->singleton(
             ViewRenderer::class,
-            static function (Container $c) use ($templateDir, $cacheDir, $debug, $namespaces, $extensions): ViewRenderer {
+            static function (Container $c) use ($templateDir, $cacheDir, $debug, $namespaces, $extensions, $ctx): ViewRenderer {
                 $url = $c->get(UrlGenerator::class);
                 if (!$url instanceof UrlGenerator) {
                     throw InvalidConfig::wrongService(UrlGenerator::class, UrlGenerator::class, $url);
@@ -107,6 +107,9 @@ final class ViewModule implements Module
                 // its extension set at the first render, and ValidateWiring builds
                 // this singleton at boot, before anything can render.
                 foreach ($extensions as $id) {
+                    if (!$c->has($id)) {
+                        throw self::unregisteredExtension($id, $ctx->appDir);
+                    }
                     $extension = $c->get($id);
                     if (!$extension instanceof ExtensionInterface) {
                         throw InvalidConfig::wrongService($id, ExtensionInterface::class, $extension);
@@ -167,9 +170,25 @@ final class ViewModule implements Module
      */
     private static function extensions(AppContext $ctx): array
     {
+        $configured = $ctx->config->array('view.extensions', []);
+
+        // The keys first, and named as keys: `['shout' => Shout::class]` and
+        // `[1 => Shout::class]` were reported as "got string", the type of a
+        // value that was fine (Lava Notes, R3-B14).
+        foreach (array_keys($configured) as $position => $key) {
+            if ($key !== $position) {
+                throw InvalidConfig::badType(
+                    'view.extensions',
+                    'a list of distinct container ids',
+                    is_string($key) ? "a map, with the key '{$key}'" : "the key {$key} where {$position} belongs",
+                    'config/view.php',
+                );
+            }
+        }
+
         $ids = [];
-        foreach ($ctx->config->array('view.extensions', []) as $index => $id) {
-            if ($index !== count($ids) || !is_string($id) || $id === '' || in_array($id, $ids, true)) {
+        foreach ($configured as $id) {
+            if (!is_string($id) || $id === '' || in_array($id, $ids, true)) {
                 throw InvalidConfig::badType(
                     'view.extensions',
                     'a list of distinct container ids',
@@ -181,6 +200,33 @@ final class ViewModule implements Module
         }
 
         return $ids;
+    }
+
+    /**
+     * An id in `view.extensions` that nothing registers.
+     *
+     * The container's own `service_not_registered` names the renderer's factory,
+     * in this file, as where the id was asked for, and says to remove the
+     * reference there. The reader wrote the id in config/view.php, so that is
+     * the file this names, as the source and in the fix, under the code
+     * lava-view.md promises (Lava Notes, R3-B14). The two core classes are
+     * written out rather than imported: an import line would move the factory's
+     * line, which every committed map records.
+     */
+    private static function unregisteredExtension(string $id, string $appDir): \Lava\Core\Problem\ServiceNotRegistered
+    {
+        $file = $appDir . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'view.php';
+        $problem = \Lava\Core\Problem\ServiceNotRegistered::of($id, $file, "listed in 'extensions' in config/view.php");
+        $at = strrpos($id, '\\');
+        $short = $at === false ? $id : substr($id, $at + 1);
+
+        $fix = ($problem->context['type_exists'] ?? true) === false
+            ? "If {$short} lives in another namespace, add its `use` import to config/view.php or write it fully qualified; "
+                . "if it is your own extension, create it and register it in app/Services.php. Otherwise remove it from 'extensions' in config/view.php."
+            : "Register it in app/Services.php, \$c->singleton({$id}::class, fn (Container \$c) => new {$id}(…)), "
+                . "or remove it from 'extensions' in config/view.php.";
+
+        return new \Lava\Core\Problem\ServiceNotRegistered($problem->getMessage(), $fix, $problem->context, \Lava\Core\Problem\SourceLocation::of($file, 1));
     }
 
     /**

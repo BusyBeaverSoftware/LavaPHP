@@ -197,15 +197,16 @@ final class ViewRendererTest extends TestCase
         }
     }
 
-    public function testANamespaceNothingRegisteredSaysSoAndShowsHowToRegisterIt(): void
+    public function testANamespaceNothingRegisteredSaysSoAndWhereToDeclareIt(): void
     {
         try {
             $this->renderer()->renderToString('@nope/layout');
             self::fail('a missing template should raise template_not_found');
         } catch (TemplateNotFound $problem) {
-            self::assertStringContainsString("no directory is registered for the Twig namespace '@nope'", $problem->getMessage());
-            self::assertStringContainsString("addPath(\$directory, 'nope')", $problem->fix);
+            self::assertStringContainsString("no directory is registered for the Twig namespace '@nope'. No namespace is declared.", $problem->getMessage());
+            self::assertStringContainsString("Declare it in config/view.php under 'namespaces' (view.namespaces)", $problem->fix);
             self::assertSame([], $problem->context['directories']);
+            self::assertSame([], $problem->context['declared']);
         }
     }
 

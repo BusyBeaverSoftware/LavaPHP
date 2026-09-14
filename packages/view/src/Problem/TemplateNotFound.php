@@ -56,15 +56,20 @@ final class TemplateNotFound extends LavaProblem
      * @param string $relative the name inside the namespace — `layout.twig` for `@theme/layout.twig`
      * @param list<string> $paths the namespace's directories, as Twig's loader holds them
      * @param list<string> $available every template in them, as `@namespace/…` names
+     * @param list<string> $declared the namespaces that do have directories, for a name that has none
      */
-    public static function inNamespace(string $template, string $namespace, string $relative, array $paths, array $available): self
+    public static function inNamespace(string $template, string $namespace, string $relative, array $paths, array $available, array $declared = []): self
     {
+        // A namespace is declared in config/view.php (entry 287), so that is
+        // where the fix sends the reader, with the names that are declared: a
+        // typo is fixed by reading them (Lava Notes, R3-B14).
         if ($paths === []) {
             return new self(
-                "No template '{$template}': no directory is registered for the Twig namespace '@{$namespace}'.",
-                "Register the namespace before rendering — \$view->environment()->getLoader()->addPath(\$directory, '{$namespace}') "
-                . '— or correct the namespace in the name.',
-                ['template' => $template, 'namespace' => $namespace, 'directories' => [], 'available' => []],
+                "No template '{$template}': no directory is registered for the Twig namespace '@{$namespace}'. "
+                . ($declared === [] ? 'No namespace is declared.' : 'Declared: @' . implode(', @', $declared) . '.'),
+                "Declare it in config/view.php under 'namespaces' (view.namespaces), 'namespaces' => ['{$namespace}' => 'path/to/templates'], "
+                . 'or correct the namespace in the name.',
+                ['template' => $template, 'namespace' => $namespace, 'directories' => [], 'available' => [], 'declared' => $declared],
             );
         }
 

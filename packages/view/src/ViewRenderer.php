@@ -121,10 +121,10 @@ final class ViewRenderer
      * The problem for a template that is not there, naming where it was looked for.
      *
      * A `@namespace/…` name is looked up in that namespace's directories — a
-     * theme added through `environment()->getLoader()->addPath($dir, 'theme')` —
-     * not in the pack's own. So its directories and its list come from Twig's
-     * loader: listing the main directory for it sent the reader to the wrong
-     * place (Lava Notes, R2-B15).
+     * theme declared in `view.namespaces` — not in the pack's own. So its
+     * directories and its list come from Twig's loader: listing the main
+     * directory for it sent the reader to the wrong place (Lava Notes, R2-B15).
+     * A namespace with no directories lists the ones that have some.
      */
     private function notFound(string $template): TemplateNotFound
     {
@@ -144,8 +144,9 @@ final class ViewRenderer
         }
         $available = array_values(array_unique($available));
         sort($available);
+        $declared = array_values(array_diff($loader->getNamespaces(), [FilesystemLoader::MAIN_NAMESPACE]));
 
-        return TemplateNotFound::inNamespace($template, $namespace, substr($template, $slash + 1), $paths, $available);
+        return TemplateNotFound::inNamespace($template, $namespace, substr($template, $slash + 1), $paths, $available, $declared);
     }
 
     /**

@@ -10,8 +10,10 @@ use Lava\Core\Container\Container;
 use Lava\Core\Features\FeatureScope;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\ProblemReport;
+use Lava\Core\Problem\ServiceNotRegistered;
 use Lava\Core\Routing\Router;
 use Lava\Core\Routing\UrlGenerator;
+use Lava\View\Problem\TemplateNotFound;
 use Lava\View\Problem\ViewDirMissing;
 use Lava\View\Tests\Support\Flags;
 use Lava\View\Tests\Support\Templates;
@@ -19,6 +21,7 @@ use Lava\View\ViewModule;
 use Lava\View\ViewRenderer;
 use PHPUnit\Framework\TestCase;
 use Twig\Extension\AbstractExtension;
+use Twig\Extension\StringLoaderExtension;
 use Twig\TwigFilter;
 
 /**
@@ -134,15 +137,65 @@ final class ViewConfigTest extends TestCase
         $container->get(ViewRenderer::class);
     }
 
-    public function testExtensionsOfTheWrongShapeAreInvalidConfig(): void
+    public function testExtensionsOfTheWrongShapeAreInvalidConfigNamingTheMistake(): void
     {
-        foreach ([['a' => 'app.whisper'], [42], ['app.whisper', 'app.whisper'], ['']] as $extensions) {
+        $cases = [
+            'a map' => [['shout' => 'app.whisper'], "got a map, with the key 'shout'"],
+            'a list with a gap' => [[1 => 'app.whisper'], 'got the key 1 where 0 belongs'],
+            'not an id' => [[42], 'got int'],
+            'an id twice' => [['app.whisper', 'app.whisper'], "got 'app.whisper' twice"],
+            'an empty id' => [[''], 'got string'],
+        ];
+
+        foreach ($cases as $case => [$extensions, $got]) {
             try {
                 $this->container(['view.extensions' => $extensions]);
-                self::fail('Accepted ' . json_encode($extensions));
+                self::fail("Accepted {$case}.");
             } catch (InvalidConfig $problem) {
-                self::assertStringContainsString("'view.extensions'", $problem->getMessage());
+                self::assertStringContainsString("'view.extensions'", $problem->getMessage(), $case);
+                self::assertStringContainsString($got, $problem->getMessage(), $case);
             }
+        }
+    }
+
+    public function testAnExtensionIdNothingRegistersNamesConfigViewPhp(): void
+    {
+        // Lava Notes R3-B14: the problem named the pack's own factory as where
+        // the id was asked for, and its fix never mentioned view.extensions.
+        $file = $this->templates->dir() . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'view.php';
+        $cases = [
+            'no such class' => ['App\View\Missing', 'add its `use` import to config/view.php'],
+            'a class nothing registered' => [StringLoaderExtension::class, 'Register it in app/Services.php'],
+        ];
+
+        foreach ($cases as $case => [$id, $fix]) {
+            try {
+                $this->container(['view.extensions' => [$id]])->get(ViewRenderer::class);
+                self::fail("Accepted {$case}.");
+            } catch (ServiceNotRegistered $problem) {
+                self::assertSame('service_not_registered', $problem->code(), $case);
+                self::assertStringContainsString("Service '{$id}' is not registered", $problem->getMessage(), $case);
+                self::assertSame($file, $problem->context['referenced_from'], $case);
+                self::assertSame($file, $problem->source?->file, $case);
+                self::assertStringContainsString($fix, $problem->fix, $case);
+                self::assertStringContainsString("remove it from 'extensions' in config/view.php", $problem->fix, $case);
+            }
+        }
+    }
+
+    public function testANamespaceConfigDoesNotDeclareIsSentToConfigViewPhpWithTheOnesItDoes(): void
+    {
+        // Lava Notes R3-B14: the fix was the addPath() call from before
+        // view.namespaces existed, and named no namespace that did.
+        try {
+            $this->renderer(['view.namespaces' => ['paper' => ['themes/paper', 'views'], 'shared' => 'views']])->renderToString('@lava/home');
+            self::fail('A namespace nothing declares should raise template_not_found.');
+        } catch (TemplateNotFound $problem) {
+            self::assertStringContainsString("no directory is registered for the Twig namespace '@lava'. Declared: @paper, @shared.", $problem->getMessage());
+            self::assertStringContainsString("config/view.php under 'namespaces'", $problem->fix);
+            self::assertStringContainsString("'namespaces' => ['lava' => 'path/to/templates']", $problem->fix);
+            self::assertStringNotContainsString('addPath', $problem->fix);
+            self::assertSame(['paper', 'shared'], $problem->context['declared']);
         }
     }
 }

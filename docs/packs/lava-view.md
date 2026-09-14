@@ -105,7 +105,8 @@ touching the loader: `{% extends '@' ~ theme ~ '/layout.twig' %}` with `theme` i
 the render context. A name is lowercase letters, digits and `_`; one directory
 may be given as a string. Every directory is resolved like `path` and checked at
 boot, so a missing one is `view_dir_missing` naming `view.namespaces.<name>`, and
-`template_not_found` for `@name/…` lists that namespace's directories.
+`template_not_found` for `@name/…` lists that namespace's directories, or, for a
+name this key does not declare, the names it does.
 
 **`extensions` installs Twig extensions at boot.** Register each in
 `app/Services.php` and list its container id:
@@ -122,8 +123,9 @@ The renderer's factory adds them while it builds the Twig environment, which
 boot does before anything can render. That matters because Twig refuses a new
 filter, function or extension after its first render, so an extension added
 later, from a handler or a middleware, works only until something has rendered.
-An id that is not registered is `service_not_registered`, and one whose service
-is not a `Twig\Extension\ExtensionInterface` is `invalid_config`, both at boot.
+An id that is not registered is `service_not_registered` naming
+`config/view.php`, and one whose service is not a
+`Twig\Extension\ExtensionInterface` is `invalid_config`, both at boot.
 
 ## Rendering
 
