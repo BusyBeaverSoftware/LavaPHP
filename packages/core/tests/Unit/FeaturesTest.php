@@ -60,6 +60,17 @@ final class FeaturesTest extends TestCase
                 self::assertSame('invalid_flag_value', $problem->code());
             }
         }
+
+        // The env-var spelling where a Flag belongs was a PHP warning, not a problem.
+        foreach ([[['dev' => 'on'], "env:dev='on'"], [['prod' => 1], 'env:prod=int']] as [$branches, $value]) {
+            try {
+                Flag::env($branches);
+                self::fail('InvalidFlagValue expected');
+            } catch (InvalidFlagValue $problem) {
+                self::assertSame($value, $problem->context['value']);
+                self::assertStringContainsString('each branch must be a Flag, such as Flag::on()', $problem->getMessage());
+            }
+        }
     }
 
     public function testFeatureNamesMustBeSnakeCase(): void

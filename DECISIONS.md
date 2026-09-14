@@ -5207,3 +5207,13 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
       from `file`, a path the CLI never takes (a description, so no `/2`); and
       `TestConsole`'s `$replace` says where `bad_replacement` lands and with
       which exit. `TestConsoleReplaceTest` pins both shapes.
+
+299. **`Flag::env()` refuses a branch that is not a Flag.** Seen once by the
+    round-3 routing review, outside its findings: `Flag::env(['dev' => 'on'])`,
+    the env-var spelling where `Flag::on()` belongs, printed a PHP warning at
+    the `->kind` read and built a flag that failed later, far from the config
+    line. It is now `invalid_flag_value` naming the branch and what was given
+    (`env:dev='on'`). The parameter's documented type widens from
+    `array<string, Flag>` to `array<string, mixed>`, since the check is only
+    reachable with a value the old type forbade; nothing an app passes today
+    stops working.

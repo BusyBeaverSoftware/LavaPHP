@@ -54,21 +54,34 @@ final readonly class Flag
         return new self(FlagKind::Users, 0, array_values($ids), []);
     }
 
-    /** @param array<string, Flag> $perEnv e.g. ['dev' => Flag::on(), 'prod' => Flag::off()] */
+    /**
+     * Each branch must be a Flag. The type says `mixed` because config files are
+     * rarely analysed, and `'dev' => 'on'`, the env-var spelling, is the likely
+     * slip: unchecked, it was a PHP warning here and a TypeError far from the
+     * config line, rather than a problem naming the branch.
+     *
+     * @param array<string, mixed> $perEnv e.g. ['dev' => Flag::on(), 'prod' => Flag::off()]
+     */
     public static function env(array $perEnv): self
     {
         if ($perEnv === []) {
             throw InvalidFlagValue::of('env:{}', 'a per-env flag needs at least one branch');
         }
+        $branches = [];
         foreach ($perEnv as $envName => $branch) {
             if ($envName === '') {
                 throw InvalidFlagValue::of('env:', 'branch names must be non-empty');
             }
+            if (!$branch instanceof self) {
+                $given = is_string($branch) ? "'{$branch}'" : get_debug_type($branch);
+                throw InvalidFlagValue::of("env:{$envName}={$given}", "each branch must be a Flag, such as Flag::on(), not {$given}");
+            }
             if ($branch->kind === FlagKind::PerEnv) {
                 throw InvalidFlagValue::of('env:' . $envName . '=env:…', 'per-env flags cannot nest');
             }
+            $branches[$envName] = $branch;
         }
-        return new self(FlagKind::PerEnv, 0, [], $perEnv);
+        return new self(FlagKind::PerEnv, 0, [], $branches);
     }
 
     /**
