@@ -8,16 +8,22 @@ use Lava\Core\Boot\App;
 use Lava\Core\Boot\BootFailure;
 use Lava\Core\Testing\TestApp;
 use Lava\Events\EventDispatcher;
+use Lava\Events\Tests\Support\AuditsShipments;
 use Lava\Events\Tests\Support\NeedsTwo;
 use Lava\Events\Tests\Support\NotInvokable;
 use Lava\Events\Tests\Support\RecordsShipment;
+use Lava\Events\Tests\Support\RendersShipment;
 use Lava\Events\Tests\Support\Shipped;
+use Lava\Events\Tests\Support\ShippingExtension;
+use Lava\Events\Tests\Support\ShipsOrders;
 use Lava\Events\Tests\Support\TakesAnything;
 use Lava\Events\Tests\Support\TakesNothing;
 use Lava\Events\Tests\Support\TakesStdClass;
 use Lava\Events\Tests\Support\TakesString;
 use Lava\Events\Tests\Support\TakesTrackable;
 use Lava\Events\Tests\Support\TakesUnion;
+use Lava\View\ViewModule;
+use Lava\View\ViewRenderer;
 use PHPUnit\Framework\TestCase;
 
 require_once dirname(__DIR__) . '/Support/Fixtures.php';
@@ -28,16 +34,21 @@ require_once dirname(__DIR__) . '/Support/Fixtures.php';
  */
 final class EventsModuleBootTest extends TestCase
 {
+    private const EVENTS_MODULE = "\\Lava\\Core\\Modules\\ModuleRef::of(\\Lava\\Events\\EventsModule::class, package: 'lavaphp/events', feature: 'events')";
+
     /** @var list<string> */
     private array $dirs = [];
 
     protected function tearDown(): void
     {
         foreach ($this->dirs as $dir) {
-            foreach (['Modules.php', 'Services.php', 'Listeners.php'] as $file) {
-                @unlink("{$dir}/app/{$file}");
+            $entries = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            foreach ($entries as $entry) {
+                $entry instanceof \SplFileInfo && $entry->isDir() ? @rmdir($entry->getPathname()) : @unlink((string) $entry);
             }
-            @rmdir("{$dir}/app");
             @rmdir($dir);
         }
     }
@@ -47,21 +58,34 @@ final class EventsModuleBootTest extends TestCase
      * `$listeners` as its app/Listeners.php.
      *
      * @param array<string, list<string>> $listeners
-     * @param list<class-string> $registered
+     * @param list<class-string> $registered registered as `new $class()`
+     * @param array<class-string, list<string>> $wired registered as `new $class($c->get($dep), …)`
+     * @param array<string, string> $files more files, path relative to the app => contents
+     * @param list<string> $modules more app/Modules.php entries, as PHP expressions
      */
-    private function boot(array $listeners, array $registered): App|BootFailure
+    private function boot(array $listeners, array $registered, array $wired = [], array $files = [], array $modules = []): App|BootFailure
     {
         $dir = sys_get_temp_dir() . '/lava-events-boot-' . bin2hex(random_bytes(6));
         mkdir($dir . '/app', 0o777, true);
         $this->dirs[] = $dir;
 
-        file_put_contents("{$dir}/app/Modules.php", "<?php\nreturn [\\Lava\\Core\\Modules\\ModuleRef::of(\\Lava\\Events\\EventsModule::class, package: 'lavaphp/events', feature: 'events')];\n");
+        file_put_contents("{$dir}/app/Modules.php", "<?php\nreturn [" . implode(', ', [self::EVENTS_MODULE, ...$modules]) . "];\n");
         $services = '';
         foreach ($registered as $class) {
             $services .= "    \$c->singleton('{$class}', static fn () => new \\{$class}());\n";
         }
+        foreach ($wired as $class => $dependencies) {
+            $arguments = implode(', ', array_map(static fn (string $id): string => "\$c->get('{$id}')", $dependencies));
+            $services .= "    \$c->singleton('{$class}', static fn (\\Lava\\Core\\Container\\Container \$c) => new \\{$class}({$arguments}));\n";
+        }
         file_put_contents("{$dir}/app/Services.php", "<?php\nreturn function (\\Lava\\Core\\Container\\Container \$c, \\Lava\\Core\\Boot\\AppContext \$ctx): void {\n{$services}};\n");
         file_put_contents("{$dir}/app/Listeners.php", "<?php\nreturn " . var_export($listeners, true) . ";\n");
+        foreach ($files as $path => $contents) {
+            if (!is_dir(dirname("{$dir}/{$path}"))) {
+                mkdir(dirname("{$dir}/{$path}"), 0o777, true);
+            }
+            file_put_contents("{$dir}/{$path}", $contents);
+        }
 
         return TestApp::boot($dir);
     }
@@ -105,5 +129,63 @@ final class EventsModuleBootTest extends TestCase
             self::assertSame([$code], array_map(static fn ($problem): string => $problem->code(), $problems), $case);
             self::assertStringContainsString($message, $problems[0]->getMessage(), $case);
         }
+    }
+
+    public function testAListenerMayDependOnTheServiceThatDispatchesItsEvent(): void
+    {
+        // Lava Notes R3-B2: the dispatcher took the provider when it was built,
+        // and building the provider builds every listener, so this app closed
+        // AuditsShipments -> ShipsOrders -> EventDispatcher -> ListenerProvider
+        // -> AuditsShipments, a cycle it never wrote.
+        $app = $this->boot([Shipped::class => [AuditsShipments::class]], [], [
+            ShipsOrders::class => [EventDispatcher::class],
+            AuditsShipments::class => [ShipsOrders::class],
+        ]);
+        self::assertInstanceOf(App::class, $app, $app instanceof BootFailure ? $app->text() : '');
+
+        $shipper = $app->container->get(ShipsOrders::class);
+        self::assertInstanceOf(ShipsOrders::class, $shipper);
+        $shipper->ship('A1');
+        $shipper->ship('A2');
+
+        $audit = $app->container->get(AuditsShipments::class);
+        self::assertInstanceOf(AuditsShipments::class, $audit);
+        self::assertSame(['A1', 'A2'], $audit->seen);
+        self::assertSame($shipper, $audit->shipper, 'The listener boot built is the one dispatch reaches.');
+    }
+
+    public function testATwigExtensionMayDispatchToAListenerThatRenders(): void
+    {
+        if (!class_exists(ViewModule::class)) {
+            self::markTestSkipped('Needs lavaphp/view, which the monorepo installs and lavaphp/events does not require.');
+        }
+        require_once dirname(__DIR__) . '/Support/ViewFixtures.php';
+
+        // The same cycle through the renderer: ViewRenderer installs
+        // ShippingExtension, which takes the dispatcher, whose provider built
+        // RendersShipment, which takes ViewRenderer.
+        $app = $this->boot(
+            [Shipped::class => [RendersShipment::class]],
+            [],
+            [
+                ShippingExtension::class => [EventDispatcher::class],
+                RendersShipment::class => [ViewRenderer::class],
+            ],
+            [
+                'config/view.php' => "<?php\nreturn ['cache' => '', 'extensions' => ['" . ShippingExtension::class . "']];\n",
+                'views/page.twig' => "{{ ship('B7') }}",
+                'views/note.twig' => 'note for {{ order }}',
+            ],
+            ["\\Lava\\Core\\Modules\\ModuleRef::of(\\Lava\\View\\ViewModule::class, package: 'lavaphp/view', feature: 'views')"],
+        );
+        self::assertInstanceOf(App::class, $app, $app instanceof BootFailure ? $app->text() : '');
+
+        $views = $app->container->get(ViewRenderer::class);
+        self::assertInstanceOf(ViewRenderer::class, $views);
+        self::assertSame('shipped B7', $views->renderToString('page.twig'));
+
+        $listener = $app->container->get(RendersShipment::class);
+        self::assertInstanceOf(RendersShipment::class, $listener);
+        self::assertSame(['note for B7'], $listener->rendered);
     }
 }

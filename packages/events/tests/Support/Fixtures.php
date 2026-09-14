@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace Lava\Events\Tests\Support;
 
+use Lava\Events\EventDispatcher;
 use Psr\EventDispatcher\StoppableEventInterface;
 
 interface Trackable
@@ -92,5 +93,33 @@ final class NeedsTwo
 {
     public function __invoke(Shipped $event, int $count): void
     {
+    }
+}
+
+/** A service that dispatches Shipped, which a listener may depend on (Lava Notes, R3-B2). */
+final readonly class ShipsOrders
+{
+    public function __construct(private EventDispatcher $events)
+    {
+    }
+
+    public function ship(string $order): void
+    {
+        $this->events->dispatch(new Shipped($order));
+    }
+}
+
+final class AuditsShipments
+{
+    /** @var list<string> */
+    public array $seen = [];
+
+    public function __construct(public readonly ShipsOrders $shipper)
+    {
+    }
+
+    public function __invoke(Shipped $event): void
+    {
+        $this->seen[] = $event->order;
     }
 }

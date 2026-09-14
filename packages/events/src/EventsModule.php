@@ -28,7 +28,7 @@ use Lava\Events\Problem\BadListener;
  * factory runs in ValidateWiring, after app/Services.php has registered the
  * listeners, so a listener nobody registered is `service_not_registered` and
  * one with the wrong signature is `bad_listener`, both at boot.
- * `EventDispatcher` dispatches through the provider.
+ * `EventDispatcher` dispatches through the provider, fetched on first dispatch.
  *
  * Checking a listener's signature reads its `__invoke()` with reflection, at
  * boot and read-only: the third place in the framework that does so, beside a
@@ -74,12 +74,17 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
         });
 
         $container->singleton(EventDispatcher::class, static function (Container $c): EventDispatcher {
-            $provider = $c->get(ListenerProvider::class);
-            if (!$provider instanceof ListenerProvider) {
-                throw InvalidConfig::wrongService(ListenerProvider::class, ListenerProvider::class, $provider);
-            }
+            // The provider is fetched on the first dispatch, not here: building
+            // it builds every listener, and a listener may depend on a service
+            // that takes this dispatcher (Lava Notes, R3-B2).
+            return new EventDispatcher(new DeferredListenerProvider(static function () use ($c): ListenerProvider {
+                $provider = $c->get(ListenerProvider::class);
+                if (!$provider instanceof ListenerProvider) {
+                    throw InvalidConfig::wrongService(ListenerProvider::class, ListenerProvider::class, $provider);
+                }
 
-            return new EventDispatcher($provider);
+                return $provider;
+            }));
         });
     }
 

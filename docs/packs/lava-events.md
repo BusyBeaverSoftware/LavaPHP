@@ -100,6 +100,11 @@ $c->singleton(NotifyWatchers::class, static fn (Container $c): NotifyWatchers =>
 interface it implements, or `object`. Any further parameter must be optional,
 because dispatch passes only the event. What it returns is ignored.
 
+A listener may depend on the service that dispatches its event, directly or
+through something that takes `EventDispatcher`, such as a renderer whose Twig
+extension dispatches: the dispatcher fetches the listeners on its first
+dispatch, so it is not part of any listener's construction.
+
 ## Dispatch
 
 A handler, or any service, takes `Lava\Events\EventDispatcher`:
