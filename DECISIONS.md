@@ -4992,3 +4992,21 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
       request, one `TestClient` (or a worker) shares singletons across requests,
       and a memo is reset by a global middleware that names each service by
       type. No scoped lifetime was added, as the review advised.
+
+291. **A pack can add a section to the map (`ProvidesMapSection`), which the
+    events pack needs.** Entry 290's user decision for R2-G3 was a PSR-14 pack
+    whose listeners `lava map` lists. The map is compiled from core's four
+    registries, and a pack's listener registry is none of them, so a pack needs a
+    way to contribute. It follows `ProvidesRoutes` and `ProvidesCommands`: an
+    optional module interface, `mapSection(App $app): ?MapSection`, asked with
+    instanceof in `app/Modules.php` order. `MapSection` is a title, a sentence
+    and rows of strings, refused when a row's width differs from the columns.
+
+    `App` now carries the enabled module instances (`modules`, a trailing
+    constructor argument, so every `new App(...)` still works), because the map
+    is built from `App` and only the instances can answer. The sections join the
+    fingerprint under `pack_sections`, and only when a pack added one: an app
+    whose packs add nothing keeps the fingerprint it had, which the three
+    committed maps confirm by staying current. A container value under a
+    well-known id was the other way to pass the facts, and it is the
+    lookup-by-convention pillar 1 rules out.

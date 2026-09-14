@@ -14,8 +14,10 @@ use Lava\Core\Features\FeatureScope;
 use Lava\Core\Http\HttpErrors;
 use Lava\Core\Http\RequestBody;
 use Lava\Core\Http\Responses;
+use Lava\Core\Modules\Module;
 use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Modules\PackInfo;
+use Lava\Core\Modules\ProvidesMapSection;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
@@ -60,6 +62,8 @@ final class App implements RequestHandlerInterface
      * @param array<string, string> $dotEnv valid KEY => VALUE pairs from config/.env
      * @param array<string, string> $envFromFile the subset of dotEnv boot promoted
      *        because the real environment did not already define it
+     * @param array<string, Module> $modules the enabled modules, by class, in app/Modules.php
+     *        order — asked by `lava map` for a section of their own ({@see ProvidesMapSection})
      */
     public function __construct(
         public readonly string $appDir,
@@ -74,6 +78,7 @@ final class App implements RequestHandlerInterface
         public readonly array $packs = [],
         public readonly array $dotEnv = [],
         public readonly array $envFromFile = [],
+        public readonly array $modules = [],
     ) {
     }
 

@@ -121,6 +121,7 @@ final class Kernel
             $packs,
             $ctx->dotEnv,
             $ctx->envFromFile,
+            $ctx->modules,
         );
     }
 }

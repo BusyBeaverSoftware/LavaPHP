@@ -54,7 +54,9 @@ The table above says what the framework reads. This says what it writes.
 
 `lava map` compiles `AGENTS.md` at the app root from the app's own registries —
 the Router's routes, the Container's ids, the Features registry, the Command
-Registry — plus a framework reference and the fixed file list. There is no second
+Registry — plus a framework reference, the fixed file list, and a section for
+any fact only an enabled pack holds (a module that implements
+`ProvidesMapSection`, as lavaphp/events does for its listeners). There is no second
 copy of those facts to keep in sync, which is why the document cannot disagree
 with `lava routes` or `lava features`. `lava map --check` writes nothing and
 answers whether the committed file is still accurate; `lava check` reports the

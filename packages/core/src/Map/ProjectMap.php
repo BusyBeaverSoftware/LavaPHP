@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lava\Core\Map;
 
 use Lava\Core\Boot\App;
+use Lava\Core\Modules\ProvidesMapSection;
 use Lava\Core\Problem\StaleMap;
 
 /**
@@ -47,6 +48,8 @@ final readonly class ProjectMap
      * @param list<array{name: string, required: bool, secret: bool, declared_by: string|null,
      *             description: string}> $env
      * @param list<string> $config
+     * @param list<array{pack: string, title: string, intro: string, columns: list<string>,
+     *             rows: list<list<string>>}> $packSections what enabled modules add, in module order
      */
     private function __construct(
         public array $routes,
@@ -57,6 +60,7 @@ final readonly class ProjectMap
         public array $modules,
         public array $env,
         public array $config,
+        public array $packSections = [],
     ) {
     }
 
@@ -156,6 +160,25 @@ final readonly class ProjectMap
             ];
         }
 
+        // Facts only a pack holds, from each enabled module that offers them.
+        $packSections = [];
+        foreach ($app->modules as $module) {
+            if (!$module instanceof ProvidesMapSection) {
+                continue;
+            }
+            $section = $module->mapSection($app);
+            if ($section === null) {
+                continue;
+            }
+            $packSections[] = [
+                'pack' => $module->pack()->package,
+                'title' => $section->title,
+                'intro' => $section->intro,
+                'columns' => $section->columns,
+                'rows' => $section->rows,
+            ];
+        }
+
         return new self(
             $routes,
             $services,
@@ -165,6 +188,7 @@ final readonly class ProjectMap
             $modules,
             $env,
             self::configFiles($app),
+            $packSections,
         );
     }
 
@@ -176,7 +200,7 @@ final readonly class ProjectMap
      */
     public function sections(): array
     {
-        return [
+        $sections = [
             'routes' => $this->routes,
             'services' => $this->services,
             'features' => $this->features,
@@ -186,6 +210,14 @@ final readonly class ProjectMap
             'env' => $this->env,
             'config' => $this->config,
         ];
+
+        // Only when a pack added one: an app whose packs add nothing keeps the
+        // fingerprint, and the committed map, it had before sections existed.
+        if ($this->packSections !== []) {
+            $sections['pack_sections'] = $this->packSections;
+        }
+
+        return $sections;
     }
 
     /**
@@ -267,6 +299,7 @@ final readonly class ProjectMap
             . $this->servicesSection()
             . $this->featuresSection()
             . $this->commandsSection()
+            . $this->packSectionsMarkdown()
             . $this->envSection()
             . $this->middlewareSection()
             . $this->filesSection()
@@ -362,6 +395,18 @@ final readonly class ProjectMap
         return "\n## Commands (" . count($rows) . ")\n\n"
             . "Run `lava <name> --json` for the machine-readable form of any of these.\n\n"
             . self::table(['command', 'pack', 'summary'], $rows);
+    }
+
+    private function packSectionsMarkdown(): string
+    {
+        $out = '';
+        foreach ($this->packSections as $section) {
+            $out .= "\n## {$section['title']} (" . count($section['rows']) . ")\n\n"
+                . "{$section['intro']} Listed by {$section['pack']}.\n\n"
+                . self::table($section['columns'], $section['rows']);
+        }
+
+        return $out;
     }
 
     private function envSection(): string
