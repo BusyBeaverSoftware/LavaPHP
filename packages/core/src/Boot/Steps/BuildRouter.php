@@ -115,10 +115,15 @@ final class BuildRouter implements BootStep
 
         // Injection plans for every compiled route — including gated ones: the
         // gate is per-subject and can be on for someone, so the plan must exist.
+        // A service a handler takes but nothing registered is reported at the
+        // route that takes it, with the pack's feature as the fix when the id is a
+        // switched-off pack's (R3-B12).
         $invoker = new HandlerInvoker($ctx->container);
         foreach ($router->routes() as $route) {
             try {
                 $router->attachPlan($route->name, $invoker->plan($route->handler));
+            } catch (ServiceNotRegistered $problem) {
+                $ctx->problems->add($problem->forRoute($route->name, $router->declaredAt($route->name), $ctx->disabledModules));
             } catch (LavaProblem $problem) {
                 $ctx->problems->add($problem);
             }

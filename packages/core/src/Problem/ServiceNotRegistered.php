@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\Core\Problem;
 
+use Lava\Core\Modules\ModuleRef;
 use Psr\Container\NotFoundExceptionInterface;
 
 /**
@@ -60,6 +61,38 @@ final class ServiceNotRegistered extends LavaProblem implements NotFoundExceptio
             . " or remove the reference to it.",
             $context,
         );
+    }
+
+    /**
+     * This problem as a route's handler met it: the route in the context, and
+     * the line that registered the route as the source, so the reader lands on
+     * the route rather than on a handler class that several routes can share
+     * (Lava Notes, R3-B12).
+     *
+     * When the id lives in the namespace of a pack that is switched off in this
+     * environment, "register it in app/Services.php" is the wrong fix: the pack
+     * registers that id itself the moment its feature is on again, and the
+     * app's copy becomes a duplicate_service. The fix names the feature instead.
+     *
+     * @param list<ModuleRef> $disabledPacks the packs whose feature resolved off
+     */
+    public function forRoute(string $route, ?SourceLocation $source, array $disabledPacks = []): self
+    {
+        $id = is_string($this->context['id'] ?? null) ? ltrim($this->context['id'], '\\') : '';
+        foreach ($disabledPacks as $pack) {
+            $namespace = substr($pack->moduleClass, 0, (int) strrpos($pack->moduleClass, '\\') + 1);
+            if ($id !== '' && str_starts_with($id, $namespace)) {
+                return new self(
+                    $this->getMessage(),
+                    "{$pack->package} is switched off in this environment (feature `{$pack->feature}`), so it registers nothing."
+                        . " Turn the feature on, or stop taking {$id} here; do not register a pack's id yourself.",
+                    $this->context + ['route' => $route, 'disabled_pack' => $pack->package, 'feature' => $pack->feature],
+                    $this->source ?? $source,
+                );
+            }
+        }
+
+        return new self($this->getMessage(), $this->fix, $this->context + ['route' => $route], $this->source ?? $source);
     }
 
     /**
