@@ -157,8 +157,10 @@ something for the current request, such as a settings lookup or the current
 menu, is right in production and wrong in that test unless it is reset. Make
 the reset explicit: give the service a `forget()` method, and have a global
 middleware take each such service as a constructor parameter and call it at the
-start of every request. Naming each service by type turns a forgotten method
-into an error at boot, where a loop with `method_exists()` would skip it.
+start of every request. Naming each service by type turns a forgotten
+registration into an error at boot, and a renamed `forget()` into an error that
+static analysis reports (PHPStan level 2 and up) and the first request raises,
+where a loop with `method_exists()` would skip both without a word.
 
 ## The reflection boundary
 

@@ -77,9 +77,13 @@ matters because Twig refuses a new filter after its first render
 
 A failed validation gives one `validation_failed` problem per field, and its
 `context` says what went wrong without prose: `field`, `rule` (`required`,
-`email`, `max`, or the name given to `custom()`) and `expects` (the rule's
-bound, such as `254` for `max(254)`). Translate from those, and keep the
-English sentence for logs and API clients:
+`email`, `max`, or the name given to `custom()`) and `expects` (what the rule
+wanted, as [lava-validate.md's rules table](packs/lava-validate.md#the-rules)
+lists it: `{"bound":254,"of":"characters"}` for `max(254)`,
+`{"present":true}` for `required`, the allowed list for `in`, `null` for
+`email`). Translate from those, and keep the English sentence for logs and API
+clients. A placeholder takes a scalar, so pass the parts a sentence uses; `of`
+tells "at least 2 characters" from "at least 2":
 
 ```php
 $errors = [];
@@ -87,7 +91,8 @@ foreach ($input->problems() as $problem) {
     $field = $problem->context['field'];
     $errors[$field] = $translator->translate($locale, 'validation.' . $problem->context['rule'], [
         'field' => $translator->translate($locale, 'field.' . $field),
-        'expects' => $problem->context['expects'],
+        'bound' => $problem->context['expects']['bound'] ?? null,
+        'of' => $problem->context['expects']['of'] ?? null,
     ]);
 }
 ```
