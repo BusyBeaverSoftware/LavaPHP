@@ -56,6 +56,7 @@ final class Kernel
         \Lava\Core\Features\Features::class,
         \Lava\Core\Features\FeatureScope::class,
         \Lava\Core\Log\LineLogger::class,
+        RuntimeFacts::class,
     ];
 
     /**
@@ -98,14 +99,8 @@ final class Kernel
             return new BootFailure($ctx->problems, $appDir, $ctx->env);
         }
 
-        // Enabled packs contribute their live manifest; disabled-but-installed
-        // ones contributed theirs during WireModules. Merging here means
-        // `lava about` lists every pack the app can see, with its gate state
-        // read off moduleRefs rather than guessed from this map.
-        $packs = $ctx->moduleManifests;
-        foreach ($ctx->modules as $moduleClass => $module) {
-            $packs[$moduleClass] = $module->pack();
-        }
+        // Every pack the app can see, the same merge RuntimeFacts reads.
+        $packs = $ctx->packs();
 
         return new App(
             $appDir,

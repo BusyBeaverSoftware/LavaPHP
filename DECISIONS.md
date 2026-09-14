@@ -4942,3 +4942,25 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
 
     For an app upgrading: a `select()` that names two same-named columns now
     fails where it used to return wrong data silently.
+
+289. **Core registers `RuntimeFacts`, the facts `lava about` prints, for app code
+    (R2-G14).** The blog's site-health page rebuilt about thirty lines of what
+    `AboutCommand` computes in private statics, because `App` is not a container
+    id and a handler cannot take it. `Lava\Core\Boot\RuntimeFacts` now holds
+    that computation: `RuntimeFacts::php()` is static, because `about` must
+    report PHP for an app that did not boot, and `packs()`, `appDir` and `env`
+    are built once from what the boot found. Core registers it as the sixth of
+    `Kernel::CORE_SERVICES`, as a factory over the boot context, which
+    `ValidateWiring` resolves after `WireModules` has seen every pack.
+    `AboutCommand` reads the same service, so the page and the command cannot
+    report different things, and `lava.about/1` is unchanged. The manifest merge
+    `Kernel::boot()` did inline is `BootCtx::packs()`, shared by both.
+
+    `lava check` stays CLI-only, as the review said: it runs the test suite.
+
+    A new core id is a row in every map, and the `use` line moved every
+    `RegisterCoreServices` line by one, so the three committed maps were
+    regenerated. They were already stale: entry 287 moved `ViewModule`'s
+    registration line and no map was rebuilt with it, which `composer verify`
+    cannot see and `check:install` would have. For an app upgrading, `lava map`
+    is on the list again.

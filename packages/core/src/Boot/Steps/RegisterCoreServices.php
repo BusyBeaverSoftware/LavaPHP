@@ -7,6 +7,7 @@ namespace Lava\Core\Boot\Steps;
 use Lava\Core\Boot\AppContext;
 use Lava\Core\Boot\BootCtx;
 use Lava\Core\Boot\BootStep;
+use Lava\Core\Boot\RuntimeFacts;
 use Lava\Core\Config\Config;
 use Lava\Core\Container\Container;
 use Lava\Core\Features\Features;
@@ -66,6 +67,17 @@ final class RegisterCoreServices implements BootStep
             $level = 'debug'; // keep later steps running so the report shows this problem alone
         }
         $container->singleton(LineLogger::class, static fn (): LineLogger => new LineLogger($level));
+
+        // The facts `lava about` prints, for app code such as a site-health
+        // page. A factory, because the packs are not all known until
+        // WireModules has run; ValidateWiring builds it at the end of boot.
+        $container->singleton(RuntimeFacts::class, static fn (): RuntimeFacts => RuntimeFacts::of(
+            $ctx->appDir,
+            $ctx->env,
+            $ctx->moduleRefs,
+            $ctx->packs(),
+            $features,
+        ));
 
         $ctx->container = $container;
         $ctx->appContext = new AppContext($ctx->appDir, $ctx->env, $config, $features);

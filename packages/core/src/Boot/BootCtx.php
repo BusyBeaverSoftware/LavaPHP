@@ -108,4 +108,22 @@ final class BootCtx
     {
         return $this->realEnv($name) ?? $this->dotEnv[$name] ?? null;
     }
+
+    /**
+     * Every pack manifest the app can see, by module class: enabled modules
+     * contribute their live manifest, and disabled-but-installed ones the
+     * manifest WireModules loaded. `lava about` and {@see RuntimeFacts} list
+     * packs from this, with each gate's state read off moduleRefs.
+     *
+     * @return array<string, \Lava\Core\Modules\PackInfo>
+     */
+    public function packs(): array
+    {
+        $packs = $this->moduleManifests;
+        foreach ($this->modules as $moduleClass => $module) {
+            $packs[$moduleClass] = $module->pack();
+        }
+
+        return $packs;
+    }
 }

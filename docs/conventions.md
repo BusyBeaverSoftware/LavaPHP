@@ -109,7 +109,10 @@ hand-edited: change the app and run `lava map`.
   Undefined names are fatal with a nearest-name hint — never a silent false.
 - **Service registration order**: `Kernel::CORE_SERVICES` (a public const,
   drift-guarded by a test) → enabled modules in `app/Modules.php` order →
-  `app/Services.php`. Re-registering an id is fatal.
+  `app/Services.php`. Re-registering an id is fatal. Among core's ids is
+  `Lava\Core\Boot\RuntimeFacts`, the facts `lava about` prints (PHP, extensions,
+  PDO drivers, each pack and whether it is on), for a handler such as a status
+  page to take; `lava about` reads the same service.
 
 ## The gating rule
 
