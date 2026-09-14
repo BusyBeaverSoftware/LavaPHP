@@ -41,6 +41,38 @@ and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 
+### Upgrading from 0.4.0 to 0.4.1
+
+`0.4.1` fixes what Lava Notes' third review found, and asks nothing of an app:
+`composer update 'lavaphp/*'`, and a committed `AGENTS.md` stays current.
+
+- **An open redirect is closed.** In 0.4.0, a route whose path starts with a
+  param could be given a value starting with `/` or `\`, and `url()` built
+  `//evil.example/x` from it, which a browser reads as another site. A
+  `$r->redirect()` into such a route sent visitors there:
+  `/docs//evil.example/x` answered `Location: //evil.example/x`. A generated URL
+  now percent-encodes that one character. Update any app with a route whose path
+  starts with a param.
+- **Redirects.** One whose target is gated off by `->when()` is a 404 rather
+  than a 301 into one, and one that would lead to the address it was asked for
+  fails with `bad_redirect` at its line rather than looping.
+- **Events.** A listener may depend on a service that dispatches its event,
+  which was `circular_service`, and an error in `app/Listeners.php` is reported
+  at its line.
+- **Results that were wrong.** `Connection::count()` no longer fails on a query
+  ordered by a select alias, and `TestApp` and `TestConsole` give back the
+  environment variables a run removed.
+- **Problems that say more.** Every route problem carries its line; a handler's
+  unregistered service names its route, and says to turn a switched-off pack
+  on; a service cycle is reported once; view config problems point at
+  `config/view.php`; `select()`'s same-name fix is a call that works; and
+  `Flag::env()` refuses a branch that is not a Flag.
+- **New, and additive.** `lava describe` names a redirect's target,
+  `ViewRenderer::namespaces()` lists the declared namespaces, and
+  `Router::declaredAt()` says where a route was registered.
+
+The reasoning for each is in [DECISIONS.md](DECISIONS.md), entries 296–311.
+
 ### Upgrading from 0.3 to 0.4
 
 `0.4.0` adds more than it changes, but two things ask something of an app.

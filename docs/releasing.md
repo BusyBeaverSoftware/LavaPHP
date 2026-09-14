@@ -89,7 +89,7 @@ composer install    # the monorepo, for steps 1–3
 ## The tag
 
 ```
-git tag -a 0.4.0 -m "0.4.0"
+git tag -a 0.4.1 -m "0.4.1"
 ```
 
 Push it only when the release is meant to be published — the push is what makes

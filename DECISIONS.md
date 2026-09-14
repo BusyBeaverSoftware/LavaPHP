@@ -5424,3 +5424,45 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     docs-snippet harness exists, so the loop was run once by hand against real
     `max`, `min`, `required`, `email`, `in` and `regex` failures with a `{placeholder}`
     translator: no warning and no "Array" (scratch script `verify-r3/b16-doc-loop.php`).
+
+312. **`0.4.1` is a patch release of the round-3 fixes.** The user said "yes" to
+    verifying every round-3 finding, fixing R3-B1 and whatever held up, and
+    releasing 0.4.1, on the condition that anything asking an app to act makes
+    it 0.5.0 instead. Every change in entries 296 to 311 was held to that line:
+    - **No committed map goes stale.** Each of the nineteen `pack:src/…:N`
+      registration lines recorded in `apps/demo`, `apps/blog`, the skeleton and
+      Lava Notes still holds its registration. `ViewModule.php:87` changed its
+      closure's `use` list but not its line, and the map records only the line.
+    - **No schema changes.** `lava.events/1` changed one description. `lava
+      describe`'s `redirect` key is in `match`, an open object. Problem
+      `context` keys were added, and `source` went from null to an object,
+      both of which every problem schema allows.
+    - **No new refusal of anything that worked.** The request-time
+      `bad_redirect` answers a request that was a 301 loop; `invalid_flag_value`
+      for a non-Flag branch replaces a PHP warning and a later failure; a
+      redirect absent with its gated target replaces a 301 into a 404.
+    - **No pack needs a newer core.** events, db and view build their changed
+      problems through APIs core 0.4.0 has, so the lockstep `^0.4.0`
+      constraints and the path repositories' `0.4.0` pins stay, as for `0.1.2`
+      (entry 255).
+    - **Held for 0.5.0**, each because an app would act: R3-B3 (percent-encoding
+      every value and decoding matched paths), R3-B4's boot-time refusal,
+      R3-B6's case-insensitive refusal, reporting every listener mistake in one
+      boot (R3-B9), R3-B11 (maps built as if every pack gate were on), R3-G2's
+      `request_too_large`, `lava.routes/2` with `redirect` (R3-G3) and `lava.about/2`
+      with versions (R3-G4). Needing the user's decision: listener priorities
+      and listeners added by a pack or a test (R3-G1), and refusing a
+      `factory()` listener (R3-B10).
+
+    The README gains "Upgrading from 0.4.0 to 0.4.1", which asks nothing of an
+    app and names the open redirect. docs/releasing.md's tag example is `0.4.1`.
+
+    Verified on `fix/round3`, with the ini shim: `composer verify` (1167 tests,
+    nothing skipped, both PHPStan runs clean), `composer coverage` (every floor
+    met: core 91.10%, db 89.89%, events 97.02%, http-client 96.69%, validate
+    98.29%, view 98.20%), `composer check:floor` (590 files on PHP 8.3),
+    `composer check:install` (all nine targets) and `composer check:split`.
+    Lava Notes itself, copied and pointed at this tree through path
+    repositories, updated all six packages to 0.4.1 with no change of its own
+    and passed `lava check --strict` with its 230 tests (one skipped for GD) and
+    its map current.
