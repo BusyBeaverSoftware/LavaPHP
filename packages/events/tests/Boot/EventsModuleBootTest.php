@@ -128,7 +128,19 @@ final class EventsModuleBootTest extends TestCase
             $problems = $failure->problems->problems();
             self::assertSame([$code], array_map(static fn ($problem): string => $problem->code(), $problems), $case);
             self::assertStringContainsString($message, $problems[0]->getMessage(), $case);
+            // Every one at the listeners file, absolute, so it can be opened
+            // directly; the unregistered listener had no source (R3-B9).
+            self::assertSame(end($this->dirs) . '/app/Listeners.php', $problems[0]->source?->file, $case);
+            self::assertSame(1, $problems[0]->source->line, $case);
         }
+
+        $unregistered = $this->boot([Shipped::class => [RecordsShipment::class]], []);
+        self::assertInstanceOf(BootFailure::class, $unregistered);
+        self::assertSame(
+            ['id' => RecordsShipment::class, 'referenced_from' => 'app/Listeners.php'],
+            $unregistered->problems->problems()[0]->context,
+            'The context is what ServiceNotRegistered::of() gives; only the source is added.',
+        );
     }
 
     public function testAListenersFileThatRaisesAnErrorFailsTheBootAtItsLine(): void

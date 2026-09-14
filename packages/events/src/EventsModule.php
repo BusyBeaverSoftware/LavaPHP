@@ -60,7 +60,7 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
             foreach ($map->all() as $event => $ids) {
                 foreach ($ids as $id) {
                     if (!$c->has($id)) {
-                        throw ServiceNotRegistered::of($id, ListenerMap::FILE, 'a listener is resolved from the container');
+                        throw self::unregistered($id, $file);
                     }
                     $listener = $c->get($id);
                     self::checkTakes($listener, $id, $event, $file);
@@ -112,6 +112,20 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
             ['event', 'listeners'],
             $rows,
         );
+    }
+
+    /**
+     * A listener id nothing registered, sourced at the listeners file.
+     * `ServiceNotRegistered::of()` names the file only in its context, as a
+     * relative path, so the problem is rebuilt with the absolute file an
+     * editor can open (Lava Notes, R3-B9).
+     */
+    private static function unregistered(string $id, string $file): ServiceNotRegistered
+    {
+        $problem = ServiceNotRegistered::of($id, ListenerMap::FILE, 'a listener is resolved from the container');
+
+        // Fully qualified: a `use` line above would move the registration lines committed maps record.
+        return new ServiceNotRegistered($problem->getMessage(), $problem->fix, $problem->context, \Lava\Core\Problem\SourceLocation::of($file, 1));
     }
 
     /**
