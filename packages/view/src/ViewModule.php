@@ -117,7 +117,7 @@ final class ViewModule implements Module
                     $twig->addExtension($extension);
                 }
 
-                return new ViewRenderer($twig, $templateDir);
+                return new ViewRenderer($twig, $templateDir, $namespaces);
             },
         );
     }

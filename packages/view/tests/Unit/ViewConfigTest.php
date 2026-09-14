@@ -198,4 +198,17 @@ final class ViewConfigTest extends TestCase
             self::assertSame(['paper', 'shared'], $problem->context['declared']);
         }
     }
+
+    public function testTheRendererListsTheNamespacesConfigDeclaresInOrder(): void
+    {
+        // Lava Notes R3-G5: an app that lets a page pick its theme kept the
+        // list of themes a second time.
+        $dir = $this->templates->dir() . DIRECTORY_SEPARATOR;
+
+        self::assertSame(
+            ['paper' => [$dir . 'themes/paper', $dir . 'views'], 'shared' => [$dir . 'views']],
+            $this->renderer(['view.namespaces' => ['paper' => ['themes/paper', 'views'], 'shared' => 'views']])->namespaces(),
+        );
+        self::assertSame([], $this->renderer([])->namespaces(), 'No view.namespaces, no namespaces: the main directory is not one.');
+    }
 }

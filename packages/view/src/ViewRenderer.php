@@ -38,9 +38,13 @@ use Twig\Loader\FilesystemLoader;
  */
 final class ViewRenderer
 {
+    /**
+     * @param array<string, list<string>> $namespaces `view.namespaces` as ViewModule read it: name => absolute directories
+     */
     public function __construct(
         private readonly Environment $twig,
         private readonly string $templateDir,
+        private readonly array $namespaces = [],
     ) {
     }
 
@@ -186,6 +190,23 @@ final class ViewRenderer
     public function templateDir(): string
     {
         return $this->templateDir;
+    }
+
+    /**
+     * The Twig namespaces `view.namespaces` declares, in config order, each
+     * with the absolute directories `@name/…` searches, first match first.
+     *
+     * An app that lets a page choose its theme checks the name against this,
+     * rather than keeping a second list of themes beside config/view.php
+     * (Lava Notes, R3-G5). It is the configuration, not the loader: the main
+     * directory is not a namespace here, and a path added later through
+     * `environment()` is not listed.
+     *
+     * @return array<string, list<string>>
+     */
+    public function namespaces(): array
+    {
+        return $this->namespaces;
     }
 
     /**

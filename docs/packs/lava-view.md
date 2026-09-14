@@ -106,7 +106,9 @@ the render context. A name is lowercase letters, digits and `_`; one directory
 may be given as a string. Every directory is resolved like `path` and checked at
 boot, so a missing one is `view_dir_missing` naming `view.namespaces.<name>`, and
 `template_not_found` for `@name/…` lists that namespace's directories, or, for a
-name this key does not declare, the names it does.
+name this key does not declare, the names it does. `$view->namespaces()` returns
+the declared names with their directories, in config order, so a page that picks
+its theme can check the name without a second list of themes.
 
 **`extensions` installs Twig extensions at boot.** Register each in
 `app/Services.php` and list its container id:
@@ -161,6 +163,7 @@ final class TaskController
 | `renderToString($template, $context = [])` | the HTML alone, for an email body or a fragment written to a file |
 | `exists($template)` | whether a template is there, so a handler can choose a page or a 404 without catching an exception to find out |
 | `templateDir()` | where templates are read from |
+| `namespaces()` | each name `view.namespaces` declares, in config order, with the absolute directories `@name/…` searches |
 | `environment()` | the Twig `Environment`, for an app that needs to add a filter of its own — before the first render: Twig locks filters, functions, globals and extensions on first use and throws `LogicException` after. Code that may run later guards it: `if (!$twig->hasExtension(AppExtension::class)) { $twig->addExtension(new AppExtension()); }` |
 
 The renderer returns a response rather than a string on purpose. Twig returns
