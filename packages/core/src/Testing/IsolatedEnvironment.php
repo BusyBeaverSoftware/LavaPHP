@@ -68,6 +68,13 @@ final class IsolatedEnvironment
     /**
      * Puts the three environment sources back exactly as they were.
      *
+     * `getenv()` needs two passes. The first visits what is there now: a value
+     * the run changed goes back, and a name it added goes. The second visits
+     * what was there before, because a name that is gone now is in no list the
+     * first pass reads: the `LAVA_ENV` and `LAVA_FEATURE_*` the run cleared, and
+     * anything the work unset, which a child process would otherwise inherit
+     * the loss of (Lava Notes, R3-B17).
+     *
      * `array<mixed>`, not `array<string, string>`: these two are verbatim
      * snapshots of `$_ENV` and `$_SERVER` — whatever PHP's SAPI put in them —
      * and this method's only job is to put them back. A narrower claim would be
@@ -86,6 +93,11 @@ final class IsolatedEnvironment
         foreach (getenv() as $name => $value) {
             if (!array_key_exists($name, $realBefore) || $realBefore[$name] !== $value) {
                 putenv(array_key_exists($name, $realBefore) ? "{$name}={$realBefore[$name]}" : $name);
+            }
+        }
+        foreach ($realBefore as $name => $value) {
+            if (getenv($name) !== $value) {
+                putenv("{$name}={$value}");
             }
         }
     }
