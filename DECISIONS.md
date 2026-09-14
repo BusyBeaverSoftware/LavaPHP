@@ -5093,3 +5093,41 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     `events` at 96.67%), `composer check:floor` (586 files on PHP 8.3),
     `composer check:install` (all nine targets at 0.4.0) and `composer
     check:split` (an app built from the seven mirrors alone checks green).
+
+295. **`0.4.0` is released.** The user said "tag 0.4.0" once `lavaphp/events` was
+    on Packagist. `0ce2b2d` had passed CI on its branch (run 34794812556) and on
+    `main`, where the split filled all seven mirrors; the annotated tag went on it
+    and was pushed at 01:22:26 UTC. The tag's split (34795709905) and CI
+    (34795709616) both passed, and each mirror's `0.4.0` equals a local
+    `git subtree split` of its directory at the tag.
+
+    Registration first: `lavaphp/events` was submitted on packagist.org from the
+    user's logged-in browser session at their request (`BusyBeaverSoftware/
+    lava-events`, name read from its `composer.json`). Packagist's GitHub
+    integration created the mirror's webhook on submission, and the ping got
+    `202`, so the GitHub sync entry 254 needed was not needed here.
+
+    Packagist updated itself for all seven: every webhook got `202` within twelve
+    seconds of the push, a fresh `composer show -a` from an empty directory saw
+    six packages at 01:23:25 and `lavaphp/core` at 01:23:56. After three releases
+    of a multi-minute core lag (entries 256, 269, 281), this one was thirty
+    seconds. `packagist.org/packages/lavaphp/events.json` still listed only
+    `dev-main` after Composer resolved `0.4.0`; that endpoint is not what
+    Composer reads.
+
+    Installed from Packagist:
+    - PHP 8.5.4, 01:24 UTC: `create-project lavaphp/app` took `0.4.0`, requiring
+      the five packs locked all six at `0.4.0`, `lava check --strict` passed, and
+      `vendor/lavaphp/events` held only `composer.json` and `src/`.
+    - `php:8.3-cli` (8.3.33) and `php:8.4-cli` (8.4.25): the same install with all
+      five packs enabled; an `OrderPlaced` event and a `CountOrders` listener
+      registered and named in `app/Listeners.php`, which `lava events` listed and
+      a dispatch ran once; a migration adding a unique index through
+      `Schema::table()` with a `down()` calling `Schema::dropIndex()`, migrated,
+      rolled back and migrated again; `Connection::count()`; `lava map` and
+      `lava check --strict` with five packs, twenty-one services and seventeen
+      commands.
+
+    `feat/round2-gaps` (local only) and `release-prep/0.4.0` were deleted locally
+    and on GitHub once `git merge-base --is-ancestor` confirmed `main` contains
+    both. Not run for this release: the MySQL and PostgreSQL live tests.

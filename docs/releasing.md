@@ -100,8 +100,8 @@ learns about a tag from a webhook on a package that is *already registered*, so
 the order runs the other way from what "the push makes it a release" suggests:
 register the package, put the webhook in place, and only then is a tag push
 visible to the world. The six packages published before 0.4.0 have had that
-webhook since 2026-09-13 (DECISIONS.md 254); `lavaphp/events` gets its own when
-it is registered. `0.1.1` predates it, and reached Packagist only because a
+webhook since 2026-09-13 (DECISIONS.md 254), and `lavaphp/events` since it was
+registered on 2026-09-14, when Packagist created its hook (DECISIONS.md 295). `0.1.1` predates it, and reached Packagist only because a
 maintainer pressed **Update** on each package's page (DECISIONS.md 253).
 
 Two consequences worth expecting. The push triggers a **full duplicate run of
@@ -138,11 +138,12 @@ The mirror names are set once, at the top of `.github/workflows/split.yml`. A
 package's name comes from its `composer.json`, never from its mirror.
 
 `lavaphp/events` joined in 0.4.0. Its mirror, its write deploy key and the
-`SPLIT_KEY_EVENTS` secret were created on 2026-09-14 (DECISIONS.md 294), so a
-push of `main` fills it like the others. It still has to be registered on
-Packagist, as in step 4 of [Setting up the mirrors](#setting-up-the-mirrors),
-before a tag that includes it: a tag reaches a mirror Packagist does not know
-about, and nobody can install it.
+`SPLIT_KEY_EVENTS` secret were created on 2026-09-14 (DECISIONS.md 294), and it
+was registered on Packagist the same day (DECISIONS.md 295), whose GitHub
+integration added the webhook on submission. A package added later needs the
+same four steps of [Setting up the mirrors](#setting-up-the-mirrors) before a
+tag that includes it: a tag reaches a mirror Packagist does not know about, and
+nobody can install it.
 
 **Every manifest under `packages/` is publishable as it sits.** None carries a
 `repositories` block: in a published package that block is ignored when the
@@ -231,44 +232,45 @@ Neither pushes or publishes anything, and neither can show Packagist itself.
   believed second. If consumers ask for one, it should be generated from the
   commit log at tag time rather than written alongside it.
 
-## Known gaps at 0.3.0
+## Known gaps at 0.4.0
 
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
-- **Packagist updates itself, and Composer still lags behind it for
-  `lavaphp/core`.** Nobody pressed **Update**. The tag was pushed at 22:07:46 UTC,
-  split run 34785858544 pushed it to the six mirrors, and each webhook got `202`
-  between 22:07:56 and 22:08:01. A fresh `composer show -a` saw `0.3.0` for five
-  packages by 22:09:44 and for `lavaphp/core` only at 22:15:50 — the third release
-  in a row where core, and only core, lagged (DECISIONS.md 256, 269, 281). At
-  22:09 the CDN's zstd copy of core's `p2` file still carried the `0.2.0` tag's
-  `Last-Modified` while its gzip, brotli and uncompressed copies listed `0.3.0`;
-  it cleared on its own inside the fifteen-minute cache. Check a release with
+- **Packagist updates itself, for all seven packages.** Nobody pressed
+  **Update**. The tag was pushed at 01:22:26 UTC, split run 34795709905 pushed it
+  to the seven mirrors, and each webhook got `202` between 01:22:37 and 01:22:38,
+  `lava-events` included: its hook was created by Packagist when the package was
+  submitted, so no GitHub sync was needed. A fresh `composer show -a` saw `0.4.0`
+  for six packages by 01:23:25 and for `lavaphp/core` at 01:23:56, the shortest
+  core lag of four webhook releases (DECISIONS.md 256, 269, 281, 295).
+  `packagist.org/packages/lavaphp/events.json` still listed only `dev-main` after
+  Composer had `0.4.0`, as that endpoint lagged for `0.1.1`. Check a release with
   `composer show -a` from a fresh Composer home **run in an empty directory**,
   never with `curl` and never from this repository's root, where the path
   repositories answer with their pinned version before Packagist has it. If a
   package is still missing after fifteen minutes, read that mirror's hook
   deliveries (`gh api repos/BusyBeaverSoftware/lava-<name>/hooks/<id>/deliveries`)
   before pressing **Update**.
-- **CI was green on the tag commit, three times.** `52cb14e` passed all nine jobs
-  on its branch (run 34784057259), on `main` (run 34785785058) and on the tag (run
-  34785858556).
-- **`0.3.0` installs from Packagist on PHP 8.5, 8.4 and 8.3.** At 22:16 UTC, with
+- **CI was green on the tag commit, three times.** `0ce2b2d` passed all nine jobs
+  on its branch (run 34794812556), on `main`, and on the tag (run 34795709616).
+- **`0.4.0` installs from Packagist on PHP 8.5, 8.4 and 8.3.** At 01:24 UTC, with
   a fresh Composer home and cache, `composer create-project lavaphp/app shop` took
-  `0.3.0`, `composer require` of the four packs locked all five `lavaphp/*`
-  packages at `0.3.0`, and `lava check --strict` passed. In `php:8.3-cli` (8.3.33)
-  and `php:8.4-cli` (8.4.25) the same install went further: all four packs enabled
-  in `app/Modules.php`, a `views/` directory, `DATABASE_DSN` on a SQLite file, a
-  `create_notes_table` migration and a second one whose `Schema::table()` adds a
-  column and a unique index on it. `lava db:migrate` applied both, SQLite held
-  `notes_slug_unique` — the index `0.2.0` silently dropped — and `lava map` then
-  `lava check --strict` passed with four packs, sixteen services and sixteen
-  commands. Those images ship neither `ext-zip` nor `unzip`, so install `unzip`
-  before running Composer in them.
-- **`0.3.0` asks five things of an app upgrading from `0.2`**, listed in the
-  README's "Upgrading from 0.2 to 0.3" (the last is optional). The only apps on
-  `0.2` were this repository's own and its test builds.
+  `0.4.0`, `composer require` of the five packs locked all six `lavaphp/*`
+  packages at `0.4.0`, and `lava check --strict` passed; `lavaphp/events` arrived
+  as `composer.json` and `src/` only. In `php:8.3-cli` (8.3.33) and
+  `php:8.4-cli` (8.4.25) the same install went further: all five packs enabled, a
+  listener registered and named in `app/Listeners.php`, which `lava events`
+  listed and a dispatch ran once; a migration whose `Schema::table()` adds a
+  unique index and whose `down()` drops it with `Schema::dropIndex()`, applied,
+  rolled back and applied again; `Connection::count()` on the table; then `lava
+  map` and `lava check --strict` with five packs, twenty-one services and
+  seventeen commands. Those images ship neither `ext-zip` nor `unzip`, so install
+  `unzip` before running Composer in them.
+- **`0.4.0` asks two things of an app upgrading from `0.3`**, listed in the
+  README's "Upgrading from 0.3 to 0.4": run `lava map`, and alias `select()`
+  columns that share a name. The only apps on `0.3` were this repository's own
+  and its test builds.
 - **PHP 8.3 and 8.4 are exercised by CI, and the floor is checkable locally.**
   Development here is on 8.5.4. The CI matrix runs the suite on 8.3 and 8.4;
   locally, `composer check:floor` (step 3) lints every tracked file against a
