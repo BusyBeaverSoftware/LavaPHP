@@ -242,11 +242,14 @@ query string kept; `status:` also takes 302, 303, 307 or 308. It is an ordinary
 route, so `->when()` and `->middleware()` apply, `lava routes` lists it and the
 map shows `redirect to posts.show (301)`. A target that does not exist, does not
 answer GET, is itself a redirect, or has a param the redirect does not capture
-with the same type is `bad_redirect` at boot. A redirect whose target is gated
-off by `->when()` is absent with it, so the old address is a 404 rather than a
-301 into one. A redirect registered before a route whose URLs its own path also
-matches is asked for that route's address and would lead to itself: that request
-fails with `bad_redirect` at the redirect's line instead of looping.
+with the same type is `bad_redirect` at boot. So is a redirect whose path matches
+its target's own URLs: registered before the target it would answer those
+addresses with themselves, and registered after it can never match. That is
+judged on a sample URL of each path, so a custom param type — a fragment nobody
+can invert — is only caught per request, where a redirect asked for the address
+it leads to fails with `bad_redirect` at its line instead of looping. A redirect
+whose target is gated off by `->when()` is absent with it, so the old address is
+a 404 rather than a 301 into one.
 
 Routes register in order: `app/Routes.php` first, then each enabled module's
 `routes()` in `app/Modules.php` order — on any path overlap the app's

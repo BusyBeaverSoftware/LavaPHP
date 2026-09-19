@@ -274,6 +274,26 @@ final class Router
             }
         }
 
+        // Whether the two paths match the same addresses, which registration
+        // order turns into either a loop or a dead route (Lava Notes, R3-B4).
+        // Judged on a sample URL of each, so a redirect whose path is merely
+        // WIDER than its target's is caught too, not only an identical one. A
+        // custom param type has no sample, and then only the request-time guard
+        // in RedirectHandler can see it.
+        $ownSample = self::sampleUrl($route);
+        $targetSample = self::sampleUrl($target);
+        $redirectTakesTarget = $targetSample !== null && preg_match('#^' . $route->regex . '$#', $targetSample) === 1;
+        $targetTakesRedirect = $ownSample !== null && preg_match('#^' . $target->regex . '$#', $ownSample) === 1;
+        $order = array_keys($this->routes);
+        $redirectFirst = array_search($route->name, $order, true) < array_search($to, $order, true);
+
+        if ($redirectTakesTarget && $redirectFirst) {
+            return BadRedirect::shadowsTarget($route->name, $to, (string) $targetSample, !$targetTakesRedirect, $source);
+        }
+        if ($targetTakesRedirect && !$redirectFirst) {
+            return BadRedirect::unreachable($route->name, $to, (string) $ownSample, $source);
+        }
+
         return null;
     }
 
@@ -467,6 +487,33 @@ final class Router
         $regex .= preg_quote(substr($path, $cursor), '#');
 
         return [$regex, $params];
+    }
+
+    /**
+     * One URL the route would match, or null when a custom param type makes one
+     * unguessable. Only the builtin types have samples: a custom fragment is a
+     * regex nobody can invert, and guessing wrong would refuse a good route.
+     *
+     * @see redirectProblem() the only caller
+     */
+    private static function sampleUrl(Route $route): ?string
+    {
+        $samples = ['int' => '1', 'str' => 'a', 'uuid' => '3f2504e0-4f89-11d3-9a0c-0305e82c3301', 'path' => 'a/b'];
+        $out = '';
+        $path = $route->path;
+        $cursor = 0;
+        while (($open = strpos($path, '{', $cursor)) !== false) {
+            $close = (int) strpos($path, '}', $open);
+            $out .= substr($path, $cursor, $open - $cursor);
+            [, $type] = explode(':', substr($path, $open + 1, $close - $open - 1), 2);
+            if (!isset($samples[$type])) {
+                return null;
+            }
+            $out .= $samples[$type];
+            $cursor = $close + 1;
+        }
+
+        return $out . substr($path, $cursor);
     }
 
     private static function caller(): SourceLocation

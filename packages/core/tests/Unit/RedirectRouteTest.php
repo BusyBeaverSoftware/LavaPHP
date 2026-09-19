@@ -106,6 +106,30 @@ final class RedirectRouteTest extends TestCase
                 "cannot fill the param 'slug' of 'posts.show': its path captures {id:int}",
                 '{slug:str}',
             ],
+            'shadowing a wider target' => [
+                static function (Router $r): void {
+                    $r->redirect('/{section:str}/{slug:str}', 'old', to: 'pages.show');
+                    $r->get('/pages/{slug:str}', 'pages.show')->handler(['App\Nowhere', 'show']);
+                },
+                "is registered before 'pages.show' and its path also matches the URLs of 'pages.show', such as '/pages/a'",
+                "Register 'old' after 'pages.show'",
+            ],
+            'the same addresses as its target' => [
+                static function (Router $r): void {
+                    $r->redirect('/pages/{slug:str}', 'old', to: 'pages.show');
+                    $r->get('/pages/{slug:str}', 'pages.show')->handler(['App\Nowhere', 'show']);
+                },
+                "it would answer that address with itself",
+                'the two paths match the same addresses',
+            ],
+            'unreachable behind its target' => [
+                static function (Router $r): void {
+                    $r->get('/pages/{slug:str}', 'pages.show')->handler(['App\Nowhere', 'show']);
+                    $r->redirect('/pages/{slug:str}', 'old', to: 'pages.show');
+                },
+                "can never match: 'pages.show' is registered first",
+                "already answers those addresses",
+            ],
             'a param of another type' => [
                 static function (Router $r): void {
                     $r->get('/posts/{id:int}', 'posts.show')->handler(['App\Nowhere', 'show']);

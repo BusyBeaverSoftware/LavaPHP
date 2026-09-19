@@ -20,9 +20,13 @@ return function (Router $r): void {
     $r->get('/beta/{slug:str}', 'beta.show')->handler([RedirectTargetController::class, 'show'])->when('beta_posts');
 
     // Registered before a route whose URLs its own pattern also matches, so
-    // asked for `/g/pages/…` it would lead to itself (R3-B4).
-    $r->redirect('/g/{section:str}/{slug:str}', 'guides.section', to: 'guides.show');
-    $r->get('/g/pages/{slug:str}', 'guides.show')->handler([RedirectTargetController::class, 'show']);
+    // asked for `/g/pages/…` it would lead to itself (R3-B4). Its params use a
+    // custom type on purpose: boot refuses this shape when it can sample the
+    // target's URLs, and a custom fragment is what leaves the request-time
+    // guard as the only check.
+    $r->pattern('segment', '[a-z]+');
+    $r->redirect('/g/{section:segment}/{slug:segment}', 'guides.section', to: 'guides.show');
+    $r->get('/g/pages/{slug:segment}', 'guides.show')->handler([RedirectTargetController::class, 'show']);
 
     // A target whose URL starts with its captured value: a value starting with
     // a slash must not make the Location another host (R3-B1).

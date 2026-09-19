@@ -66,6 +66,37 @@ final class BadRedirect extends LavaProblem
     }
 
     /**
+     * At boot: the redirect is registered before its target and its own path also
+     * matches the target's URLs, so those addresses reach the redirect first and
+     * it answers them with themselves.
+     */
+    public static function shadowsTarget(string $name, string $to, string $example, bool $canReorder, ?SourceLocation $source = null): self
+    {
+        return new self(
+            "Redirect route '{$name}' is registered before '{$to}' and its path also matches the URLs of '{$to}', such as '{$example}': it would answer that address with itself.",
+            $canReorder
+                ? "Register '{$name}' after '{$to}', so the target answers its own URLs, or give the redirect a path those URLs cannot match."
+                : "Give '{$name}' a path the URLs of '{$to}' cannot match: the two paths match the same addresses, so whichever is registered first takes them all.",
+            ['route' => $name, 'to' => $to, 'example' => $example],
+            $source,
+        );
+    }
+
+    /**
+     * At boot: the target is registered first and its path also matches the
+     * redirect's own addresses, so the redirect can never match anything.
+     */
+    public static function unreachable(string $name, string $to, string $example, ?SourceLocation $source = null): self
+    {
+        return new self(
+            "Redirect route '{$name}' can never match: '{$to}' is registered first and its path also matches the addresses of '{$name}', such as '{$example}'.",
+            "Give '{$name}' a path the URLs of '{$to}' cannot match, or drop it: '{$to}' already answers those addresses.",
+            ['route' => $name, 'to' => $to, 'example' => $example],
+            $source,
+        );
+    }
+
+    /**
      * At request time: the redirect was asked for the address it leads to. Its
      * own pattern also matches its target's URLs and it is registered first, so
      * it would answer that address with itself forever.

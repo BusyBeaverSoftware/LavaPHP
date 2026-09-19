@@ -5547,3 +5547,36 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     `PathEncodingTest` drives the round trip through `TestClient` on a scratch
     app, including a static `/café` matched as `/caf%C3%A9`, and `%2F` refused
     by `str` but taken by `path`.
+
+315. **A redirect that matches its target's own URLs is refused at boot (Lava
+    Notes, R3-B4, the second half).** Entry 296 shipped the request-time guard:
+    a redirect asked for the address it leads to fails instead of looping. Boot
+    now refuses the shape outright, which is what the review called the complete
+    fix, and it is a minor because it refuses routes that boot today.
+
+    - **Judged on a sample URL, not on the two paths' text.** `redirectProblem()`
+      builds one URL each route would match — `int` → `1`, `str` → `a`, `uuid` →
+      a fixed one, `path` → `a/b` — and checks it against the other's compiled
+      regex. So a redirect merely WIDER than its target is caught too:
+      `/{section:str}/{slug:str}` before `/pages/{slug:str}` is the shape Lava
+      Notes hit, and comparing the paths with param names removed would have
+      missed it.
+    - **Two problems, because registration order decides which.** Registered
+      before its target, the redirect answers the target's own addresses with
+      themselves: `shadowsTarget`, whose fix is to register it after the target,
+      or to narrow its path when the two match the same addresses either way.
+      Registered after, it can never match at all: `unreachable`, whose fix is a
+      path the target cannot match, or deleting the route.
+    - **A custom param type is left to the request-time guard.** A custom
+      fragment is a regex nobody can invert, so there is no sample, and guessing
+      one would refuse a good route. `redirect-app`'s shadowing fixture now uses
+      a custom type for exactly that reason: it is what keeps the request-time
+      guard reachable and tested.
+    - **No false refusal of the ordinary shape.** `/p/{slug:str}` → `/posts/{slug:str}`,
+      `/{year:int}/{slug:str}` → `/posts/{slug:str}` and `/latest` → `/` all
+      still compile: neither sample matches the other's regex.
+
+    Tests: three cases in `RedirectRouteTest`'s refusal table — a wider redirect
+    registered first, identical paths (where reordering cannot help), and a
+    redirect behind its target — each asserting the message, the fix and the
+    source line.
