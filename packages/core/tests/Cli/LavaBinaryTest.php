@@ -223,7 +223,7 @@ final class LavaBinaryTest extends TestCase
         $result = LavaCli::run(['routes', '--json'], $this->fixture('ok-app'));
 
         self::assertSame(ExitCode::Ok, $result->exit);
-        self::assertSame('lava.routes/1', $result->schema());
+        self::assertSame('lava.routes/2', $result->schema());
         self::assertContains('users.show', array_column($result->data()['routes'], 'name'));
     }
 

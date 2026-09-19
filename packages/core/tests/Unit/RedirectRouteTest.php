@@ -195,13 +195,21 @@ final class RedirectRouteTest extends TestCase
         self::assertSame([301, '/%2Fevil.example/x'], [$response->status(), $response->header('Location')]);
     }
 
-    public function testDescribeNamesWhereARedirectLeads(): void
+    public function testDescribeAndTheRouteListNameWhereARedirectLeads(): void
     {
-        // Lava Notes R3-G3: only the map said.
+        // Lava Notes R3-G3: only the map said. `describe` gained it in 0.4.1,
+        // `lava routes` needed the row's new key, so `lava.routes/2`.
         $console = new TestConsole(TestApp::autoloadFixture('redirect-app'));
 
         self::assertSame(['to' => 'posts.show', 'status' => 308], $console->json('describe', 'posts.dated')->data()['match']['redirect']);
         self::assertNull($console->json('describe', 'posts.show')->data()['match']['redirect']);
+
+        $routes = $console->json('routes');
+        self::assertSame('lava.routes/2', $routes->envelope()['schema']);
+        $redirects = array_column($routes->data()['routes'], 'redirect', 'name');
+        self::assertSame(['to' => 'posts.show', 'status' => 301], $redirects['posts.short']);
+        self::assertSame(['to' => 'home', 'status' => 302], $redirects['latest']);
+        self::assertNull($redirects['posts.show'], 'An ordinary route leads nowhere.');
     }
 
     private static function lineOf(string $needle): int

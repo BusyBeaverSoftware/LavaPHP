@@ -52,7 +52,7 @@ final class ConsoleTest extends TestCase
     {
         $envelope = Envelope::of('routes', 'ok', ['routes' => []], []);
 
-        self::assertSame('lava.routes/1', $envelope['schema']);
+        self::assertSame('lava.routes/2', $envelope['schema']);
         self::assertSame('routes', $envelope['command']);
         self::assertSame('ok', $envelope['status']);
         self::assertSame(['routes' => []], $envelope['data']);

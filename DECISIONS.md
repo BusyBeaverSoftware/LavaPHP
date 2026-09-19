@@ -5580,3 +5580,25 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     registered first, identical paths (where reordering cannot help), and a
     redirect behind its target — each asserting the message, the fix and the
     source line.
+
+316. **`lava routes --json` says where a redirect leads: `lava.routes/2` (Lava
+    Notes, R3-G3).** Entry 298 added `redirect` to `lava describe`, whose `match`
+    is an open object. The routes row closes `additionalProperties`, so the same
+    key there is a breaking payload change and takes the numeral: `redirect` is
+    `{to, status}` for a `$r->redirect()` route and null for every other, placed
+    after `handler`, since it is what the handler cannot say — every redirect
+    shares `RedirectHandler`, which is entry 285's reason for showing the target
+    in the map.
+
+    `docs/schemas/lava.routes/1.json` is deleted rather than kept beside `2`,
+    as `Envelope::VERSIONS` requires: nothing emits a superseded version, and
+    `JsonSchemaTest` derives the expected file list from `Envelope::schema()`,
+    so a leftover file fails the build.
+
+    **The text table is unchanged.** A `redirect` column would be empty for
+    almost every row, and a reader who wants one route's target has `lava
+    describe <name>`, which prints it. The JSON is what a consumer pins.
+
+    **Class: minor.** A consumer pinned to `lava.routes/1` has to move to `/2`,
+    which is the whole purpose of the numeral (conventions.md, "The CLI
+    contract").

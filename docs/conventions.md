@@ -262,7 +262,7 @@ not disabled-in-place.
 Every command writes two views of one result: text for a human on a terminal,
 and — under `--json` — a single envelope on stdout, which suppresses the text.
 The envelope's `schema` field names the contract it obeys, and the contract is a
-file: `lava.routes/1` means `docs/schemas/lava.routes/1.json`. The `/N` is frozen.
+file: `lava.routes/2` means `docs/schemas/lava.routes/2.json`. The `/N` is frozen.
 A breaking change to a payload means a new `/N`, never an edit — so an agent
 that pinned a version keeps working, and `packages/core/tests/Schema/` fails the
 build when a payload and its schema drift apart.

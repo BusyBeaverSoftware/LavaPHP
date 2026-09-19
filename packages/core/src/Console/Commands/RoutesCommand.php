@@ -58,6 +58,9 @@ final class RoutesCommand extends AppCommand
                 'feature' => $route->feature,
                 'middleware' => $route->middleware,
                 'handler' => $plan->json()['handler'],
+                // Every redirect route shares RedirectHandler, so the handler alone
+                // says nothing about where this one leads (Lava Notes, R3-G3).
+                'redirect' => $app->router->redirectTarget($route->name),
                 'injects' => $plan->injects,
             ];
             $rows[] = [

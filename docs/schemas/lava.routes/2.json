@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lavaphp.dev/schemas/lava.routes/1.json",
+  "$id": "https://lavaphp.dev/schemas/lava.routes/2.json",
   "title": "lava routes --json",
   "description": "Every route the app declares, with the injection plan the handler will be called with and whether a feature flag currently gates it. `injects` is the answer to 'what can this handler take?' — derived from its signature at boot, so it is what the framework will actually pass, not what the code appears to ask for.",
   "allOf": [
     { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
     {
       "properties": {
-        "schema": { "const": "lava.routes/1" },
+        "schema": { "const": "lava.routes/2" },
         "command": { "const": "routes" },
         "data": {
           "type": "object",
@@ -17,7 +17,7 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["name", "methods", "path", "state", "feature", "middleware", "handler", "injects"],
+                "required": ["name", "methods", "path", "state", "feature", "middleware", "handler", "redirect", "injects"],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -56,6 +56,21 @@
                       "line": { "type": "integer", "minimum": 1 }
                     },
                     "additionalProperties": false
+                  },
+                  "redirect": {
+                    "description": "Where a `$r->redirect()` route leads, or null for any other route. Every redirect shares one handler class, so the handler alone does not say — this does.",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": ["to", "status"],
+                        "properties": {
+                          "to": { "type": "string", "description": "The name of the route this redirect leads to." },
+                          "status": { "type": "integer", "description": "The redirect status: 301, 302, 303, 307 or 308." }
+                        },
+                        "additionalProperties": false
+                      },
+                      { "type": "null" }
+                    ]
                   },
                   "injects": {
                     "type": "array",

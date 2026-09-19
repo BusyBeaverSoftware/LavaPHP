@@ -46,7 +46,7 @@ final class Envelope
      *
      * @var array<string, string>
      */
-    private const VERSIONS = ['check' => '2', 'map' => '2'];
+    private const VERSIONS = ['check' => '2', 'map' => '2', 'routes' => '2'];
 
     /**
      * The contract name for a command: `routes` → `lava.routes/1`,
