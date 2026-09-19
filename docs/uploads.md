@@ -31,9 +31,13 @@ $input = Validator::of([
 ```
 
 A file larger than `upload_max_filesize` arrives with `UPLOAD_ERR_INI_SIZE`.
-A request larger than `post_max_size` is worse: PHP drops the whole body, so
-every field is missing, and the form should say the upload was too large rather
-than that the title is required.
+A request larger than `post_max_size` is worse: PHP drops the parsed form
+before any app code runs, so every field looks missing. Core answers that one
+itself, before routing: a form content type with no fields, no files and a
+`Content-Length` over the limit is `request_too_large` (413), naming the length
+and the limit, so nothing downstream blames a field the visitor did fill in. A
+form that PHP *did* parse is never touched, and a JSON body is not affected —
+PHP parses none of it, so there is nothing for it to discard.
 
 ## Decide the type from the bytes
 

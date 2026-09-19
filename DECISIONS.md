@@ -5602,3 +5602,37 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     **Class: minor.** A consumer pinned to `lava.routes/1` has to move to `/2`,
     which is the whole purpose of the numeral (conventions.md, "The CLI
     contract").
+
+317. **A form PHP discarded is `request_too_large` (413), before routing (Lava
+    Notes, R3-G2).** PHP does not refuse a form post over `post_max_size`: it
+    drops the parse — `$_POST` and `$_FILES` both empty — logs a warning to the
+    server log, and hands the app a form with no fields. Every layer after that
+    blames the wrong thing; docs/uploads.md said the form "should say the upload
+    was too large rather than that the title is required" and gave no mechanism.
+
+    `RequestBody::parsed()` now refuses such a request where `malformed_body` is
+    already raised, before routing, so global middleware and an app's error page
+    see it. All four conditions must hold, because each alone is ordinary: a form
+    content type (PHP parses no other), no fields, no uploaded files, and a
+    `Content-Length` over the limit. A limit of `0` is PHP's "no limit", so
+    nothing is refused then.
+
+    - **The limit is a parameter**, defaulting to
+      `ini_parse_quantity(ini_get('post_max_size'))`. `post_max_size` is
+      `PHP_INI_PERDIR`, so no test can set it, and a test that could only read
+      the machine's value would assert nothing.
+    - **413, not 400.** The request was well-formed HTTP; its size was the
+      problem. The fix names the ini settings and says the deployment owns them.
+    - **JSON is untouched**, because PHP parses none of it: an oversized JSON
+      body still arrives whole and core parses it as before. That narrows the
+      review's claim, which was that PHP discarded the body — the raw bytes are
+      still in the stream either way, but they are no longer a form.
+
+    **Class: minor.** A form over the limit that reaches a handler today (as a
+    422 naming a field, or a 403 from a CSRF check) becomes a 413 before
+    routing.
+
+    Tests: `FormTooLargeTest` covers both form content types and every control —
+    fields present, files present, a small empty form, JSON over the limit, and
+    no limit configured. The ini-driven default was verified by serving
+    `apps/demo` under `php -d post_max_size=1K`.
