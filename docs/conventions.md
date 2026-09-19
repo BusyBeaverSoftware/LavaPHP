@@ -224,6 +224,15 @@ another host. A value that would put `/` or `\` right after the leading slash
 (`//host` or `/\host`, which a browser reads as another site) has that one
 character percent-encoded.
 
+**One encoding, at the two ends.** `url()` percent-encodes every value and every
+static segment, leaving `/` alone so a spanning type keeps its slashes, and the
+request path is decoded once before matching. So a param type checks the same
+value in both directions: `url('search', ['q' => 'a b'])` is `/search/a%20b`,
+that path matches `search`, and the handler's `$args->str('q')` is `a b`. A
+literal `/café` route matches the `/caf%C3%A9` a browser sends. A `str` still
+cannot hold a `/`, because `%2F` decodes before the type sees it. Nothing in an
+app decodes a route param itself.
+
 **Matching is exact, trailing slash included.** `/2026` and `/2026/` are two
 paths, and nothing redirects one to the other on its own. To accept an old or
 alternative address, register it as a redirect:

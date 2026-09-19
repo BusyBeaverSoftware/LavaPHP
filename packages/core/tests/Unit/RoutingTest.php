@@ -277,7 +277,10 @@ final class RoutingTest extends TestCase
 
         foreach (['tags.show' => '/tags/c#', 'escaped.show' => '/escaped/c#'] as $name => $path) {
             self::assertInstanceOf(Matched::class, $r->match('GET', $path), $path);
-            self::assertSame($path, $url->url($name, ['tag' => 'c#']));
+            // The URL carries the `#` encoded, because a raw one would start a
+            // fragment; matching decodes the path first, so the two still meet
+            // on the same value (R3-B3).
+            self::assertSame(str_replace('#', '%23', $path), $url->url($name, ['tag' => 'c#']));
         }
 
         self::assertSame('/people/ada-lovelace', $url->url('people.show', ['name' => 'ada-lovelace']), "Core's own str type, [^/]+.");
@@ -303,6 +306,39 @@ final class RoutingTest extends TestCase
         self::assertInstanceOf(BadRoutePattern::class, $problems[0]);
         self::assertStringContainsString("'/posts/{slug:named}' is invalid: its compiled pattern is not a valid regex", $problems[0]->getMessage());
         self::assertSame(['ok'], $r->names(), 'Refused once at boot, not warned about on every request.');
+    }
+
+    public function testAGeneratedUrlEncodesEveryValueAndStaticSegment(): void
+    {
+        // Lava Notes R3-B3: values and static text went in raw, so a space, a
+        // `?`, a `%` or a non-ASCII byte changed the path a browser then sent.
+        $r = new Router();
+        $r->pattern('tag', '[a-z#]+');
+        $r->get('/search/{q:str}', 'search')->handler('f');
+        $r->get('/files/{rest:path}', 'files')->handler('f');
+        $r->get('/café', 'cafe')->handler('f');
+        $r->get('/tags/{name:tag}', 'tags.show')->handler('f');
+        $r->finalize(new ProblemReport());
+        $url = new UrlGenerator($r);
+
+        self::assertSame('/search/a%3Fb', $url->url('search', ['q' => 'a?b']));
+        self::assertSame('/search/a%20b', $url->url('search', ['q' => 'a b']));
+        self::assertSame('/search/caf%C3%A9', $url->url('search', ['q' => 'café']));
+        self::assertSame('/search/100%25', $url->url('search', ['q' => '100%']));
+        self::assertSame('/tags/c%23', $url->url('tags.show', ['name' => 'c#']));
+        self::assertSame('/caf%C3%A9', $url->url('cafe'), 'A static non-ASCII path is encoded too.');
+        self::assertSame('/files/tech/php.txt', $url->url('files', ['rest' => 'tech/php.txt']), "A spanning type's slashes stay.");
+
+        // Every one of those URLs matches the route it was built for, and the
+        // router sees the value that went in, because App decodes the path once.
+        foreach ([['search', 'q', 'a?b'], ['search', 'q', 'a b'], ['search', 'q', 'café'], ['search', 'q', '100%'], ['tags.show', 'name', 'c#'], ['files', 'rest', 'tech/php.txt']] as [$name, $param, $value]) {
+            $generated = $url->url($name, [$param => $value]);
+            $matched = $r->match('GET', rawurldecode($generated));
+            self::assertInstanceOf(Matched::class, $matched, $generated);
+            self::assertSame($name, $matched->route->name, $generated);
+            self::assertSame($value, $matched->args->str($param), $generated);
+        }
+        self::assertInstanceOf(Matched::class, $r->match('GET', rawurldecode($url->url('cafe'))));
     }
 
     public function testEveryRouteProblemPointsAtTheLineThatCausedIt(): void

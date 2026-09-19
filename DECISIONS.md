@@ -5509,3 +5509,41 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     --is-ancestor` confirmed `main` contains it; the two worktree branches the
     fixes came from were deleted after `git cherry` showed every commit landed.
     Not run for this release: the MySQL and PostgreSQL live tests.
+
+314. **One encoding, at the two ends (Lava Notes, R3-B3).** `url()` copied values
+    and static text into a path raw, and `App` matched the percent-encoded path
+    nyholm's `Uri` produces. So the two ends disagreed: `url('search', ['q' =>
+    'a b'])` gave `/search/a b`, whose handler received `a%20b`; `'a?b'` became
+    a path whose `?` started a query and a handler that received `a`; and a
+    literal `/café` route could never match at all, because the compiled bytes
+    were raw and the request's path was `/caf%C3%A9`. conventions.md promised
+    the opposite twice: a fragment "means the same when the route is matched and
+    when its URL is generated", and "a generated URL can never point at a path
+    the router wouldn't match".
+
+    - **Generation.** `UrlGenerator` percent-encodes every value and every
+      static segment, then puts `/` back (`str_replace('%2F', '/',
+      rawurlencode(…))`), so a spanning type keeps the slashes its own type
+      admits.
+    - **Matching.** `App::dispatch()` matches `rawurldecode($path)`, decoded
+      once. A param type therefore validates the same value in both
+      directions, and a `str` still cannot hold a `/`, because `%2F` decodes
+      before the type sees it.
+    - **Rejected: decoding each capture after matching** (Slim's approach). It
+      would hand a `str` handler `a/b`, a value that type refuses, and the
+      static-path half would stay broken.
+    - **0.4.1's guard survives it.** The leading-slash check stays after the
+      assembled path is built, so `//host` and `/\host` are still impossible
+      (entry 296); encoding keeps `/`, so it is still reachable and still
+      needed.
+
+    **Class: minor.** An app receives different values (a handler that decoded a
+    param itself would now decode twice), emits different bytes in `href`s, and
+    a custom fragment written around the encoded form (`[a-z0-9%]+`) stops
+    matching. The one test that pinned the old shape was `/tags/c#`, now
+    `/tags/c%23`.
+
+    Tests: `RoutingTest` pins every generated form and matches each back;
+    `PathEncodingTest` drives the round trip through `TestClient` on a scratch
+    app, including a static `/café` matched as `/caf%C3%A9`, and `%2F` refused
+    by `str` but taken by `path`.

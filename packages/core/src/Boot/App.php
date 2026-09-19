@@ -216,7 +216,13 @@ final class App implements RequestHandlerInterface
 
     private function dispatch(ServerRequestInterface $request, Features $features): ResponseInterface
     {
-        $result = $this->router->match($request->getMethod(), $request->getUri()->getPath(), $features);
+        // The path decoded ONCE, here, so a param type validates the same value
+        // `UrlGenerator` validated when it built the URL, and a static `/café`
+        // route matches the `/caf%C3%A9` a browser sends (Lava Notes, R3-B3).
+        // Decoding each capture after matching instead would hand a `str`
+        // handler an `a/b` its own type refuses.
+        $path = rawurldecode($request->getUri()->getPath());
+        $result = $this->router->match($request->getMethod(), $path, $features);
         if (!$result instanceof Matched) {
             // RouteNotFound | MethodNotAllowed — both are problems, rendered
             // like every other problem, with the fix in the body.

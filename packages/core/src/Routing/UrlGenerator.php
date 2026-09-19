@@ -35,7 +35,7 @@ final class UrlGenerator
             if ($close === false) {
                 throw new \LogicException("Route '{$routeName}' has an uncompiled path — call Router::finalize() first.");
             }
-            $out .= substr($path, $cursor, $open - $cursor);
+            $out .= self::encode(substr($path, $cursor, $open - $cursor));
             $spec = substr($path, $open + 1, $close - $open - 1);
             [$name, $type] = explode(':', $spec, 2);
             $seen[$name] = true;
@@ -56,10 +56,10 @@ final class UrlGenerator
                     ['route' => $routeName, 'param' => $name, 'value' => $value, 'type' => $type],
                 );
             }
-            $out .= $value;
+            $out .= self::encode($value);
             $cursor = $close + 1;
         }
-        $out .= substr($path, $cursor);
+        $out .= self::encode(substr($path, $cursor));
 
         $extra = array_diff_key($params, $seen);
         if ($extra !== []) {
@@ -80,5 +80,21 @@ final class UrlGenerator
         }
 
         return $out;
+    }
+
+    /**
+     * A value or a static segment as it goes into a URL: percent-encoded, with
+     * `/` left alone.
+     *
+     * The value was already validated against its param type, so a spanning
+     * type's `/` is part of the value the router will match, and encoding it
+     * would stop the URL matching (Lava Notes, R3-B3). Everything else that a
+     * URI reserves — a space, `?`, `#`, `%`, a non-ASCII byte — is encoded, so
+     * the path a browser sends decodes back to exactly this value. `App`
+     * decodes the path once before matching, which is the other half.
+     */
+    private static function encode(string $text): string
+    {
+        return str_replace('%2F', '/', rawurlencode($text));
     }
 }
