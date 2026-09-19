@@ -262,12 +262,18 @@ final class InspectionCommandsTest extends CommandTestCase
         self::assertIsArray($envelope['data']['php']['extensions']);
         self::assertIsArray($envelope['data']['php']['pdo_drivers']);
 
+        self::assertMatchesRegularExpression('/^\d+\.\d+\.\d+/', (string) $envelope['data']['framework_version']);
+
         $pack = $envelope['data']['packs'][0];
         self::assertSame('lavaphp/demo-pack', $pack['package']);
         self::assertSame('demo_pack', $pack['feature']);
         self::assertSame('enabled', $pack['state']);
         self::assertTrue($pack['installed']);
         self::assertSame(['DEMO_API_KEY'], $pack['env_vars']);
+        // The pack lives inside the fixture, so Composer does not know it, and it
+        // reports no facts of its own — both keys are present either way.
+        self::assertNull($pack['version']);
+        self::assertSame([], $pack['facts']);
     }
 
     public function testAboutStillAnswersWhenTheAppCannotBoot(): void
@@ -278,6 +284,9 @@ final class InspectionCommandsTest extends CommandTestCase
         self::assertSame('failed', $envelope['status']);
         // The runtime facts are exactly what you want when boot fails...
         self::assertSame(PHP_VERSION, $envelope['data']['php']['version']);
+        // ...including which framework version this is, the first thing a bug
+        // report has to state, and knowable whether or not the app starts.
+        self::assertMatchesRegularExpression('/^\d+\.\d+\.\d+/', (string) $envelope['data']['framework_version']);
         // ...and the keys stay stable so a consumer can tell "no packs" from
         // "could not boot".
         self::assertNull($envelope['data']['app']);

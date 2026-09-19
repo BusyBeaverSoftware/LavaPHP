@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lavaphp.dev/schemas/lava.about/1.json",
+  "$id": "https://lavaphp.dev/schemas/lava.about/2.json",
   "title": "lava about --json",
-  "description": "Runtime facts: the PHP it runs on, the app it found, and every pack the app's Modules.php names with whether it is switched on and installed. Answers 'why won't this app start' when nothing else can, so it reports the PHP facts even when the boot failed — `app` is then null and `packs` empty.",
+  "description": "Runtime facts: the PHP it runs on, the framework's own version, the app it found, and every pack the app's Modules.php names — with the version Composer installed, whether it is switched on and installed, and any facts the pack itself reports. Answers 'why won't this app start' when nothing else can, so it reports the PHP and framework facts even when the boot failed — `app` is then null and `packs` empty. `/2` because `/1` closed each pack item, so a consumer pinned to it would reject the `version` and `facts` keys.",
   "allOf": [
     { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
     {
       "properties": {
-        "schema": { "const": "lava.about/1" },
+        "schema": { "const": "lava.about/2" },
         "command": { "const": "about" },
         "data": {
           "type": "object",
-          "required": ["php", "app", "packs"],
+          "required": ["php", "framework_version", "app", "packs"],
           "properties": {
             "php": {
               "type": "object",
@@ -33,6 +33,10 @@
               },
               "additionalProperties": false
             },
+            "framework_version": {
+              "description": "What Composer installed for lavaphp/core, e.g. `0.5.0`. Null when Composer cannot say — an install with no generated Composer files, or a package it does not know. Reported on every exit path, including a failed boot: it is the first thing a bug report has to state.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
             "app": {
               "description": "The app this ran against, or null when it did not boot.",
               "anyOf": [
@@ -53,9 +57,13 @@
               "description": "One entry per line of app/Modules.php, in that order. Empty when the app did not boot: the module list is a boot decision, and guessing it would be worse than saying nothing.",
               "items": {
                 "type": "object",
-                "required": ["package", "feature", "module_class", "state", "installed", "config_files", "env_vars", "declared_at"],
+                "required": ["package", "version", "feature", "module_class", "state", "installed", "config_files", "env_vars", "declared_at", "facts"],
                 "properties": {
                   "package": { "type": "string" },
+                  "version": {
+                    "description": "What Composer installed for this package, or null when it cannot say. Independent of `installed`, which is about the pack's manifest being found.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
                   "feature": { "type": "string" },
                   "module_class": { "type": "string" },
                   "state": {
@@ -68,7 +76,11 @@
                   },
                   "config_files": { "type": "array", "items": { "type": "string" } },
                   "env_vars": { "type": "array", "items": { "type": "string" } },
-                  "declared_at": { "type": "string", "description": "file:line of the Modules.php entry." }
+                  "declared_at": { "type": "string", "description": "file:line of the Modules.php entry." },
+                  "facts": {
+                    "type": "object",
+                    "description": "What the pack itself reports through ProvidesFacts, asked when about runs rather than at boot, so a fact may need I/O — lavaphp/db reports `pending_migrations`. Empty for a pack that reports nothing, or that is switched off and so was never asked. Keys are the pack's own; `error` (with an optional `message`) is the convention for a fact that could not be computed, including a pack that threw while being asked."
+                  }
                 },
                 "additionalProperties": false
               }

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Lava\Core\Boot;
 
+use Composer\InstalledVersions;
 use Lava\Core\Features\Features;
 use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Modules\PackInfo;
+use Lava\Core\Modules\ProvidesFacts;
+use Lava\Core\Problem\LavaProblem;
 
 /**
  * The runtime facts `lava about` reports, as a service app code can take: the
@@ -22,7 +25,7 @@ use Lava\Core\Modules\PackInfo;
  * not something a request should do.
  *
  * @phpstan-type PhpFacts array{version: string, sapi: string, os: string, extensions: list<string>, pdo_drivers: list<string>}
- * @phpstan-type PackFacts array{package: string, feature: string, module_class: string, state: string, installed: bool, config_files: list<string>, env_vars: list<string>, declared_at: string}
+ * @phpstan-type PackFacts array{package: string, version: string|null, feature: string, module_class: string, state: string, installed: bool, config_files: list<string>, env_vars: list<string>, declared_at: string, facts: array<string, mixed>}
  */
 final readonly class RuntimeFacts
 {
@@ -48,6 +51,11 @@ final readonly class RuntimeFacts
             $manifest = $manifests[$ref->moduleClass] ?? null;
             $packs[] = [
                 'package' => $ref->package,
+                // What Composer installed, which is the first thing anyone asks
+                // when a pack misbehaves. Null rather than absent when Composer
+                // cannot say (an install without its generated files), because
+                // "unknown" is a fact and a missing key would hide it.
+                'version' => self::packageVersion($ref->package),
                 'feature' => $ref->feature,
                 'module_class' => $ref->moduleClass,
                 'state' => self::gateState($features, $ref),
@@ -58,6 +66,10 @@ final readonly class RuntimeFacts
                 'config_files' => $manifest->configFiles ?? [],
                 'env_vars' => $manifest->envVars ?? [],
                 'declared_at' => (string) $ref->declaredAt,
+                // Filled in by packs(), when a caller asks with the booted app
+                // in hand — never here. This runs inside boot, where a
+                // constructor does no I/O, and a pack's facts often need it.
+                'facts' => [],
             ];
         }
 
@@ -78,10 +90,94 @@ final readonly class RuntimeFacts
         ];
     }
 
-    /** @return list<PackFacts> in app/Modules.php order */
-    public function packs(): array
+    /**
+     * The framework's own installed version, or null when Composer cannot say.
+     *
+     * Static, and beside {@see php()}, because it is knowable when nothing else
+     * is: `lava about` reports it for an app that did not boot, and "which
+     * version of the framework is this" is the first question a bug report has
+     * to answer.
+     */
+    public static function frameworkVersion(): ?string
     {
-        return $this->packs;
+        return self::packageVersion('lavaphp/core');
+    }
+
+    /**
+     * Every pack in app/Modules.php order.
+     *
+     * Given the booted app, each enabled module that implements
+     * {@see ProvidesFacts} is asked for its own facts and they are merged into
+     * that pack's `facts` — here rather than at construction, because this is
+     * where I/O is allowed (see the interface). Without the app, `facts` is the
+     * empty map `of()` built, so a caller that has no app still gets the shape.
+     *
+     * @return list<PackFacts>
+     */
+    public function packs(?App $app = null): array
+    {
+        if ($app === null) {
+            return $this->packs;
+        }
+
+        $packs = [];
+        foreach ($this->packs as $pack) {
+            $module = $app->modules[$pack['module_class']] ?? null;
+            if ($module instanceof ProvidesFacts) {
+                $pack['facts'] = self::factsOf($module, $app);
+            }
+            $packs[] = $pack;
+        }
+
+        return $packs;
+    }
+
+    /**
+     * One pack's facts, or why they are missing.
+     *
+     * Nothing a pack does here may take the report down: `about` is the command
+     * someone runs when the app is already broken, so a pack that throws while
+     * being asked is recorded as an `error` fact and the other packs still
+     * report. A LavaProblem's message comes too — it is written to be shown, and
+     * the pack has already scrubbed what must not appear in it. Any other
+     * throwable contributes its class alone: a raw driver message can carry the
+     * DSN it failed to open, and `about` is not the place to print one.
+     *
+     * @return array<string, mixed>
+     */
+    private static function factsOf(ProvidesFacts $module, App $app): array
+    {
+        try {
+            return $module->facts($app);
+        } catch (LavaProblem $problem) {
+            return ['error' => $problem->code(), 'message' => $problem->getMessage()];
+        } catch (\Throwable $throwable) {
+            return ['error' => get_debug_type($throwable)];
+        }
+    }
+
+    /**
+     * What Composer says it installed, or null.
+     *
+     * `InstalledVersions` is generated into the autoloader, so it answers for a
+     * path-repository install as well as a Packagist one — but an app assembled
+     * without Composer has no such class, and a package Composer does not know
+     * makes `getPrettyVersion()` throw. Both are "unknown", not a failure: this
+     * is a diagnostic, and it must not be the reason a report cannot render.
+     */
+    private static function packageVersion(string $package): ?string
+    {
+        if (!class_exists(InstalledVersions::class)) {
+            return null;
+        }
+
+        try {
+            return InstalledVersions::isInstalled($package)
+                ? InstalledVersions::getPrettyVersion($package)
+                : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** @return list<string> sorted, so two machines' facts diff cleanly */

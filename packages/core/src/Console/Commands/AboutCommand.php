@@ -61,12 +61,21 @@ final class AboutCommand extends Command
      */
     public function emptyPayload(Args $args): array
     {
-        return ['php' => RuntimeFacts::php(), 'app' => null, 'packs' => []];
+        return [
+            'php' => RuntimeFacts::php(),
+            'framework_version' => RuntimeFacts::frameworkVersion(),
+            'app' => null,
+            'packs' => [],
+        ];
     }
 
     public function run(IO $io, Args $args, string $appDir): int
     {
         $io->data('php', RuntimeFacts::php());
+        // Before the boot branch, so a failed boot reports it too: "which
+        // version of the framework is this" is the first thing a bug report
+        // needs, and it is knowable whether or not the app starts.
+        $io->data('framework_version', RuntimeFacts::frameworkVersion());
         $io->text(self::renderPhp());
 
         $boot = AppBoot::boot($appDir, $args->value('env'));
@@ -84,7 +93,9 @@ final class AboutCommand extends Command
             ? $facts
             : RuntimeFacts::of($boot->appDir, $boot->env, $boot->moduleRefs, $boot->packs, $boot->features);
 
-        $packs = $facts->packs();
+        // With the app, so each pack that implements ProvidesFacts is asked for
+        // its own facts now — pending migrations, say. Nothing was asked at boot.
+        $packs = $facts->packs($boot);
         $io->data('app', ['dir' => $facts->appDir, 'env' => $facts->env]);
         $io->data('packs', $packs);
         $io->text(sprintf("app: %s (env %s)\npacks:\n", $facts->appDir, $facts->env));
@@ -97,7 +108,7 @@ final class AboutCommand extends Command
     private static function packsTable(array $packs): string
     {
         return (new Table(
-            ['package', 'feature', 'state', 'installed', 'config files', 'env vars'],
+            ['package', 'version', 'feature', 'state', 'installed', 'config files', 'env vars', 'facts'],
             array_map(self::packRow(...), $packs),
         ))->render();
     }
@@ -118,12 +129,38 @@ final class AboutCommand extends Command
     {
         return [
             $pack['package'],
+            $pack['version'] ?? '-',
             $pack['feature'],
             $pack['state'],
             $pack['installed'] ? 'yes' : 'no',
             implode(' ', $pack['config_files']),
             implode(' ', $pack['env_vars']),
+            self::factsCell($pack['facts']),
         ];
+    }
+
+    /**
+     * A pack's own facts as one cell, `key=value` per fact.
+     *
+     * The keys are the pack's, so the values are `mixed` and the rendering has
+     * to be total: a bool reads as true/false rather than PHP's 1 and empty
+     * string, and anything that is not a scalar goes through `json_encode` so a
+     * list of names is still legible in a table.
+     *
+     * @param array<string, mixed> $facts
+     */
+    private static function factsCell(array $facts): string
+    {
+        $cells = [];
+        foreach ($facts as $key => $value) {
+            $cells[] = $key . '=' . match (true) {
+                is_bool($value) => $value ? 'true' : 'false',
+                is_scalar($value) => (string) $value,
+                default => json_encode($value) ?: '?',
+            };
+        }
+
+        return implode(' ', $cells);
     }
 
     private static function renderPhp(): string
@@ -133,6 +170,7 @@ final class AboutCommand extends Command
         $extensions = implode(' ', $facts['extensions']);
 
         return "php {$facts['version']} ({$facts['sapi']}, {$facts['os']})\n"
+            . 'lavaphp/core ' . (RuntimeFacts::frameworkVersion() ?? '(version unknown)') . "\n"
             . "pdo drivers: {$drivers}\n"
             . "extensions: {$extensions}\n";
     }

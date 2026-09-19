@@ -39,7 +39,7 @@ final class LavaBinaryTest extends TestCase
         $result = LavaCli::run(['about', '--json'], $this->fixture('ok-app'));
 
         self::assertSame(ExitCode::Ok, $result->exit, $result->stderr);
-        self::assertSame('lava.about/1', $result->schema());
+        self::assertSame('lava.about/2', $result->schema());
         self::assertStringEndsWith('ok-app', (string) $result->data()['app']['dir']);
     }
 
