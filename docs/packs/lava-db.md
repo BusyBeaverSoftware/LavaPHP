@@ -329,9 +329,20 @@ $db->table('posts')
 
 Two columns that would come back under one name are `bad_query`:
 `select('posts.id', 'users.id')` would return one `id`, whichever came last,
-because a fetched row is keyed by name. Alias one of them, as the fix says. A
+because a fetched row is keyed by name. Alias one of them, as the fix says — the
+fix is your own call with one alias changed, so it can be pasted back. A
 `*` brings names only the database knows, so it is not checked, and a join
 under `*` can still lose a column that way.
+
+Two column references alike **apart from case** are refused as well:
+`select('posts.ID', 'users.id')` is `bad_query`. SQLite returns a reference
+under the name its table declares rather than the name the query wrote, so both
+of those arrive as `id` and a row keeps one — the same silent loss, one case
+change away.
+
+An alias is compared exactly, because an alias comes back as written on every
+engine: `select(['ID' => 'posts.id'], 'users.id')` returns `ID` and `id`, two
+columns, and is allowed.
 
 `$db->count($query)` is how many rows `fetch($query)` would return, limit and
 offset included, without fetching them:
