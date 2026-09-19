@@ -77,12 +77,16 @@ final class Kernel
      * @param array<string, mixed> $replace services a TEST substitutes, id => value —
      *        see {@see \Lava\Core\Testing\TestApp::boot()}. A front controller and
      *        the CLI pass nothing, and nothing an app writes can add an entry.
+     * @param bool $allPacksEnabled treat every installed pack's gate as on. For the boot that
+     *        compiles the map and nothing else — see {@see \Lava\Core\Console\AppBoot::forMap()}
+     *        and {@see BootCtx::$allPacksEnabled}.
      */
-    public static function boot(string $appDir, array $replace = []): App|BootFailure
+    public static function boot(string $appDir, array $replace = [], bool $allPacksEnabled = false): App|BootFailure
     {
         $appDir = rtrim($appDir, '/');
         $ctx = new BootCtx($appDir, new \Lava\Core\Problem\ProblemReport());
         $ctx->replacements = $replace;
+        $ctx->allPacksEnabled = $allPacksEnabled;
 
         foreach (self::STEPS as $stepClass) {
             $step = new $stepClass();

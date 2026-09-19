@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Lava\Core\Console\Commands;
 
 use Lava\Core\Boot\App;
+use Lava\Core\Boot\BootFailure;
+use Lava\Core\Console\AppBoot;
 use Lava\Core\Console\Args;
 use Lava\Core\Console\IO;
 use Lava\Core\Map\MapDocument;
@@ -81,8 +83,20 @@ final class MapCommand extends AppCommand
 
     protected function inspect(IO $io, Args $args, App $app): int
     {
-        $document = MapDocument::at($app->appDir);
-        $map = ProjectMap::of($app);
+        // The document lists what the app DECLARES, so it is compiled from a boot
+        // with every installed pack's gate on: a pack this environment switches
+        // off still declares its services, commands and routes, and a map that
+        // dropped them read stale on the next machine (Lava Notes, R3-B11).
+        $mapped = AppBoot::forMap($app, $args->value('env'));
+        if ($mapped instanceof BootFailure) {
+            // The boot that would write the map is the answer here. Reporting
+            // `stale_map` instead would send the reader to run `lava map`, which
+            // could only fail the same way.
+            return $io->emit($this->name(), $mapped->problems, failed: true);
+        }
+
+        $document = MapDocument::at($mapped->appDir);
+        $map = ProjectMap::of($mapped);
         $fingerprint = $map->fingerprint();
         $staleness = $map->staleness($document);
 

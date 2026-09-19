@@ -7,6 +7,7 @@ namespace Lava\Core\Console\Commands;
 use Lava\Core\Boot\App;
 use Lava\Core\Boot\BootFailure;
 use Lava\Core\Config\EnvAudit;
+use Lava\Core\Console\AppBoot;
 use Lava\Core\Console\Args;
 use Lava\Core\Console\IO;
 use Lava\Core\Console\PhpUnitRunner;
@@ -165,9 +166,22 @@ final class CheckCommand extends AppCommand
             // A warn, so a red map never fails `check` unless --strict says so.
             $document = MapDocument::at($app->appDir);
             if ($document->exists()) {
-                $staleness = ProjectMap::of($app)->staleness($document);
-                if ($staleness !== null) {
-                    self::add($report, $staleness);
+                // Compiled from a boot with every installed pack's gate on, so a
+                // pack this environment switches off is not read as drift — that
+                // made `--strict` fail on a deploy that changed nothing (Lava
+                // Notes, R3-B11). When that boot fails, its problems are the
+                // answer: a verdict reached without a pack's declarations would
+                // be wrong whichever way it fell.
+                $mapped = AppBoot::forMap($app, $args->value('env'));
+                if ($mapped instanceof BootFailure) {
+                    foreach ($mapped->problems->problems() as $problem) {
+                        self::add($report, $problem);
+                    }
+                } else {
+                    $staleness = ProjectMap::of($mapped)->staleness($document);
+                    if ($staleness !== null) {
+                        self::add($report, $staleness);
+                    }
                 }
             }
         }

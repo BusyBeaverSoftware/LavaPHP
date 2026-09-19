@@ -290,9 +290,51 @@ final class LavaBinaryTest extends TestCase
         self::assertNotContains('demo.quota', array_column($off->data()['routes'], 'name'));
     }
 
+    public function testACommittedMapStaysCurrentWhenAPacksGateIsOff(): void
+    {
+        // Lava Notes R3-B11, end to end through the binary: `lava map` wrote the
+        // pack's rows, and the next run with the pack switched off called the
+        // file stale — so `lava check` reported drift on a machine where nothing
+        // had changed, and `--strict` failed the build.
+        $dir = $this->tempDir('lava-map-gate-');
+        self::copyTree($this->fixture('module-app'), $dir);
+
+        $written = LavaCli::run(['map', '--json'], $dir);
+        self::assertSame(ExitCode::Ok, $written->exit, $written->stderr);
+        self::assertTrue($written->data()['written']);
+
+        $check = LavaCli::run(['map', '--check', '--json'], $dir, ['LAVA_FEATURE_DEMO_PACK' => 'off']);
+        self::assertSame(ExitCode::Ok, $check->exit, $check->stdout . $check->stderr);
+        self::assertTrue($check->data()['fresh']);
+        self::assertSame([], $check->codes());
+
+        // And `lava check`'s own map section, which asks the same question by a
+        // different door and must give the same answer.
+        $verify = LavaCli::run(['check', '--no-tests', '--json'], $dir, ['LAVA_FEATURE_DEMO_PACK' => 'off']);
+        self::assertNotContains('stale_map', $verify->codes(), $verify->stdout);
+        self::assertSame('ok', array_column($verify->data()['sections'], 'status', 'name')['map']);
+    }
+
     private function fixture(string $name): string
     {
         return dirname(__DIR__) . '/fixtures/apps/' . $name;
+    }
+
+    /** Copies a fixture app into a writable directory — `lava map` has to write somewhere. */
+    private static function copyTree(string $from, string $to): void
+    {
+        foreach (scandir($from) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $source = $from . '/' . $entry;
+            if (is_dir($source)) {
+                self::assertTrue(mkdir($to . '/' . $entry, 0o755, true));
+                self::copyTree($source, $to . '/' . $entry);
+                continue;
+            }
+            self::assertTrue(copy($source, $to . '/' . $entry));
+        }
     }
 
     /** A directory that is not an app, made fresh so nothing can be there. */

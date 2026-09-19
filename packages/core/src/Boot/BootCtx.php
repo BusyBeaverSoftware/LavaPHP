@@ -21,6 +21,20 @@ final class BootCtx
     public ?\Lava\Core\Routing\Router $router = null;
     public string $env = 'dev';
 
+    /**
+     * Whether every installed pack counts as enabled, whatever its gate resolves
+     * to.
+     *
+     * False for every boot that serves a request or inspects the app: a gate
+     * decides what the app IS, and off means absent. True only for the boot that
+     * compiles AGENTS.md ({@see \Lava\Core\Console\AppBoot::forMap()}), because
+     * the map lists what the app DECLARES — a pack switched off in this
+     * environment still declares its services, commands and routes, and a map
+     * that dropped them read stale on every machine whose gate differed
+     * (Lava Notes, R3-B11).
+     */
+    public bool $allPacksEnabled = false;
+
     /** @var list<\Lava\Core\Modules\ModuleRef> every entry of app/Modules.php */
     public array $moduleRefs = [];
 

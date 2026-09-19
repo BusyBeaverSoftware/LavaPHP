@@ -6,10 +6,13 @@ namespace Lava\Core\Tests\Unit;
 
 use Lava\Core\Boot\App;
 use Lava\Core\Boot\BootFailure;
+use Lava\Core\Boot\Kernel;
+use Lava\Core\Console\AppBoot;
 use Lava\Core\Map\MapDocument;
 use Lava\Core\Map\ProjectMap;
 use Lava\Core\Problem\Severity;
 use Lava\Core\Problem\StaleMap;
+use Lava\Core\Testing\IsolatedEnvironment;
 use Lava\Core\Testing\TestApp;
 use PHPUnit\Framework\TestCase;
 
@@ -360,6 +363,67 @@ final class ProjectMapTest extends TestCase
         self::assertStringStartsWith(MapDocument::marker($map->fingerprint()), $written);
         self::assertSame(1, substr_count($written, 'lava:map hash='));
         self::assertTrue(MapDocument::at($dir)->isFresh($map->fingerprint()));
+    }
+
+    public function testAPacksGateDoesNotMoveTheFingerprint(): void
+    {
+        // Lava Notes R3-B11. With the gate off, the pack registers nothing, so a
+        // map compiled from that boot lost its services and its route — and
+        // `lava check --strict` then called a committed AGENTS.md stale on a
+        // machine where nothing had changed. The map boot ignores gates instead.
+        $dir = TestApp::autoloadFixture('module-app');
+        $on = self::boot('module-app');
+
+        [$resolved, $mapped] = IsolatedEnvironment::run(
+            ['LAVA_FEATURE_DEMO_PACK' => 'off'],
+            static fn (): array => [Kernel::boot($dir), Kernel::boot($dir, allPacksEnabled: true)],
+        );
+        self::assertInstanceOf(App::class, $resolved, self::describe($resolved));
+        self::assertInstanceOf(App::class, $mapped, self::describe($mapped));
+
+        // The premise: for an ordinary boot the pack really is absent, and the
+        // app it describes really is a different one.
+        self::assertNotContains('demo.quota', array_column(ProjectMap::of($resolved)->routes, 'name'));
+        self::assertNotSame(ProjectMap::of($on)->fingerprint(), ProjectMap::of($resolved)->fingerprint());
+
+        // The property: the map boot describes the app the gate cannot change.
+        self::assertSame(ProjectMap::of($on)->fingerprint(), ProjectMap::of($mapped)->fingerprint());
+        self::assertSame(ProjectMap::of($on)->sections(), ProjectMap::of($mapped)->sections());
+    }
+
+    public function testAPerEnvironmentPackGateDoesNotMoveTheFingerprintEither(): void
+    {
+        // The same property, against the exact sentence conventions.md makes:
+        // `lava map` writes the same bytes under `--env=dev` and `--env=prod`.
+        // A gate set with Flag::env broke it with no environment variable in
+        // sight, which is what this fixture's config/features.php does.
+        $dir = TestApp::autoloadFixture('env-gated-pack-app');
+
+        $resolved = [];
+        $maps = [];
+        foreach (['dev', 'prod'] as $env) {
+            [$plain, $mapped] = IsolatedEnvironment::run(
+                ['LAVA_ENV' => $env],
+                static fn (): array => [Kernel::boot($dir), Kernel::boot($dir, allPacksEnabled: true)],
+            );
+            self::assertInstanceOf(App::class, $plain, self::describe($plain));
+            self::assertInstanceOf(App::class, $mapped, self::describe($mapped));
+            $resolved[$env] = ProjectMap::of($plain)->fingerprint();
+            $maps[$env] = ProjectMap::of($mapped)->fingerprint();
+        }
+
+        self::assertNotSame($resolved['dev'], $resolved['prod'], 'the premise: the gate really is per-environment');
+        self::assertSame($maps['dev'], $maps['prod']);
+    }
+
+    public function testTheMapBootIsSkippedWhenEveryInstalledPackIsEnabled(): void
+    {
+        // An app that already describes itself is not booted twice: the second
+        // boot exists to recover a switched-off pack's declarations, and there
+        // are none to recover here.
+        $app = self::okApp();
+
+        self::assertSame($app, AppBoot::forMap($app, null));
     }
 
     private static function okApp(): App

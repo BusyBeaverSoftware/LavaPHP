@@ -26,6 +26,15 @@ use Lava\Core\Problem\StaleMap;
  * with the environment would report a stale map on every deploy that changed
  * nothing.
  *
+ * **A pack's gate is resolved state too.** With a pack switched off, nothing
+ * registers its services, commands or routes, so a map compiled from that boot
+ * silently lost them — and `lava check --strict` called a committed AGENTS.md
+ * stale on any machine whose gate differed (Lava Notes, R3-B11). The map is
+ * therefore compiled from a boot where every INSTALLED pack counts as enabled;
+ * {@see \Lava\Core\Console\AppBoot::forMap()} is where that boot is made, and
+ * the `modules` section still records each pack's gate name, which is the
+ * declaration.
+ *
  * **No absolute paths.** Every path here is relative to the app root, so the
  * document is portable — copy the app to another machine and the map is still
  * accurate. (`source.file` in a *problem* is absolute for the opposite reason:
