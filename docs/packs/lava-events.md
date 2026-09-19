@@ -156,6 +156,9 @@ that wants a dispatcher of its own, as lavaphp/http-client leaves
 | an `__invoke()` whose first parameter is missing, untyped, a union, a builtin, or a class the event is not | `bad_listener` |
 | an `__invoke()` with a second required parameter | `bad_listener` |
 
+One boot reports everything the file gets wrong: every key is checked, then every
+listener, and the findings arrive together rather than one boot at a time.
+
 Reading a listener's signature uses reflection, at boot and read-only: the third
 place the framework does so ([conventions.md](../conventions.md#the-reflection-boundary)).
 The listener itself is still built by its own factory.

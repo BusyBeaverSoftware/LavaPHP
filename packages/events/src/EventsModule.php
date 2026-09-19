@@ -14,6 +14,8 @@ use Lava\Core\Modules\PackInfo;
 use Lava\Core\Modules\ProvidesCommands;
 use Lava\Core\Modules\ProvidesMapSection;
 use Lava\Core\Problem\InvalidConfig;
+use Lava\Core\Problem\LavaProblem;
+use Lava\Core\Problem\ManyProblems;
 use Lava\Core\Problem\ServiceNotRegistered;
 use Lava\Events\Console\EventsCommand;
 use Lava\Events\Problem\BadListener;
@@ -47,27 +49,44 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
     {
         $map = ListenerMap::load($ctx->appDir);
         $file = $map->file ?? $ctx->appDir . '/' . ListenerMap::FILE;
+        $unknown = [];
         foreach (array_keys($map->all()) as $event) {
             if (!class_exists($event) && !interface_exists($event)) {
-                throw BadListener::unknownEvent($event, $file);
+                // Every key the file gets wrong, not the first: one boot should
+                // name them all (Lava Notes, R3-B9).
+                $unknown[] = BadListener::unknownEvent($event, $file);
             }
+        }
+        if ($unknown !== []) {
+            ManyProblems::raise($unknown);
         }
 
         $container->singleton(ListenerMap::class, static fn (): ListenerMap => $map);
 
         $container->singleton(ListenerProvider::class, static function (Container $c) use ($map, $file): ListenerProvider {
             $listeners = [];
+            $problems = [];
             foreach ($map->all() as $event => $ids) {
                 foreach ($ids as $id) {
-                    if (!$c->has($id)) {
-                        throw self::unregistered($id, $file);
-                    }
-                    $listener = $c->get($id);
-                    self::checkTakes($listener, $id, $event, $file);
-                    if (is_callable($listener)) {
-                        $listeners[$id] = $listener;
+                    // Every listener is tried, and what each one got wrong is
+                    // kept: the registry is one file a reader fixes in one pass,
+                    // so one boot reports all of it (Lava Notes, R3-B9).
+                    try {
+                        if (!$c->has($id)) {
+                            throw self::unregistered($id, $file);
+                        }
+                        $listener = $c->get($id);
+                        self::checkTakes($listener, $id, $event, $file);
+                        if (is_callable($listener)) {
+                            $listeners[$id] = $listener;
+                        }
+                    } catch (LavaProblem $problem) {
+                        $problems[] = $problem;
                     }
                 }
+            }
+            if ($problems !== []) {
+                ManyProblems::raise($problems);
             }
 
             return new ListenerProvider($map, $listeners);

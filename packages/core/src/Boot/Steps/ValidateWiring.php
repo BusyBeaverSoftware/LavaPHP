@@ -10,6 +10,7 @@ use Lava\Core\Features\FlagSubjectResolver;
 use Lava\Core\Problem\CircularService;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\LavaProblem;
+use Lava\Core\Problem\ManyProblems;
 use Lava\Core\Problem\UnexpectedFailure;
 
 /**
@@ -48,7 +49,7 @@ final class ValidateWiring implements BootStep
             } catch (LavaProblem $problem) {
                 self::report($ctx, $problem);
             } catch (\Throwable $throwable) {
-                self::report($ctx, UnexpectedFailure::of(self::class, $throwable));
+                self::reportThrowable($ctx, $throwable);
             }
         }
 
@@ -73,6 +74,30 @@ final class ValidateWiring implements BootStep
                 // The sweep above already reported this registration's failure.
             }
         }
+    }
+
+    /**
+     * What a factory threw that was not one problem.
+     *
+     * A factory is app or pack code, so anything can come out of it. One shape
+     * is not a failure but a carrier: {@see ManyProblems}, which a factory raises
+     * when one pass found several mistakes — the events pack checks every listener
+     * in `app/Listeners.php` while its provider is built, and reports all of them
+     * rather than the first (Lava Notes, R3-B9). Each one is then reported exactly
+     * as a single problem would be, deduplication included. Everything else is a
+     * genuine failure and becomes `unexpected_failure` naming this step.
+     */
+    private static function reportThrowable(BootCtx $ctx, \Throwable $throwable): void
+    {
+        if ($throwable instanceof ManyProblems) {
+            foreach ($throwable->problems as $problem) {
+                self::report($ctx, $problem);
+            }
+
+            return;
+        }
+
+        self::report($ctx, UnexpectedFailure::of(self::class, $throwable));
     }
 
     private static function report(BootCtx $ctx, LavaProblem $problem): void

@@ -7,6 +7,7 @@ namespace Lava\Core\Tests\Unit;
 use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Problem\DuplicateService;
 use Lava\Core\Problem\LavaProblem;
+use Lava\Core\Problem\ManyProblems;
 use Lava\Core\Problem\MissingPack;
 use Lava\Core\Problem\ProblemCliRenderer;
 use Lava\Core\Problem\ProblemJsonRenderer;
@@ -36,6 +37,37 @@ final class ProblemSystemTest extends TestCase
         self::assertSame('missing_pack', $problem->json()['code']);
         self::assertSame('fatal', $problem->json()['severity']);
         self::assertSame(['file' => __FILE__, 'line' => $problem->source->line], $problem->json()['source']);
+    }
+
+    public function testManyProblemsCarriesEveryFindingAndLeavesASingleOneAlone(): void
+    {
+        // The carrier a factory or a register() uses when one pass found more
+        // than one mistake (Lava Notes R3-B9). It is not a problem itself: no
+        // code, no renderer, just the list and the order it was found in.
+        $first = ServiceNotRegistered::of(\App\Thing::class);
+        $second = self::missingSearch();
+
+        try {
+            ManyProblems::raise([$first, $second]);
+            self::fail('raise() must throw.');
+        } catch (ManyProblems $many) {
+            self::assertSame([$first, $second], $many->problems);
+            self::assertSame('2 problems: service_not_registered, missing_pack', $many->getMessage());
+            self::assertSame($first, $many->getPrevious(), 'the first finding, for anything that only reads a trace');
+
+            $report = new ProblemReport();
+            $many->addTo($report);
+            self::assertSame([$first, $second], $report->problems());
+        }
+
+        // One mistake stays one throw, so nothing downstream unpacks a carrier
+        // of one and every existing report reads exactly as it did.
+        try {
+            ManyProblems::raise([$first]);
+            self::fail('raise() must throw.');
+        } catch (LavaProblem $problem) {
+            self::assertSame($first, $problem);
+        }
     }
 
     public function testMissingPackFixNamesTheExactInstallCommand(): void

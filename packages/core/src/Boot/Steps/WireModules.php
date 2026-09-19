@@ -13,6 +13,7 @@ use Lava\Core\Modules\ModuleCheck;
 use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\LavaProblem;
+use Lava\Core\Problem\ManyProblems;
 use Lava\Core\Problem\MissingPack;
 use Lava\Core\Problem\UnexpectedFailure;
 
@@ -38,6 +39,10 @@ final class WireModules implements BootStep
         foreach ($ctx->enabledModules as $ref) {
             try {
                 $ctx->modules[$ref->moduleClass] = self::wire($ref, $ctx->container, $ctx->appContext);
+            } catch (ManyProblems $many) {
+                // A module's register() read a file and found more than one
+                // mistake in it, so it raised them together (R3-B9).
+                $many->addTo($ctx->problems);
             } catch (LavaProblem $problem) {
                 $ctx->problems->add($problem);
             } catch (\Throwable $throwable) {

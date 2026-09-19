@@ -143,6 +143,49 @@ final class EventsModuleBootTest extends TestCase
         );
     }
 
+    public function testEveryListenerMistakeInTheFileIsReportedInOneBoot(): void
+    {
+        // Lava Notes R3-B9: the provider threw on the first listener it could
+        // not use, so a registry with three mistakes took three boots to learn
+        // about — while the rest of the sweep reports everything it finds.
+        $failure = $this->boot(
+            [Shipped::class => [TakesString::class, RecordsShipment::class, NotInvokable::class]],
+            [TakesString::class, NotInvokable::class],
+        );
+
+        self::assertInstanceOf(BootFailure::class, $failure);
+        $problems = $failure->problems->problems();
+        self::assertSame(
+            ['bad_listener', 'service_not_registered', 'bad_listener'],
+            array_map(static fn ($problem): string => $problem->code(), $problems),
+            'in file order, which is the order the reader fixes them in',
+        );
+        self::assertStringContainsString('its parameter is typed string', $problems[0]->getMessage());
+        self::assertStringContainsString('RecordsShipment', $problems[1]->getMessage());
+        self::assertStringContainsString('has no __invoke() method', $problems[2]->getMessage());
+
+        foreach ($problems as $problem) {
+            self::assertSame(end($this->dirs) . '/app/Listeners.php', $problem->source?->file);
+        }
+    }
+
+    public function testEveryUnknownEventKeyIsReportedInOneBoot(): void
+    {
+        $failure = $this->boot(
+            ['App\Nowhere\Delivered' => [RecordsShipment::class], 'App\Nowhere\Returned' => [RecordsShipment::class]],
+            [RecordsShipment::class],
+        );
+
+        self::assertInstanceOf(BootFailure::class, $failure);
+        $problems = $failure->problems->problems();
+        self::assertSame(
+            ['bad_listener', 'bad_listener'],
+            array_map(static fn ($problem): string => $problem->code(), $problems),
+        );
+        self::assertStringContainsString("'App\\Nowhere\\Delivered'", $problems[0]->getMessage());
+        self::assertStringContainsString("'App\\Nowhere\\Returned'", $problems[1]->getMessage());
+    }
+
     public function testAListenersFileThatRaisesAnErrorFailsTheBootAtItsLine(): void
     {
         // Lava Notes R3-B8: reported as "Module class Lava\Events\EventsModule
