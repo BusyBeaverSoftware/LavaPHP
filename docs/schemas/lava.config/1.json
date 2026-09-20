@@ -22,12 +22,12 @@
                 "properties": {
                   "key": { "type": "string", "description": "Dot path within the config bag, e.g. app.env." },
                   "value": {
-                    "description": "The resolved value: any JSON, since a config file may hold an array. Null when this key was redacted — a redaction is reported by `secret`, never by an empty string that could be a real value."
+                    "description": "The resolved value: any JSON, since a config file may hold an array. Null when this key's own name was redacted — reported by `secret`, never by an empty string that could be a real value. Inside an array value, a leaf whose own name looks secret is replaced by the redaction marker where it stood, so the rest of the structure stays readable."
                   },
                   "from_file": { "type": "string", "description": "The config file that set it, relative to the app root." },
                   "secret": {
                     "type": "boolean",
-                    "description": "True when this key's NAME looked secret and --reveal was not passed, so `value` is null here. Not a property of the key itself: the same key reports false under --reveal."
+                    "description": "True when this key's own NAME looked secret and --reveal was not passed, so `value` is null here. A leaf redacted inside an array value does not set this: the entry itself was not withheld, and the marker sits in `value` where the leaf was. Not a property of the key itself: the same key reports false under --reveal."
                   }
                 },
                 "additionalProperties": false

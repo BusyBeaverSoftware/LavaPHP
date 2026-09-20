@@ -18,6 +18,12 @@ use Lava\Core\Console\Table;
  * Values whose NAME looks secret are redacted unless `--reveal`. Config files
  * are code and rarely hold secrets, so this is a safety net for the apps that
  * do — and it is symmetric with `lava env`, which redacts for the same reason.
+ *
+ * The name that matters is the one beside the value, at any depth. A config bag
+ * is flattened one level, so `'connections' => ['primary' => ['password' => …]]`
+ * arrives as one entry named `app.connections` — a name that looks like nothing
+ * — carrying a credential three levels down. Matching only the top key left
+ * that in the clear, which is the ordinary shape of a config file.
  */
 final class ConfigCommand extends AppCommand
 {
@@ -54,21 +60,54 @@ final class ConfigCommand extends AppCommand
 
         foreach ($app->config->json() as $entry) {
             $secret = !$reveal && Secrets::looksSecret($entry['key']);
-            $value = $secret ? Secrets::redacted() : self::render($entry['value']);
+            $value = match (true) {
+                $secret => null,
+                $reveal => $entry['value'],
+                default => self::redactNested($entry['value']),
+            };
 
             $records[] = [
                 'key' => $entry['key'],
-                'value' => $secret ? null : $entry['value'],
+                'value' => $value,
                 'from_file' => $entry['from_file'],
                 'secret' => $secret,
             ];
-            $rows[] = [$entry['key'], $value, $entry['from_file'] ?? '-'];
+            $rows[] = [
+                $entry['key'],
+                $secret ? Secrets::redacted() : self::render($value),
+                $entry['from_file'] ?? '-',
+            ];
         }
 
         $io->data('config', $records);
         $io->text((new Table(['key', 'value', 'from'], $rows))->render());
 
         return $io->emit($this->name(), $app->problems);
+    }
+
+    /**
+     * The value with every secret-looking leaf replaced, at any depth.
+     *
+     * Keyed by the name beside the value, so `connections.primary.password`
+     * goes and `connections.primary.dsn`'s host stays — a report that redacts
+     * the whole subtree hides the provenance the command exists to show. A
+     * secret-looking key whose value is itself an array is replaced whole,
+     * because `'credentials' => [...]` names everything under it.
+     */
+    private static function redactNested(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $out = [];
+        foreach ($value as $key => $inner) {
+            $out[$key] = is_string($key) && Secrets::looksSecret($key)
+                ? Secrets::redacted()
+                : self::redactNested($inner);
+        }
+
+        return $out;
     }
 
     /**

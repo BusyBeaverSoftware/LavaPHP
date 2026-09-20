@@ -174,6 +174,33 @@ final class InspectionCommandsTest extends CommandTestCase
         self::assertStringNotContainsString('sk_live_', $out);
     }
 
+    public function testConfigRedactsASecretNestedInsideAValue(): void
+    {
+        // A security review found this: the bag is flattened one level, so a
+        // credential under 'connections' was matched against 'app.connections'
+        // — a name that looks like nothing — and printed in full.
+        [, $envelope] = $this->json('env-app', ['config']);
+        $byKey = array_column($envelope['data']['config'], null, 'key');
+
+        self::assertSame(
+            ['primary' => ['host' => 'db.internal', 'password' => '<redacted>']],
+            $byKey['app.connections']['value'],
+            'the leaf goes, the provenance stays',
+        );
+        self::assertFalse($byKey['app.connections']['secret'], 'the entry itself was not withheld');
+
+        $out = $this->text('env-app', ['config']);
+        self::assertStringNotContainsString('nested-fixture-password', $out);
+
+        [, $revealed] = $this->json('env-app', ['config', '--reveal']);
+        $byKey = array_column($revealed['data']['config'], null, 'key');
+        self::assertSame(
+            'nested-fixture-password',
+            $byKey['app.connections']['value']['primary']['password'],
+            '--reveal opens the nested value too',
+        );
+    }
+
     public function testEnvShowsDeclaredAndUndeclaredVarsWithTheirSource(): void
     {
         [$code, $envelope] = $this->json('env-app', ['env']);
