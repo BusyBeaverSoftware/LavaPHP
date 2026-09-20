@@ -75,18 +75,18 @@ final class LineLogger extends AbstractLogger
         fwrite($this->stream, $line . "\n");
     }
 
-    /**
-     * PSR-3's `exception` key, as data. Encoded as it is, an exception object
-     * prints as `{}`; as an array it keeps its trace and the entry stays one line.
-     *
-     * @return array<string, mixed>
-     */
     /** A message as one line: CR, LF and NUL escaped, everything else untouched. */
     private static function oneLine(string $message): string
     {
         return str_replace(["\r", "\n", "\0"], ['\\r', '\\n', '\\0'], $message);
     }
 
+    /**
+     * PSR-3's `exception` key, as data. Encoded as it is, an exception object
+     * prints as `{}`; as an array it keeps its trace and the entry stays one line.
+     *
+     * @return array<string, mixed>
+     */
     private static function exception(\Throwable $exception): array
     {
         $shape = [
