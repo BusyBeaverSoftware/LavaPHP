@@ -8,10 +8,13 @@ Three properties are the reason it exists rather than an app calling Twig
 directly:
 
 - **The dangerous default is the one you have to type.** Autoescaping is on
-  always and is not configurable, so a template reaches the browser escaped
+  always and is not configurable, so a template reaches the browser HTML-escaped
   whether it is called `page.twig` or `page.html.twig`. Twig's own default
   depends on that filename, which is a rule an agent cannot be asked to know and
-  whose failure mode is an XSS hole no test would catch.
+  whose failure mode is an XSS hole no test would catch. "Not configurable" is
+  enforced rather than asserted: a render whose default strategy is no longer
+  `html` — one `setDefaultStrategy()` call away through `environment()` — is
+  refused with `autoescape_disabled` instead of going out unescaped.
 - **A missing value is an error, not a blank.** `strict_variables` is on, so
   `{{ titel }}` fails the render with the variable's name and the line instead
   of rendering an empty string into a page that looks fine. A blank where a
@@ -22,8 +25,31 @@ directly:
   names the file to open.
 
 Codes this pack raises: `template_not_found`, `template_failed`,
-`view_dir_missing`, `bad_view_call` — see
+`view_dir_missing`, `bad_view_call`, `autoescape_disabled` — see
 [problem-codes.md](../problem-codes.md).
+
+## Escaping is contextual
+
+HTML escaping is the right default and it is not the whole job. Twig's `html`
+strategy escapes `< > & " '`, which makes a value safe in **element text** and
+in a **quoted attribute** — and those are most template lines. Three places it
+does not make safe, each with its own one-line remedy:
+
+```twig
+<div class="{{ q }}">quote every attribute — unquoted, a value adds its own</div>
+<a href="{{ url|escape('url') }}">a URL is escaped as a URL</a>
+<style>.a { color: {{ colour|escape('css') }} }</style>
+<script>var name = "{{ name|escape('js') }}";</script>
+```
+
+The `href` case is the one that bites in practice, and escaping alone does not
+settle it: `{{ 'javascript:alert(1)'|escape('url') }}` is inert, but a URL an app
+stores and prints back needs a scheme it chose, not one a visitor typed. Check
+the scheme where the value is accepted — an allowlist of `http` and `https` — and
+keep the template simple.
+
+A value that is deliberately markup is `{{ html|raw }}`, and that is the point of
+the opt-out being something you type.
 
 ## Install and enable
 
@@ -109,6 +135,14 @@ boot, so a missing one is `view_dir_missing` naming `view.namespaces.<name>`, an
 name this key does not declare, the names it does. `$view->namespaces()` returns
 the declared names with their directories, in config order, so a page that picks
 its theme can check the name without a second list of themes.
+
+**Escaping stays on whatever an extension does.** `$view->environment()` hands
+out the real Twig `Environment`, so an app can add a filter — and could, before
+this was enforced, turn the default escaping strategy off for every render the
+process makes afterwards. The renderer now checks the strategy on each render
+and raises `autoescape_disabled` rather than sending an unescaped page. The
+supported opt-outs are unchanged: `{{ value|raw }}` for one value, and
+`{% autoescape false %}` for one template, which says nothing about any other.
 
 **`extensions` installs Twig extensions at boot.** Register each in
 `app/Services.php` and list its container id:

@@ -27,6 +27,14 @@ as base64url JSON, a dot, and an HMAC-SHA256 signature.
 [`SessionData`](../apps/blog/app/Auth/SessionData.php) holds four fields: the
 user id (null before sign-in), the epoch, the CSRF nonce and the issue time.
 
+**The nonce comes from a CSPRNG.** `bin2hex(random_bytes(16))` or more —
+`random_bytes()` and `random_int()` are PHP's cryptographic sources, and nothing
+else is one. `uniqid()`, `mt_rand()`, `rand()`, a hash of the time or of the
+user id are all predictable to anyone who knows roughly when the session
+started, and a predictable CSRF nonce is a forgeable form. The same applies to
+anything else a visitor must not guess: a password-reset token, an API key, an
+unsubscribe link.
+
 It is **signed, not encrypted**. Whoever holds the cookie can read it, so it
 carries only those fields, and `HttpOnly` keeps scripts from reading the nonce.
 The signature is checked with `hash_equals`. `SessionData::expiredAt()` refuses
@@ -350,6 +358,7 @@ missing-address case.
 ## Before you ship sign-in
 
 - [ ] `SESSION_SECRET` is 32+ random bytes, uncommitted, and refused when empty.
+- [ ] The session nonce comes from `random_bytes()`, never `uniqid()` or `mt_rand()`.
 - [ ] The cookie is HMAC-signed, compared with `hash_equals`, and expired on the server.
 - [ ] The cookie is `HttpOnly`, `SameSite=Lax` and `Path=/`, plus `Secure` and `__Host-` behind TLS.
 - [ ] Every state-changing handler checks a session-bound CSRF token, including sign-in, sign-out and JSON writes.

@@ -41,6 +41,28 @@ PHP parses none of it, so there is nothing for it to discard.
 
 ## Decide the type from the bytes
 
+## Refuse the size before you read the bytes
+
+`UploadedFileInterface::getSize()` is the size PHP already measured, so it costs
+nothing to ask. Everything below reads the file into a string to sniff it, and a
+check that runs after the read has already spent the memory it was meant to
+save. Decide a ceiling — a few megabytes for an avatar, more for a document —
+and refuse above it first:
+
+```php
+$maxBytes = 5 * 1024 * 1024;
+
+$size = $file->getSize();
+if ($size === null || $size > $maxBytes) {
+    // refuse: too large, or a stream that will not say how large it is
+}
+```
+
+`upload_max_filesize` and `post_max_size` are the deployment's outer limits and
+they are not this: they are the same for every field in the app, they are set by
+whoever deploys it, and above them the framework never sees the request at all
+(`request_too_large`, 413). The ceiling above is the one this field means.
+
 The client's file name and `Content-Type` are the client's to invent. Sniff the
 content, and accept only formats you can name:
 
