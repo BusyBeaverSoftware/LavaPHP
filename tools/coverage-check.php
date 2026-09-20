@@ -73,6 +73,8 @@ declare(strict_types=1);
  * they suspect the code. See DECISIONS.md, "the second instrument artifact".
  */
 
+require __DIR__ . '/lib/workspace.php';
+
 $lavaRoot = realpath(__DIR__ . '/..');
 if ($lavaRoot === false) {
     fwrite(STDERR, "coverage: cannot resolve the repository root from " . __DIR__ . "\n");
@@ -217,11 +219,25 @@ if (!is_file($phpunit)) {
 
 // ── Run the suite, with the child capture switched on ────────────────────────
 
-$artifacts = sys_get_temp_dir() . '/lava-coverage';
+/*
+ * A fresh directory per run, not a fixed one.
+ *
+ * The fixed `/tmp/lava-coverage` was removed and recreated on every run, so it
+ * was never there between runs — and any local user could leave a symlink in
+ * its place. The remover tested `is_dir()`, which follows a symlink, so it
+ * emptied whatever the link pointed at, as whoever runs the gate; `rmdir`
+ * cannot remove a symlink, so the link survived to catch the next run's writes
+ * too. `scratch()` is what the other tools already use: an unguessable name,
+ * created by this process, and `removeScratch()` refuses anything that is not
+ * one and never follows a link out of it.
+ */
+$artifacts = \Lava\Tools\scratch('coverage');
 $children = $artifacts . '/children';
 $clover = $artifacts . '/clover.xml';
 
-coverage_remove_tree($artifacts);
+// Removed on the way out of a passing run, below. A failing one keeps them:
+// the clover report is what a failure is diagnosed from, and a gate that
+// deletes its own evidence is a gate you have to run twice.
 mkdir($children, 0o755, true);
 
 $env = getenv();
@@ -442,11 +458,13 @@ if ($weakest > 0) {
 
 if ($reportOnly) {
     echo "  --report-only: floors not enforced.\n\n";
+    \Lava\Tools\removeScratch($artifacts);
     exit(0);
 }
 
 if ($failures === []) {
     echo "  every pack is at or above its floor.\n\n";
+    \Lava\Tools\removeScratch($artifacts);
     exit(0);
 }
 
@@ -497,17 +515,3 @@ function coverage_pack(string $relative): string
         : 'packages/other';
 }
 
-function coverage_remove_tree(string $path): void
-{
-    if (!is_dir($path)) {
-        return;
-    }
-    foreach (scandir($path) ?: [] as $entry) {
-        if ($entry === '.' || $entry === '..') {
-            continue;
-        }
-        $full = $path . '/' . $entry;
-        is_dir($full) ? coverage_remove_tree($full) : @unlink($full);
-    }
-    @rmdir($path);
-}
