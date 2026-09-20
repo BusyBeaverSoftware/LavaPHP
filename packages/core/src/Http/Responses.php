@@ -55,9 +55,28 @@ final class Responses
         return self::response(204);
     }
 
+    /**
+     * Every response, with the one header that is right for all of them.
+     *
+     * `X-Content-Type-Options: nosniff` tells a browser to believe the content
+     * type rather than guess from the bytes. It costs nothing, it cannot break
+     * a correct client, and until now the string appeared exactly once in this
+     * repository — in docs/uploads.md, as advice to apps (security review, F5).
+     * A framework that tells apps to set a header and does not set it on its
+     * own error pages, which serve text an attacker influenced, is giving
+     * advice it does not take.
+     *
+     * The other common security headers are deliberately NOT set here. A
+     * Content-Security-Policy, HSTS or a frame policy is a decision about the
+     * whole site — which origins its scripts come from, whether it is ever
+     * served over plain HTTP — and a framework that guessed would either break
+     * apps or ship a policy so loose it means nothing. Those belong in an app's
+     * own middleware, where they are visible.
+     */
     private static function response(int $status): ResponseInterface
     {
-        return self::factory()->createResponse($status);
+        return self::factory()->createResponse($status)
+            ->withHeader('X-Content-Type-Options', 'nosniff');
     }
 
     private static function factory(): Psr17Factory

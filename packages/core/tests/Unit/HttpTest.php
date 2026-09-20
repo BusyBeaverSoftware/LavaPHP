@@ -87,6 +87,36 @@ final class HttpTest extends TestCase
         self::assertSame('application/json', $none->getHeaderLine('Content-Type'));
     }
 
+    public function testEveryResponseTellsTheBrowserNotToGuessItsType(): void
+    {
+        // The header appeared exactly once in the repository before this — in
+        // docs/uploads.md, as advice to apps (security review, F5). The error
+        // pages are the ones that matter: they serve text an attacker chose.
+        $responses = [
+            'json' => Responses::json(['a' => 1]),
+            'text' => Responses::text('hello'),
+            'html' => Responses::html('<p>hi</p>'),
+            'redirect' => Responses::redirect('/login'),
+            'noContent' => Responses::noContent(),
+            'problem' => HttpErrors::toResponse(RouteNotFound::of('GET', '/nope')),
+        ];
+
+        foreach ($responses as $name => $response) {
+            self::assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'), $name);
+        }
+    }
+
+    public function testAJsonBodyIsSafeToEmbedInAPage(): void
+    {
+        // JSON_UNESCAPED_SLASHES alone emitted `</script>` literally, so a body
+        // an app inlined in a <script> block could close it (security review, F5).
+        $body = (string) Responses::json(['note' => '</script><script>alert(1)</script>'])->getBody();
+
+        self::assertStringNotContainsString('</script>', $body);
+        self::assertStringNotContainsString('<script>', $body);
+        self::assertSame(['note' => '</script><script>alert(1)</script>'], json_decode($body, true));
+    }
+
     public function testDiagnosticsPageEscapesAndHidesContextInProd(): void
     {
         $report = new ProblemReport();
