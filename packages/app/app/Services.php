@@ -13,6 +13,10 @@ use Lava\Core\Container\Container;
  * `AppContext` carries what the factories need (the app dir, the environment
  * name, the loaded config, the flags) as explicit arguments rather than
  * smuggling them through the container.
+ *
+ * Use `singleton()` unless an object must not be shared within one request: a
+ * `factory()` closure re-runs on every `get()`, is rebuilt on every request,
+ * and is not covered by the boot wiring proof.
  */
 return function (Container $c, AppContext $ctx): void {
     $c->singleton(

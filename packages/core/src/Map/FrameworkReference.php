@@ -136,7 +136,10 @@ final class FrameworkReference
                 'lang' => 'php',
                 'note' => 'Returns a callable that registers services on the Container. There is no '
                     . 'auto-wiring: every id is built by visible code, and registering one twice is '
-                    . 'fatal. Two standard ids are filled by core only if nothing registered them first — '
+                    . 'fatal. Use `singleton()` unless an object must not be shared within one request: a '
+                    . '`factory()` closure re-runs on every `get()`, is rebuilt on every request, and is not '
+                    . 'covered by the boot wiring proof. '
+                    . 'Two standard ids are filled by core only if nothing registered them first — '
                     . '`Psr\\Log\\LoggerInterface` (a stderr LineLogger) and `Psr\\Clock\\ClockInterface` '
                     . '(the system clock) — so an app that wants its own simply registers the id here. '
                     . 'This is also where an app declares the environment variables it reads.',

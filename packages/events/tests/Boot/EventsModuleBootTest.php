@@ -107,6 +107,46 @@ final class EventsModuleBootTest extends TestCase
         self::assertSame(['A1'], $recorder->seen);
     }
 
+    public function testAListenerRegisteredWithFactoryIsRefusedAtBoot(): void
+    {
+        // A listener is built once and held, so `factory()` promises what the
+        // pack cannot give: the mistake is silent at runtime (Lava Notes, R3-B10).
+        $services = "<?php\nreturn function (\\Lava\\Core\\Container\\Container \$c, \\Lava\\Core\\Boot\\AppContext \$ctx): void {\n"
+            . "    \$c->factory('" . RecordsShipment::class . "', static fn () => new \\" . RecordsShipment::class . "());\n"
+            . "};\n";
+
+        $boot = $this->boot([Shipped::class => [RecordsShipment::class]], [], [], ['app/Services.php' => $services]);
+
+        self::assertInstanceOf(BootFailure::class, $boot);
+        $problems = $boot->problems->problems();
+        self::assertSame(['factory_listener'], array_map(static fn ($p): string => $p->code(), $problems));
+        $problem = $problems[0];
+        self::assertStringContainsString('is registered with factory()', $problem->getMessage());
+        self::assertStringContainsString('Register it with singleton() in ', $problem->fix);
+        self::assertSame(RecordsShipment::class, $problem->context['listener']);
+        self::assertSame('factory', $problem->context['kind']);
+        self::assertStringContainsString('app/Services.php:', (string) $problem->context['registered_at']);
+        self::assertStringEndsWith('app/Listeners.php', (string) $problem->source?->file);
+        self::assertSame(1, $problem->source?->line);
+    }
+
+    public function testAnAliasToAFactoryIsRefusedUnderTheNameTheFileLists(): void
+    {
+        // describe() follows the alias, so the kind is seen; the problem names
+        // the id app/Listeners.php writes, which is the line a reader edits.
+        $services = "<?php\nreturn function (\\Lava\\Core\\Container\\Container \$c, \\Lava\\Core\\Boot\\AppContext \$ctx): void {\n"
+            . "    \$c->factory('" . RecordsShipment::class . "', static fn () => new \\" . RecordsShipment::class . "());\n"
+            . "    \$c->alias('App\\\\Listeners\\\\ShipmentLog', '" . RecordsShipment::class . "');\n"
+            . "};\n";
+
+        $boot = $this->boot([Shipped::class => ['App\\Listeners\\ShipmentLog']], [], [], ['app/Services.php' => $services]);
+
+        self::assertInstanceOf(BootFailure::class, $boot);
+        $problem = $boot->problems->problems()[0];
+        self::assertSame('factory_listener', $problem->code());
+        self::assertSame('App\\Listeners\\ShipmentLog', $problem->context['listener']);
+    }
+
     public function testEachListenerThatCannotRunFailsTheBoot(): void
     {
         $cases = [

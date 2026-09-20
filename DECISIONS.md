@@ -5763,3 +5763,46 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
         scan nothing in the framework does today. Also not done: unpacking a carrier on the REQUEST path. Boot builds the
         provider, so a carrier cannot reach `App::handle` from the events pack; if another pack ever raises one lazily, it
         renders as `unexpected_failure` whose message names the codes it carried.
+
+322. **A listener registered with `factory()` is refused at boot (Lava Notes,
+    R3-B10).** Entry 304 documented the surprise and left the behaviour: boot
+    builds every listener once and `ListenerProvider` holds the instance, so a
+    `factory()` listener is one shared object however the app registered it. The
+    maintainer asked whether the container's lifetimes are the right shape for an
+    agent at all; two architects looked, and this is what came back.
+
+    - **The lifetimes stay as they are.** Two kinds, and the names
+      `singleton()`/`factory()`. A third lifetime would be a lie under php-fpm,
+      where the kernel boots per request and a singleton already lives exactly
+      one request (entry 290 decided the same). Renaming would widen `kind`,
+      which `lava.services/1` freezes as an enum, and stale every committed map,
+      to answer a question the reader does not have: the confusion is not what
+      the word means, it is which one to pick here.
+    - **Listeners are the one place the container's word is not kept.**
+      Middleware registered `factory()` really is rebuilt per layer per request;
+      a listener is not. So the refusal goes where the lie is, rather than in the
+      container.
+    - **Its own code, `factory_listener`.** `bad_listener` means "cannot run",
+      and this listener runs; problem-codes.md keeps one class per code, and
+      `code` is an open string in the envelope schema, so this costs a row and
+      no schema bump.
+    - **Sourced at `app/Listeners.php:1`, like every sibling**, with the
+      registration site in `context.registered_at`. The review's first draft put
+      the source on the registration line; the second checked it and found that
+      `declaredAt` records the CLOSURE's line, not the `$c->factory(` call, so it
+      would point at a line where the one-word edit is not.
+    - **`describe()` before `get()`**, so an alias to a factory is caught too,
+      and the problem names the id the file lists rather than the alias target.
+    - **Not built: a "mutable state in a singleton" check** (undecidable —
+      it flags `LineLogger` and every lazy handle), and not a "nothing resolves
+      this factory" check either: the resolution trace records owners only while
+      an owner factory runs, so the framework's own legitimate factory has zero
+      dependents in every app.
+
+    The write-time half matters more than the refusal: the lifetime rule is now
+    in `FrameworkReference`, which lands in every app's `AGENTS.md` on the next
+    `lava map`, and in the skeleton's own `app/Services.php` docblock — the two
+    files an agent has open when it writes the line.
+
+    **Class: minor.** An app that registered a listener with `factory()` boots
+    today and stops booting until one word changes. No app in this tree does.

@@ -105,10 +105,13 @@ through something that takes `EventDispatcher`, such as a renderer whose Twig
 extension dispatches: the dispatcher fetches the listeners on its first
 dispatch, so it is not part of any listener's construction.
 
-A listener is built once, when boot builds the provider, whatever its
-registration kind: one registered with `$c->factory()` is still a single
-instance that every dispatch reaches. Register listeners with `$c->singleton()`,
-and keep what belongs to one dispatch on the event rather than on the listener.
+A listener is one instance. Boot builds it when it builds the provider, and the
+provider holds it, so every dispatch reaches the same object. Register listeners
+with `$c->singleton()` and keep what belongs to one dispatch on the event rather
+than on the listener: a listener registered with `$c->factory()` is refused at
+boot as `factory_listener`, because the word promises a fresh object per
+resolution and a listener is shared — a difference nothing would report at
+runtime.
 
 ## Dispatch
 

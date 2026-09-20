@@ -8,6 +8,7 @@ use Lava\Core\Boot\App;
 use Lava\Core\Boot\AppContext;
 use Lava\Core\Console\CommandRegistry;
 use Lava\Core\Container\Container;
+use Lava\Core\Container\ServiceKind;
 use Lava\Core\Map\MapSection;
 use Lava\Core\Modules\Module;
 use Lava\Core\Modules\PackInfo;
@@ -19,6 +20,7 @@ use Lava\Core\Problem\ManyProblems;
 use Lava\Core\Problem\ServiceNotRegistered;
 use Lava\Events\Console\EventsCommand;
 use Lava\Events\Problem\BadListener;
+use Lava\Events\Problem\FactoryListener;
 
 /**
  * lavaphp/events' entry point.
@@ -75,6 +77,7 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
                         if (!$c->has($id)) {
                             throw self::unregistered($id, $file);
                         }
+                        self::checkShared($c, $id, $event, $file);
                         $listener = $c->get($id);
                         self::checkTakes($listener, $id, $event, $file);
                         if (is_callable($listener)) {
@@ -145,6 +148,22 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
 
         // Fully qualified: a `use` line above would move the registration lines committed maps record.
         return new ServiceNotRegistered($problem->getMessage(), $problem->fix, $problem->context, \Lava\Core\Problem\SourceLocation::of($file, 1));
+    }
+
+    /**
+     * Refuses a listener registered with `factory()`.
+     *
+     * `describe()` follows an alias, so an alias to a factory is caught too; the
+     * problem names the id the FILE lists, which is the line a reader edits.
+     *
+     * @throws FactoryListener when the registration is a factory
+     */
+    private static function checkShared(Container $c, string $id, string $event, string $file): void
+    {
+        $record = $c->describe($id);
+        if ($record->kind === ServiceKind::Factory) {
+            throw FactoryListener::of($id, $event, $record->file . ':' . $record->line, $file);
+        }
     }
 
     /**
