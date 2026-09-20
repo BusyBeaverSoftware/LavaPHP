@@ -20,7 +20,14 @@ final class Responses
         // Compact on the wire (agents parse it; humans get the diagnostics
         // page). Pretty-printing, when it exists, belongs to the CLI's text
         // rendering, not to HTTP bodies.
-        $body = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        // SUBSTITUTE, as HttpErrors already does: a route param can carry bytes
+        // that are not UTF-8, and a handler echoing one must not become a 500
+        // (security review, F3). HEX_TAG and HEX_AMP keep a body safe to embed
+        // in a page, which JSON_UNESCAPED_SLASHES alone does not.
+        $body = json_encode(
+            $data,
+            JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_THROW_ON_ERROR,
+        );
         return self::text($body, $status)->withHeader('Content-Type', 'application/json');
     }
 

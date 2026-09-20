@@ -18,6 +18,7 @@ use Lava\Core\Modules\Module;
 use Lava\Core\Modules\ModuleRef;
 use Lava\Core\Modules\PackInfo;
 use Lava\Core\Modules\ProvidesMapSection;
+use Lava\Core\Problem\BadRequestPath;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
@@ -221,7 +222,26 @@ final class App implements RequestHandlerInterface
         // route matches the `/caf%C3%A9` a browser sends (Lava Notes, R3-B3).
         // Decoding each capture after matching instead would hand a `str`
         // handler an `a/b` its own type refuses.
+        //
+        // Two things follow, and 0.5.0 shipped without either (security review,
+        // findings F1-F3). The decoded path goes BACK on the request, because a
+        // router matching one string while every middleware reads another is an
+        // authorization bypass: a prefix guard on `/admin` never sees
+        // `/%61dmin`, and the router routes it. And a decoded path that a proxy
+        // in front could not have understood the same way is refused rather
+        // than served — a `..` segment or a control byte.
+        //
+        // The URI re-encodes what PSR-7 requires it to (a non-ASCII byte comes
+        // back as `%C3%A9`), so what the request carries afterwards is the
+        // CANONICAL form of the path the router matched, not the raw bytes of
+        // either. That is the property a guard needs: two spellings of the same
+        // path can no longer disagree about which route answers.
         $path = rawurldecode($request->getUri()->getPath());
+        $badPath = self::unusablePath($path);
+        if ($badPath !== null) {
+            return $this->unrouted($request, $badPath);
+        }
+        $request = $request->withUri($request->getUri()->withPath($path));
         $result = $this->router->match($request->getMethod(), $path, $features);
         if (!$result instanceof Matched) {
             // RouteNotFound | MethodNotAllowed — both are problems, rendered
@@ -303,6 +323,28 @@ final class App implements RequestHandlerInterface
      * with the 405's `Allow` header — and a layer that itself throws something
      * that is not a problem renders as `unexpected_failure`.
      */
+    /**
+     * Why a decoded path cannot be served, or null.
+     *
+     * Both shapes exist only because of the decode: a literal `../` is
+     * collapsed by every conforming client before it is sent, and a literal NUL
+     * or newline cannot travel in a request line at all. Percent-encoded, they
+     * reach here — so this is where they stop.
+     */
+    private static function unusablePath(string $path): ?BadRequestPath
+    {
+        if (preg_match('/[\x00-\x1f\x7f]/', $path) === 1) {
+            return BadRequestPath::controlByte($path);
+        }
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                return BadRequestPath::dotSegment($path);
+            }
+        }
+
+        return null;
+    }
+
     private function unrouted(ServerRequestInterface $request, LavaProblem $problem): ResponseInterface
     {
         try {

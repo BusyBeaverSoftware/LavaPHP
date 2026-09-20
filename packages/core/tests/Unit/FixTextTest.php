@@ -294,6 +294,10 @@ final class FixTextTest extends TestCase
                 \Lava\Core\Problem\BadRedirect::loops('posts.old', 'posts.show', '/posts/a', $source),
                 \Lava\Core\Problem\BadRedirect::param('posts.old', 'posts.show', 'slug', 'str', ['id' => 'int'], $source),
             ],
+            \Lava\Core\Problem\BadRequestPath::class => [
+                \Lava\Core\Problem\BadRequestPath::dotSegment('/docs/../secret.txt'),
+                \Lava\Core\Problem\BadRequestPath::controlByte("/docs/a\0b"),
+            ],
             \Lava\Core\Problem\BadReplacement::class => [
                 \Lava\Core\Problem\BadReplacement::unregistered('App\Nowhere'),
                 \Lava\Core\Problem\BadReplacement::notKeyedById(0, 'App\Greeter'),

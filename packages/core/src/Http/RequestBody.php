@@ -106,6 +106,13 @@ final class RequestBody
      */
     private static function discardedForm(ServerRequestInterface $request, ?int $limit): ?RequestTooLarge
     {
+        // POST only: PHP fills `$_POST` for no other method, so for a PUT or a
+        // PATCH this check would degenerate into "Content-Length over the
+        // limit" and refuse a request whose body arrived whole (security
+        // review, F4).
+        if ($request->getMethod() !== 'POST') {
+            return null;
+        }
         $type = self::contentType($request);
         if (!in_array($type, self::FORM_TYPES, true)) {
             return null;
@@ -116,14 +123,23 @@ final class RequestBody
         }
 
         $limit ??= ini_parse_quantity((string) ini_get('post_max_size'));
-        $length = (int) $request->getHeaderLine('Content-Length');
+        $header = $request->getHeaderLine('Content-Length');
+        $length = $header === '' ? null : (int) $header;
+
+        // A chunked request has no length to read, and an unknown length
+        // convicts nobody (security review, F5). The opposite case — a client
+        // that declares a length it did not send — still gets a 413, which is
+        // the answer its own header asked for.
+        if ($length === null) {
+            return null;
+        }
         if ($limit <= 0 || $length <= $limit) {
             // A limit of 0 is "no limit" in PHP's own reading, so there is
             // nothing for it to have discarded.
             return null;
         }
 
-        return RequestTooLarge::form($type, $length, $limit);
+        return RequestTooLarge::form($type, (int) $length, $limit);
     }
 
     private static function declaresJson(ServerRequestInterface $request): bool

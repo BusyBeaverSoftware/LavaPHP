@@ -59,7 +59,10 @@ final class LineLogger extends AbstractLogger
         if (self::LEVELS[$level] < self::LEVELS[$this->minimumLevel]) {
             return;
         }
-        $line = sprintf('[%s] %s: %s', date('c'), $level, (string) $message);
+        // One record, one line: a message carrying a newline — a route param
+        // echoed by an app's problem, say — would otherwise forge a second
+        // record that reads as the framework's own (security review, F9).
+        $line = sprintf('[%s] %s: %s', date('c'), $level, self::oneLine((string) $message));
         if ($context !== []) {
             if (($context['exception'] ?? null) instanceof \Throwable) {
                 $context['exception'] = self::exception($context['exception']);
@@ -78,6 +81,12 @@ final class LineLogger extends AbstractLogger
      *
      * @return array<string, mixed>
      */
+    /** A message as one line: CR, LF and NUL escaped, everything else untouched. */
+    private static function oneLine(string $message): string
+    {
+        return str_replace(["\r", "\n", "\0"], ['\\r', '\\n', '\\0'], $message);
+    }
+
     private static function exception(\Throwable $exception): array
     {
         $shape = [

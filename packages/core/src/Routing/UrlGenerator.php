@@ -95,6 +95,15 @@ final class UrlGenerator
      */
     private static function encode(string $text): string
     {
-        return str_replace('%2F', '/', rawurlencode($text));
+        $encoded = str_replace('%2F', '/', rawurlencode($text));
+
+        // A `.` or `..` that is a whole segment is not a name, it is an
+        // instruction to the client: `/a/../b` resolves to `/b`, a path this
+        // route would not match, which is the one thing url() promises cannot
+        // happen (security review, F6).
+        return implode('/', array_map(
+            static fn (string $segment): string => $segment === '.' ? '%2E' : ($segment === '..' ? '%2E%2E' : $segment),
+            explode('/', $encoded),
+        ));
     }
 }
