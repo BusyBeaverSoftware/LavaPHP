@@ -557,6 +557,9 @@ final class FixTextTest extends TestCase
         }
 
         if (class_exists(\Lava\View\Problem\BadViewCall::class)) {
+            $fixtures[\Lava\View\Problem\AutoescapeDisabled::class] = [
+                \Lava\View\Problem\AutoescapeDisabled::of('posts/show.twig', 'off'),
+            ];
             $fixtures[\Lava\View\Problem\BadViewCall::class] = [
                 \Lava\View\Problem\BadViewCall::routeName(0),
                 \Lava\View\Problem\BadViewCall::urlParams('posts.show', 'slug'),
@@ -570,6 +573,7 @@ final class FixTextTest extends TestCase
             $fixtures[\Lava\View\Problem\TemplateNotFound::class] = [
                 \Lava\View\Problem\TemplateNotFound::of('posts/show.twig', '/app/views', ['posts/index.twig']),
                 \Lava\View\Problem\TemplateNotFound::inNamespace('@admin/show.twig', 'admin', 'show.twig', ['/app/views/admin'], ['index.twig'], ['admin']),
+                \Lava\View\Problem\TemplateNotFound::included('posts/show.twig', new \Twig\Error\LoaderError('Unable to find template "partials/_nav.twig"')),
             ];
             $fixtures[\Lava\View\Problem\ViewDirMissing::class] = [
                 \Lava\View\Problem\ViewDirMissing::of('/app/views', 'view.dir', '/app'),

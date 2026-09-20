@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Lava\View\Problem;
 
 use Lava\Core\Problem\LavaProblem;
+use Lava\Core\Problem\SourceLocation;
+use Twig\Error\LoaderError;
 
 /**
  * A template was asked for that is not there.
@@ -46,6 +48,42 @@ final class TemplateNotFound extends LavaProblem
             . 'A subdirectory is part of the name: a file at ' . $directory . '/tasks/show.twig is rendered as '
             . "'tasks/show'. The .twig extension is optional in render() — it is added for you when missing.",
             ['template' => $template, 'directory' => $directory, 'available' => $available],
+        );
+    }
+
+    /**
+     * The same problem for a template a TEMPLATE asked for — `{% include %}`,
+     * `{% extends %}`, `{% embed %}`, `{% import %}`.
+     *
+     * The renderer checks the name it is given, but a name inside a template is
+     * resolved by Twig's loader at render time, and a miss there is a
+     * `LoaderError` — neither of the two errors the renderer used to catch, so
+     * it escaped the pack as `unexpected_failure` and lost the diagnosis
+     * (security review, F3). That matters most for the dynamic form the pack's
+     * own documentation teaches, `{% extends '@' ~ theme ~ '/layout.twig' %}`,
+     * where the missing name comes from the render context: the app deserves a
+     * 404-shaped answer with the template named, not a 500 with a stack trace.
+     *
+     * Twig's own sentence carries the name it could not load and the line it was
+     * asked from, and it is quoted rather than re-derived: the loader knows
+     * which namespaces it searched, and this class would only be guessing.
+     *
+     * @param string $template the OUTER template, as the renderer normalized it
+     */
+    public static function included(string $template, LoaderError $error): self
+    {
+        $source = $error->getSourceContext();
+        $line = $error->getTemplateLine();
+
+        return new self(
+            "Template '{$template}' loads a template that is not there: {$error->getRawMessage()}",
+            "Fix the {% include %}, {% extends %} or {% embed %} name in {$template}. When the name is built from "
+            . 'the render context — a theme or a partial chosen per request — check the value against '
+            . 'ViewRenderer::namespaces() (or a list the app owns) before rendering, so a bad value is the app\'s own '
+            . '404 rather than a failed render.',
+            ['template' => $template, 'error' => $error::class, 'line' => $line],
+            SourceLocation::of($source?->getPath() ?? $template, $line > 0 ? $line : 1),
+            $error,
         );
     }
 

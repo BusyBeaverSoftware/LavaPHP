@@ -6,12 +6,15 @@ namespace Lava\View;
 
 use Lava\Core\Http\Responses;
 use Lava\Core\Problem\LavaProblem;
+use Lava\View\Problem\AutoescapeDisabled;
 use Lava\View\Problem\TemplateFailed;
 use Lava\View\Problem\TemplateNotFound;
 use Psr\Http\Message\ResponseInterface;
 use Twig\Environment;
+use Twig\Error\LoaderError;
 use Twig\Error\RuntimeError;
 use Twig\Error\SyntaxError;
+use Twig\Extension\EscaperExtension;
 use Twig\Loader\FilesystemLoader;
 
 /**
@@ -34,7 +37,10 @@ use Twig\Loader\FilesystemLoader;
  * **Every Twig failure leaves here as a `LavaProblem`.** That is the pack's
  * whole reason for existing rather than shipping a `TwigFactory` and a README:
  * a template typo is a framework failure like any other, and it must arrive
- * with a file, a line, and a fix. See {@see TemplateFailed}.
+ * with a file, a line, and a fix. See {@see TemplateFailed}. All three of
+ * Twig's error classes are caught, not two: a `LoaderError` from a name a
+ * TEMPLATE asked for used to escape as `unexpected_failure` (security review,
+ * F3).
  */
 final class ViewRenderer
 {
@@ -79,11 +85,17 @@ final class ViewRenderer
         if (!$this->exists($template)) {
             throw $this->notFound($template);
         }
+        $this->assertEscaping($template);
 
         try {
             return $this->twig->render($template, $context);
         } catch (SyntaxError $error) {
             throw TemplateFailed::syntax($template, $error);
+        } catch (LoaderError $error) {
+            // A name a template asked for — {% include %}, {% extends %},
+            // {% embed %}, {% import %} — is resolved by the loader at render
+            // time, so a miss arrives here rather than from exists() above.
+            throw TemplateNotFound::included($template, $error);
         } catch (RuntimeError $error) {
             // Twig wraps whatever a template function throws in a RuntimeError
             // whose `previous` is the original. A LavaProblem raised by url()
@@ -97,6 +109,45 @@ final class ViewRenderer
             // generic one.
             throw self::raised($error) ?? TemplateFailed::runtime($template, $error);
         }
+    }
+
+    /**
+     * Refuses to render when the default escaping strategy is no longer `html`.
+     *
+     * The pack promises autoescaping is on and not configurable, and this is
+     * what makes the promise true rather than merely stated: the environment is
+     * reachable through {@see environment()}, the renderer is a singleton, and
+     * one `setDefaultStrategy(false)` copied from a Twig tutorial would unescape
+     * every page the process serves from then on (security review, F2).
+     *
+     * Per render, not once: the call that disables it can happen at any time,
+     * from a handler or a middleware, and a check that ran once at boot would
+     * pass before the line that matters. It is an array lookup against the
+     * template name, which is what Twig itself does on every render anyway.
+     *
+     * A strategy Twig resolves per template — a callable, or a name-based
+     * strategy — is not `html` for this purpose either: the guarantee this pack
+     * sells is one strategy for every template, and anything else is a
+     * configuration the reader has to audit for themselves.
+     *
+     * @throws AutoescapeDisabled when it is not `html`
+     */
+    private function assertEscaping(string $template): void
+    {
+        $escaper = $this->twig->getExtension(EscaperExtension::class);
+        $strategy = $escaper->getDefaultStrategy($template);
+        if ($strategy === 'html') {
+            return;
+        }
+
+        throw AutoescapeDisabled::of(
+            $template,
+            match (true) {
+                $strategy === false => 'off',
+                is_string($strategy) => "'{$strategy}'",
+                default => 'decided per template by a callable',
+            },
+        );
     }
 
     /**
