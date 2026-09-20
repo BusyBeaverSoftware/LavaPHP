@@ -5806,3 +5806,73 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
 
     **Class: minor.** An app that registered a listener with `factory()` boots
     today and stops booting until one word changes. No app in this tree does.
+
+323. **Listeners run in three phases, and 292's "no priorities" is superseded on that
+    one point (Lava Notes, R3-G1).** Entry 292 made `app/Listeners.php` the whole
+    registry and file position the only order; entry 304 wrote that down as
+    deliberate. The maintainer decided to add ordering, so the question was only
+    which shape survives an agent writing into this file. Two architects looked at
+    it; this is what they agreed on, with the second's amendments.
+
+    - **Three named phases, not numbers.** `Phase::first($id)`, `Phase::last($id)`,
+      and a bare id for the default phase between them. The argument that decided
+      it is not legibility but refusability: a number has no wrong value — `10`
+      before `-20` is never checkable — and this pack's character is that every
+      mistake in the registry is a boot problem with a fix. Three phases have a
+      wrong state, and it is refused (below). Adding a fourth phase later is
+      additive to every existing file; retiring numbers once agents have written
+      `-255` into files is not, so the reversible option was bought.
+    - **A wrapper object, not a string key or a `'phase' => …` entry.** A
+      misspelling cannot survive: `Phase::frist()` is an `\Error` inside the
+      required file, which `ListenerMap::load()` already reports as
+      `invalid_listeners_file` at that line — the per-entry line number entry 321
+      recorded as "not done" arrives free here. A string phase would have needed a
+      new refusal to say the same thing. It also follows `Flag::on()` and
+      `ModuleRef::of()`, the two precedents for objects in an app's artifact files.
+      The class is `Phase` rather than `Order`, because `App\Order` is among the
+      commonest userland class names and `app/Listeners.php` is a file of `use`
+      lines for app classes.
+    - **The phase belongs to the listener, not to the entry.** An id carries its
+      phase under every key that names it, which is the whole feature: a `last`
+      listener under a class can follow a default one under an interface, and that
+      is an ordering no amount of moving lines can express. The cost is that the
+      file no longer reads strictly top to bottom, which the docs now say.
+    - **The order, stated once:** phase rank, then today's rule — every matching key
+      in file order, each listener at its first occurrence. The sort is stable, so a
+      file that names no phase is ordered exactly as before and nothing an app has
+      written changes meaning.
+    - **`listener_order_conflict`** refuses one listener given two phases: two
+      entries disagreeing, one entry saying both, or a `Phase::first()` beside a
+      bare id — which is the likeliest real mistake, because a bare id is not
+      "unspecified", it is the default phase. Raised in `register()` beside the
+      unknown-key sweep and collected into the same `ManyProblems`, so one boot
+      still reports everything the file gets wrong. The same phase twice stays
+      legal and still runs once.
+    - **`lava events` prints the effective order, not the file's.** This is what
+      makes the schema bump worth paying for: a reader that had to redo the sort
+      itself would be reading a different registry from the one dispatch uses. The
+      payload's `listeners` therefore carries `{listener, phase}` per entry in run
+      order — including a listener the entry inherits from an interface — plus a
+      top-level `phases`, which is a pack constant and so is honest in
+      `emptyPayload()` on a failed boot too. `lava.events/1` is deleted, as
+      `Envelope::VERSIONS` requires. The map's Events section renders the same view
+      through `Phase::label()`, so the two cannot drift.
+    - **Not changed:** `ListenerMap`'s constructor signature or `all()` — both are
+      public and app tests construct the map directly; phases arrive in a third,
+      optional argument and only `for()`/`forClass()` change behaviour.
+    - **Documented, not fixed:** a default-phase listener that stops a stoppable
+      event skips the `last` listeners too. Ordering is still by position, and work
+      that must happen regardless belongs on the caller's side of `dispatch()`.
+
+    - **One addition the design did not name:** `Phase::default($id)`, which
+      behaves exactly as a bare id. The payload advertises
+      `phases: ["first","default","last"]`, so an agent reading it will write
+      `Phase::default(...)`; without the method that is an `\Error` in the
+      listeners file, and refusing a spelling the framework itself published
+      would be the kind of surprise this design exists to remove. It is not a
+      conflict against a bare id elsewhere, and a test says so.
+
+    **Class: minor.** Every events app must re-run `lava map` — the pack's
+    registration lines move and the Events section's intro changes — and a consumer
+    pinned to `lava.events/1` must move to `/2`. No `app/Listeners.php` needs an
+    edit: a file with no phases means exactly what it meant.
