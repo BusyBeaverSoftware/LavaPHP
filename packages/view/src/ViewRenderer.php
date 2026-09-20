@@ -125,29 +125,22 @@ final class ViewRenderer
      * pass before the line that matters. It is an array lookup against the
      * template name, which is what Twig itself does on every render anyway.
      *
-     * A strategy Twig resolves per template — a callable, or a name-based
-     * strategy — is not `html` for this purpose either: the guarantee this pack
-     * sells is one strategy for every template, and anything else is a
-     * configuration the reader has to audit for themselves.
+     * Any other strategy is refused, not just `false`: the guarantee this pack
+     * sells is one strategy for every template, and `js` or a name-based rule
+     * escaping a page as JavaScript is a configuration the reader would have to
+     * audit for themselves. Twig resolves the strategy for the template it is
+     * given, so a callable strategy answers here as whatever it decided.
      *
      * @throws AutoescapeDisabled when it is not `html`
      */
     private function assertEscaping(string $template): void
     {
-        $escaper = $this->twig->getExtension(EscaperExtension::class);
-        $strategy = $escaper->getDefaultStrategy($template);
+        $strategy = $this->twig->getExtension(EscaperExtension::class)->getDefaultStrategy($template);
         if ($strategy === 'html') {
             return;
         }
 
-        throw AutoescapeDisabled::of(
-            $template,
-            match (true) {
-                $strategy === false => 'off',
-                is_string($strategy) => "'{$strategy}'",
-                default => 'decided per template by a callable',
-            },
-        );
+        throw AutoescapeDisabled::of($template, $strategy === false ? 'off' : "'{$strategy}'");
     }
 
     /**
