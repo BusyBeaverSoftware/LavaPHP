@@ -5956,3 +5956,28 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     classes excluded by named rules, a 30 ms sweep, and payloads of 154 KB for
     `--all`, 72 KB for one pack and 879 bytes for the roster.
 
+325. **`0.5.0` is prepared.** The round-3 minor: entries 314 to 324, every one of
+    them something a patch could not carry. The encoding of route values at both
+    ends (314), the boot refusal of a redirect that matches its target's URLs
+    (315), `lava.routes/2` (316), `request_too_large` (317), the case-folded
+    `select()` refusal (318), `lava.about/2` with versions and pack facts (319),
+    the map compiled as if every pack gate were on (320), every listener mistake
+    in one boot (321), the `factory()` listener refusal (322), listener phases
+    and `lava.events/2` (323), and `lava api` (324).
+
+    - **The lockstep constraints moved together**, as entries 268, 280 and 294
+      did: `lavaphp/core` `^0.5.0` in the six packs and the skeleton, every
+      `lavaphp/*` requirement in the root, `apps/demo` and `apps/blog`, and each
+      path repository's pin at `0.5.0`. The root lock and both apps' installs
+      were refreshed with `composer update 'lavaphp/*'`.
+    - **The README gains "Upgrading from 0.4 to 0.5"**, which asks four things of
+      an app: run `lava map`; stop decoding route params it now receives decoded;
+      re-pin `lava.routes`, `lava.about` and `lava.events` to `/2`; and alias
+      `select()` columns that differ only in case. It also names the three new
+      boot refusals and the 413, so nothing in the list arrives as a surprise.
+    - **docs/releasing.md** names `0.5.0` in its version history, its tag example
+      and its lockstep sentence.
+    - **Three superseded schema files are deleted** — `lava.routes/1`,
+      `lava.about/1` and `lava.events/1` — because nothing emits a superseded
+      version and `JsonSchemaTest` derives the expected file list from
+      `Envelope::schema()`.

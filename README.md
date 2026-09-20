@@ -41,6 +41,51 @@ and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 
+### Upgrading from 0.4 to 0.5
+
+`0.5.0` is the round-3 release: it fixes what agents building on `0.4` found,
+and adds the command they most needed. Require every `lavaphp/*` package at
+`^0.5.0` together, then:
+
+- **Run `lava map` once.** The events pack's registration lines moved, the map
+  is now compiled as if every installed pack's gate were on (so a committed
+  `AGENTS.md` written with a pack switched off read stale on every other
+  machine), and `lava api` is a new command, which the map counts.
+- **Route parameters are encoded once, at both ends.** `url()` percent-encodes
+  values and static segments, and the request path is decoded once before
+  matching, so a handler receives `a b` where it used to receive `a%20b`, a
+  literal `/café` route finally matches, and generated `href`s change bytes. An
+  app that decoded a route param itself must stop; a custom param type written
+  around the encoded form (`[a-z0-9%]+`) must be rewritten around the value.
+- **Re-pin the CLI payloads you read.** `lava routes --json` is now
+  `lava.routes/2` (rows say where a redirect leads), `lava about --json` is
+  `lava.about/2` (package versions and a pack's own facts, such as pending
+  migrations), and `lava events --json` is `lava.events/2` (listeners come back
+  in the order dispatch takes, each with its phase). The superseded schema files
+  are deleted, as this project's rule requires.
+- **Alias columns that differ only in case.** `select('posts.ID', 'users.id')`
+  is now `bad_query`: SQLite returned one column and silently dropped the other
+  value. Alias one of them, as the printed fix does.
+- **Three new refusals at boot.** A redirect whose path matches its target's own
+  URLs (it would answer that address with itself, or never match at all); a
+  listener registered with `$c->factory()` (a listener is built once and shared,
+  so register it with `singleton()`); and a listener given two different phases.
+  Each names the line to edit.
+- **An oversized form post is a 413.** A form larger than PHP's `post_max_size`
+  arrives with every field missing, which used to surface as a validation error
+  blaming a field the visitor did fill in. It is now `request_too_large`,
+  refused before routing.
+- **Nothing to do, and plenty to use.** `lava api` indexes the framework's own
+  public API — `lava api <ClassName>`, `lava api <methodName>`,
+  `lava api --search=<term>`, all with `--json` — so "does the framework have
+  something for this?" is one command rather than a grep through `vendor/`.
+  Listener order can now be stated with `Lava\Events\Phase::first()` and
+  `Phase::last()`, one boot reports every mistake in `app/Listeners.php` instead
+  of the first, `ViewRenderer::namespaces()` lists the declared Twig namespaces,
+  and `TestApp`/`TestConsole` put back environment variables a run removed.
+
+The reasoning for each is in [DECISIONS.md](DECISIONS.md), entries 314–324.
+
 ### Upgrading from 0.4.0 to 0.4.1
 
 `0.4.1` fixes what Lava Notes' third review found, and asks nothing of an app:
