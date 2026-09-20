@@ -5876,3 +5876,83 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     registration lines move and the Events section's intro changes — and a consumer
     pinned to `lava.events/1` must move to `/2`. No `app/Listeners.php` needs an
     edit: a file with no phases means exactly what it meant.
+
+324. **`lava api` indexes the framework's own API, compiled by reflection (Lava Notes, the round-3 review's first
+    recommendation).** Three outside builds produced 70 verdicts on "missing" features and **33 were capabilities that had
+    already shipped** — the agent searched, found nothing, and wrote its own: 690 lines of sessions and CSRF (which review
+    found three real security flaws in), 200 for uploads, 150 for a test browser. Discovery failures land on the AUTHORING
+    path, before any verification loop can catch them: the code that results is not worse, there is just more of it, and the
+    tests pass. `lava check` cannot help with a capability the author never looked for.
+
+    **Compiled at runtime, written nowhere.** `ApiIndex` reflects over each installed package's `src/` when the command
+    runs — the whole sweep measures in tens of milliseconds, so there is nothing to cache and nothing to ship. Two
+    alternatives were rejected. A section in `AGENTS.md` would put framework facts in an app-scoped, fingerprinted document,
+    so every app's committed map would read stale on every framework upgrade — the exact failure entry 320 had just fixed
+    for pack gates. A JSON artifact generated at release time and shipped inside each package can be wrong about the code
+    beside it the moment anyone patches a method; reflection over the installed code cannot.
+
+    **A closed surface is the point; the payload is not.** Each pack ships an `ApiSurface` naming the directories that are
+    not API, each with a reason, and `ApiSurfaceTest` refuses a fourth state: every class under `src/` is indexed, promoted
+    because an indexed signature names it, or covered by a named rule. That is what makes an empty result an *answer* —
+    "the framework has nothing by that name" rather than "the search missed it" — and it is the difference between this and
+    `grep -r "public function" vendor/lavaphp`, which yields the same names today. Promotion exists because a type named by
+    the API is part of the API whatever directory it sits in: `Router::match()` returns `RouteNotFound`, which lives under
+    the wholesale-excluded `Problem/`. The one case promotion refuses is a type marked `@internal` and exposed anyway — a
+    contradiction only the author can resolve, so it fails the guard instead of being papered over.
+
+    **Scope rules, not a curated list.** Paths plus `@internal`, never `final` (139 of core's 157 types are final, so it
+    carries no signal) and never a hand-kept list of the ~900 public methods, which is the rot this feature exists to
+    prevent. Excluded wholesale: `Problem/` (docs/problem-codes.md owns every code under its own drift guard),
+    `Console/Commands/` (`lava list` owns them, with their flags and schemas), `Boot/Steps/`, db's `Sql/` compiler, and
+    traits. Inherited methods are listed once, on the class that declares them, with `extends`/`implements` to follow.
+
+    **No `since` field.** `@since` docblocks rot (the repository had two `@internal` markers and no `@since` at all),
+    Composer's version says what you have rather than when it arrived, and scanning git tags needs the shipped artifact this
+    design rejects. Each pack reports the version Composer installed instead. If `since` earns its keep later, the honest
+    form is a release-time `lava api --json` snapshot committed under `docs/api/<version>.json` and diffed at tag time —
+    which would also generate the "what's new" list this project deliberately has no changelog for.
+
+    **Separate from `lava describe`, deliberately.** `describe` boots the app and resolves what the app declares — routes,
+    services, flags, env vars, commands — through a documented five-namespace precedence. `api` answers about framework code
+    and must work when the app cannot boot, so it is a plain `Command`, like `about`. Folding six hundred methods in as a
+    sixth namespace would make `lava describe json` ambiguous and cost `lava.describe/2`. The two are linked by one line of
+    text: `unknown_selector`'s fix now points at `lava api --search=<selector>` when the app declares nothing by that name.
+
+    **A pack that is switched off is still indexed**, marked `enabled: false`. Hiding a capability behind its gate would
+    reproduce the failure being fixed; a pack that is not installed is absent, which `lava about` already reports.
+
+    **Examples on entry points only.** Roughly two dozen classes carry a worked snippet, each parsed by `ApiExampleTest`:
+    every `Lava\` name must exist, every static call must exist on the class it names, every instance-method name must exist
+    somewhere in the index, and an example must mention its own class. The methods are parsed out of the snippets rather
+    than listed beside them — `FrameworkReferenceTest` keeps a `TAUGHT` list, and a list is a second copy that can fall
+    behind. Only entry points, because an example is the one hand-written thing here: two dozen can be kept true, nine
+    hundred could not.
+
+    **Class: minor** — new command, new `lava.api/1` schema, new public API (`ApiIndex`, `ApiSurface`, one surface class per
+    pack). Nothing an app declares changes, but `lava list` gains a row and every pack ships a class, so it goes out with
+    the other 0.5.0 changes rather than as a patch.
+
+    **Three calls the implementer made beyond the design, all kept.** The
+    surfaces declare the directories that ARE api as well as those that are not:
+    with exclusions alone the accounting guard was vacuous — anything not
+    excluded was indexed, so a class in a new directory would have joined the
+    published API silently. `@internal` works per method as well as per class,
+    because `Router::finalize()`, `attachPlan()`, `plan()`, `paramRegex()` and
+    `anchored()` are boot's while the rest of `Router` is exactly what an app
+    calls, and one marker on the class could not say that. And `enabled` is
+    `bool|null`: a pack's gate needs a booted app, so a roster printed when boot
+    failed reports null rather than guessing `false`.
+
+    The `@internal` pass the guard demanded covered 21 classes and 5 methods —
+    `Kernel`, `BootCtx`, `Console`, `Junit`, `Registration`, `MiddlewarePipeline`,
+    `TwigFactory` and the rest of boot and CLI plumbing, which would otherwise
+    have been published as API. The closed-surface check then caught two real
+    contradictions: `BootStep::run()` exposed `BootCtx` (resolved by marking
+    `BootStep`, which an app never implements) and `ProjectMap::staleness()`
+    returned `MapDocument`, wrongly marked internal — a type a public method
+    returns is API by exposure.
+
+    Measured on the shipped build: 141 types and 586 methods indexed, 130
+    classes excluded by named rules, a 30 ms sweep, and payloads of 154 KB for
+    `--all`, 72 KB for one pack and 879 bytes for the roster.
+
