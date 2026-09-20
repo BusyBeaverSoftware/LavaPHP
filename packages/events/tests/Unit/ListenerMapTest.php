@@ -59,6 +59,94 @@ final class ListenerMapTest extends TestCase
         self::assertSame([], $map->for(new \ArrayObject()));
     }
 
+    public function testAPhaseRunsBeforeOrAfterTheDefaultOnesAcrossEveryEntry(): void
+    {
+        // The point of a phase over moving a line: `app.audit` is named under
+        // the class and still runs after `app.track`, which another entry names.
+        $map = ListenerMap::load($this->appWith(
+            '[' . var_export(Shipped::class, true) . ' => [\\Lava\\Events\\Phase::last(\'app.audit\'), \'app.record\'],'
+            . var_export(Trackable::class, true) . ' => [\'app.track\', \\Lava\\Events\\Phase::first(\'app.quota\')]]',
+        ));
+
+        self::assertSame(['app.quota', 'app.record', 'app.track', 'app.audit'], $map->for(new Shipped('A1')));
+        self::assertSame(['app.quota', 'app.track'], $map->forClass(Trackable::class));
+        self::assertSame('first', $map->phaseOf('app.quota'));
+        self::assertSame('last', $map->phaseOf('app.audit'));
+        self::assertSame('default', $map->phaseOf('app.record'), 'A bare id is the default phase.');
+        self::assertSame('default', $map->phaseOf('app.nobody'), 'And so is an id the file never names.');
+
+        // File order still decides inside a phase, and `all()` still reports
+        // the file as written, wrappers unwrapped.
+        self::assertSame([Shipped::class => ['app.audit', 'app.record'], Trackable::class => ['app.track', 'app.quota']], $map->all());
+    }
+
+    public function testOneListenerGivenTwoPhasesIsAConflictAndABareIdIsTheDefaultPhase(): void
+    {
+        $cases = [
+            'two entries disagree' => '[' . var_export(Shipped::class, true) . ' => [\\Lava\\Events\\Phase::last(\'app.audit\')],'
+                . var_export(Trackable::class, true) . ' => [\'app.audit\']]',
+            'one entry says both' => '[' . var_export(Shipped::class, true) . ' => [\\Lava\\Events\\Phase::first(\'app.audit\'), \\Lava\\Events\\Phase::last(\'app.audit\')]]',
+            'a phase beside a bare id' => '[' . var_export(Shipped::class, true) . ' => [\\Lava\\Events\\Phase::first(\'app.audit\'), \'app.audit\']]',
+        ];
+
+        foreach ($cases as $case => $returned) {
+            $conflicts = ListenerMap::load($this->appWith($returned))->orderConflicts();
+            self::assertCount(1, $conflicts, $case);
+            self::assertSame('app.audit', $conflicts[0]['listener'], $case);
+            self::assertCount(2, $conflicts[0]['byPhase'], $case);
+        }
+
+        // Named twice with the SAME phase is not a conflict: it still runs once.
+        $agrees = '[' . var_export(Shipped::class, true) . ' => [\\Lava\\Events\\Phase::last(\'app.audit\')],'
+            . var_export(Trackable::class, true) . ' => [\\Lava\\Events\\Phase::last(\'app.audit\')]]';
+        $map = ListenerMap::load($this->appWith($agrees));
+        self::assertSame([], $map->orderConflicts());
+        self::assertSame(['app.audit'], $map->for(new Shipped('A1')));
+
+        // And `Phase::default()` says what a bare id already says.
+        $explicit = ListenerMap::load($this->appWith(
+            '[' . var_export(Shipped::class, true) . ' => [\\Lava\\Events\\Phase::default(\'app.record\')],'
+            . var_export(Trackable::class, true) . ' => [\'app.record\']]',
+        ));
+        self::assertSame([], $explicit->orderConflicts());
+        self::assertSame('default', $explicit->phaseOf('app.record'));
+    }
+
+    public function testOrderedIsWhatEachEntryRunsWithItsPhase(): void
+    {
+        $map = ListenerMap::load($this->appWith(
+            '[' . var_export(Shipped::class, true) . ' => [\'app.record\', \\Lava\\Events\\Phase::last(\'app.audit\')],'
+            . var_export(Trackable::class, true) . ' => [\'app.track\']]',
+        ));
+
+        // Shipped is Trackable, so its entry runs `app.track` too — which is why
+        // this is not `all()` with labels bolted on.
+        self::assertSame([
+            Shipped::class => [
+                ['listener' => 'app.record', 'phase' => 'default'],
+                ['listener' => 'app.track', 'phase' => 'default'],
+                ['listener' => 'app.audit', 'phase' => 'last'],
+            ],
+            Trackable::class => [
+                ['listener' => 'app.track', 'phase' => 'default'],
+            ],
+        ], $map->ordered());
+    }
+
+    public function testAMisspelledPhaseIsTheFilesOwnErrorAtItsLine(): void
+    {
+        // The wrapper is why a phase cannot be misspelled into silence: an
+        // undefined method is an \Error inside the required file.
+        try {
+            ListenerMap::load($this->appWith('[' . var_export(Shipped::class, true) . ' => [\\Lava\\Events\\Phase::frist(\'app.record\')]]'));
+            self::fail('Accepted Phase::frist().');
+        } catch (InvalidListenersFile $problem) {
+            self::assertSame('invalid_listeners_file', $problem->code());
+            self::assertSame(\Error::class, $problem->context['error']);
+            self::assertSame(2, $problem->source?->line);
+        }
+    }
+
     public function testOneListenerMayBeGivenAsAString(): void
     {
         $map = ListenerMap::load($this->appWith(var_export([Shipped::class => 'app.record'], true)));

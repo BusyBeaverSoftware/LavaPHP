@@ -21,18 +21,20 @@ use Lava\Core\Problem\ServiceNotRegistered;
 use Lava\Events\Console\EventsCommand;
 use Lava\Events\Problem\BadListener;
 use Lava\Events\Problem\FactoryListener;
+use Lava\Events\Problem\ListenerOrderConflict;
 
 /**
  * lavaphp/events' entry point.
  *
- * Three ids. `ListenerMap` is `app/Listeners.php` as read at register time,
- * so a file of the wrong shape, or naming an event class that does not exist,
- * fails the boot there. `ListenerProvider` resolves every listener from the
- * container and checks that it can take the events it is listed for; its
- * factory runs in ValidateWiring, after app/Services.php has registered the
- * listeners, so a listener nobody registered is `service_not_registered` and
- * one with the wrong signature is `bad_listener`, both at boot.
- * `EventDispatcher` dispatches through the provider, fetched on first dispatch.
+ * Three ids. `ListenerMap` is `app/Listeners.php` as read at register time, so
+ * a file of the wrong shape, naming an event class that does not exist, or
+ * giving one listener two phases, fails the boot there. `ListenerProvider`
+ * resolves every listener from the container and checks that it can take the
+ * events it is listed for; its factory runs in ValidateWiring, after
+ * app/Services.php has registered the listeners, so a listener nobody
+ * registered is `service_not_registered` and one with the wrong signature is
+ * `bad_listener`, both at boot. `EventDispatcher` dispatches through the
+ * provider, fetched on first dispatch.
  *
  * Checking a listener's signature reads its `__invoke()` with reflection, at
  * boot and read-only: the third place in the framework that does so, beside a
@@ -51,16 +53,22 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
     {
         $map = ListenerMap::load($ctx->appDir);
         $file = $map->file ?? $ctx->appDir . '/' . ListenerMap::FILE;
-        $unknown = [];
+        $problems = [];
         foreach (array_keys($map->all()) as $event) {
             if (!class_exists($event) && !interface_exists($event)) {
                 // Every key the file gets wrong, not the first: one boot should
                 // name them all (Lava Notes, R3-B9).
-                $unknown[] = BadListener::unknownEvent($event, $file);
+                $problems[] = BadListener::unknownEvent($event, $file);
             }
         }
-        if ($unknown !== []) {
-            ManyProblems::raise($unknown);
+        foreach ($map->orderConflicts() as $conflict) {
+            // A listener given two phases has no place in the order. Checked
+            // here beside the keys: both are facts about the file alone, so
+            // neither waits for the container.
+            $problems[] = ListenerOrderConflict::of($conflict['listener'], $conflict['byPhase'], $file);
+        }
+        if ($problems !== []) {
+            ManyProblems::raise($problems);
         }
 
         $container->singleton(ListenerMap::class, static fn (): ListenerMap => $map);
@@ -123,14 +131,16 @@ final class EventsModule implements Module, ProvidesCommands, ProvidesMapSection
         }
 
         $rows = [];
-        foreach ($map->all() as $event => $ids) {
-            $rows[] = [$event, implode(', ', $ids)];
+        // The order each key's events RUN, the same view `lava events` prints.
+        foreach ($map->ordered() as $event => $listeners) {
+            $rows[] = [$event, implode(', ', array_map(Phase::label(...), $listeners))];
         }
 
         return new MapSection(
             'Events',
             'Each event class or interface in app/Listeners.php and the listeners it reaches, in the order they run. '
-                . 'An event reaches the listeners of every entry it is an instance of; dispatch with Lava\Events\EventDispatcher.',
+                . 'An event reaches the listeners of every entry it is an instance of; dispatch with Lava\Events\EventDispatcher. '
+                . 'A listener marked (first) or (last) runs before or after the unmarked ones, whichever entry names it.',
             ['event', 'listeners'],
             $rows,
         );

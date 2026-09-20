@@ -42,11 +42,11 @@ final class EventsSchemaTest extends TestCase
             }
         }
 
-        self::assertSame(['lava.events/1'], $claimed);
-        self::assertSame(['lava.events/1'], array_values(array_filter(
+        self::assertSame(['lava.events/2'], $claimed);
+        self::assertSame(['lava.events/2'], array_values(array_filter(
             EnvelopeSchemas::schemaNames(),
             static fn (string $schema): bool => str_starts_with($schema, 'lava.events'),
         )));
-        self::assertFileExists(EnvelopeSchemas::file('lava.events/1'));
+        self::assertFileExists(EnvelopeSchemas::file('lava.events/2'));
     }
 }

@@ -62,7 +62,7 @@ return [
 ```
 
 - A **key** is an event class, or an interface or parent class its events share.
-- A **value** is a container id, or a list of them, in the order they run.
+- A **value** is a container id, a `Phase::first()` or `Phase::last()` of one, or a list of either, in the order they run.
 - An event reaches the listeners of **every** key it is an instance of, in file
   order, and a listener named under two such keys runs once. Above, a
   `TaskCompleted` that implements `TaskEvent` reaches `LogCompletion`,
@@ -131,13 +131,45 @@ public function complete(RouteArgs $args, TaskRepository $tasks, EventDispatcher
 it for the caller to read. That is the filter pattern: a mutable event carries
 the value, each listener may change it, and the caller reads the result.
 
-Listeners run in their position in `app/Listeners.php`, and that is the only
-order. There are no priorities, deliberately: the file stays the whole story of
-what runs and in what order.
+Listeners run in their position in `app/Listeners.php`. That is the whole order
+for a file that says nothing else, and moving a line is how you change it.
+
+When one listener has to run before or after the rest — a quota check first, an
+audit trail last — wrap its id:
+
+```php
+use Lava\Events\Phase;
+
+return [
+    TaskCompleted::class => [
+        Phase::first(CheckQuota::class),
+        LogCompletion::class,
+        NotifyWatchers::class,
+        Phase::last(AuditTrail::class),
+    ],
+    TaskEvent::class => RecountBoard::class,
+];
+```
+
+- There are three phases — `first`, `default` and `last` — and a bare id is the
+  default one, so a file that names none runs exactly as it always did.
+- The order is phase rank, then file order within a phase.
+- A phase belongs to the listener, not to the entry: an id carries it under
+  every key that names it, which is what lets a `last` listener under a class
+  run after a default one under an interface. Above, `AuditTrail` runs after
+  `RecountBoard`, although `RecountBoard` is written later.
+- Giving one id two phases — two entries disagreeing, one entry saying both, or
+  a `Phase::first()` beside a bare id — is `listener_order_conflict` at boot.
+- Numbers were considered and refused: `10` before `-20` has no wrong value for
+  boot to catch, while a phase keeps every mistake in this file a boot problem
+  with a fix.
 
 An event implementing
 `Psr\EventDispatcher\StoppableEventInterface` reaches no further listener once
-`isPropagationStopped()` is true. A listener that throws stops the dispatch, and
+`isPropagationStopped()` is true. Stopping is by position, not by phase: a
+default-phase listener that stops propagation skips the `last` listeners too, so
+work that must happen whatever the listeners do belongs on the caller's side of
+`dispatch()` rather than in `last`. A listener that throws stops the dispatch, and
 the exception reaches the caller and the app's middleware as it would from a
 direct call.
 
@@ -158,6 +190,7 @@ that wants a dispatcher of its own, as lavaphp/http-client leaves
 | a listener with no `__invoke()` | `bad_listener` |
 | an `__invoke()` whose first parameter is missing, untyped, a union, a builtin, or a class the event is not | `bad_listener` |
 | an `__invoke()` with a second required parameter | `bad_listener` |
+| one listener given two phases (two entries, one entry twice, or a `Phase` beside a bare id) | `listener_order_conflict` |
 
 One boot reports everything the file gets wrong: every key is checked, then every
 listener, and the findings arrive together rather than one boot at a time.
@@ -168,11 +201,12 @@ The listener itself is still built by its own factory.
 
 ## Seeing what runs
 
-`lava events` prints each key and its listeners, in order; `--json` is
-`lava.events/1` ([schema](../schemas/lava.events/1.json)):
+`lava events` prints each key and the listeners an event of that key runs, in
+that order, with the phase in brackets where one was given; `--json` is
+`lava.events/2` ([schema](../schemas/lava.events/2.json)):
 
 ```json
-{"file": "app/Listeners.php", "events": [{"event": "App\\Tasks\\TaskCompleted", "listeners": ["App\\Tasks\\LogCompletion", "App\\Tasks\\NotifyWatchers"]}]}
+{"file": "app/Listeners.php", "phases": ["first", "default", "last"], "events": [{"event": "App\\Tasks\\TaskCompleted", "listeners": [{"listener": "App\\Tasks\\LogCompletion", "phase": "default"}, {"listener": "App\\Tasks\\AuditTrail", "phase": "last"}]}]}
 ```
 
 `lava map` adds an **Events** section to `AGENTS.md` with the same rows, so a

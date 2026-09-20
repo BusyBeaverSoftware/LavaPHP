@@ -36,7 +36,31 @@ final class EventsAppTest extends TestCase
         $response = (new TestClient(self::app()))->post('/tasks/7/complete');
 
         self::assertSame(200, $response->status(), $response->body());
-        self::assertSame(['completed #7', 'labelled Write the docs'], $response->json()['journal'] ?? null);
+        // JournalLabel comes from the Labelled entry, written after this one,
+        // and JournalAudit is `last` though its entry lists it second.
+        self::assertSame(['completed #7', 'labelled Write the docs', 'audited #7'], $response->json()['journal'] ?? null);
+    }
+
+    public function testTheOrderLavaEventsPrintsIsTheOrderDispatchTakes(): void
+    {
+        self::app(); // registers the fixture's App\ autoloader for the command's boot
+
+        $printed = (new TestConsole(self::appDir()))->json('events')->data()['events'][0];
+        self::assertIsArray($printed);
+        self::assertSame('App\EventsFixture\TaskCompleted', $printed['event']);
+
+        $writes = [
+            'App\EventsFixture\JournalCompletion' => 'completed #7',
+            'App\EventsFixture\JournalLabel' => 'labelled Write the docs',
+            'App\EventsFixture\JournalAudit' => 'audited #7',
+        ];
+        $expected = array_map(
+            static fn (array $listener): string => $writes[(string) $listener['listener']],
+            $printed['listeners'],
+        );
+
+        $journal = (new TestClient(self::app()))->post('/tasks/7/complete')->json()['journal'] ?? null;
+        self::assertSame($expected, $journal, 'What `lava events` prints is the order the dispatch runs.');
     }
 
     public function testLavaEventsListsTheRegistryAsBootReadIt(): void
@@ -46,11 +70,21 @@ final class EventsAppTest extends TestCase
         $result = (new TestConsole(self::appDir()))->json('events');
 
         self::assertSame(0, $result->exitCode(), $result->output());
-        self::assertSame('lava.events/1', $result->envelope()['schema']);
+        self::assertSame('lava.events/2', $result->envelope()['schema']);
         self::assertSame('app/Listeners.php', $result->data()['file']);
+        self::assertSame(['first', 'default', 'last'], $result->data()['phases']);
+        // TaskCompleted runs JournalLabel too, which only the Labelled entry
+        // names, and JournalAudit last — the order dispatch takes, not the
+        // order the file lists.
         self::assertSame([
-            ['event' => 'App\EventsFixture\TaskCompleted', 'listeners' => ['App\EventsFixture\JournalCompletion', 'App\EventsFixture\JournalLabel']],
-            ['event' => 'App\EventsFixture\Labelled', 'listeners' => ['App\EventsFixture\JournalLabel']],
+            ['event' => 'App\EventsFixture\TaskCompleted', 'listeners' => [
+                ['listener' => 'App\EventsFixture\JournalCompletion', 'phase' => 'default'],
+                ['listener' => 'App\EventsFixture\JournalLabel', 'phase' => 'default'],
+                ['listener' => 'App\EventsFixture\JournalAudit', 'phase' => 'last'],
+            ]],
+            ['event' => 'App\EventsFixture\Labelled', 'listeners' => [
+                ['listener' => 'App\EventsFixture\JournalLabel', 'phase' => 'default'],
+            ]],
         ], $result->data()['events']);
     }
 
@@ -66,6 +100,10 @@ final class EventsAppTest extends TestCase
         $markdown = ProjectMap::of(self::app())->markdown();
 
         self::assertStringContainsString("\n## Events (2)\n\n", $markdown);
-        self::assertStringContainsString('App\EventsFixture\JournalCompletion, App\EventsFixture\JournalLabel', $markdown);
+        self::assertStringContainsString(
+            'App\EventsFixture\JournalCompletion, App\EventsFixture\JournalLabel, App\EventsFixture\JournalAudit (last)',
+            $markdown,
+            'The map shows the order that runs, and the phase that placed a listener.',
+        );
     }
 }

@@ -23,7 +23,7 @@ that" — zero-config apps are valid and boot green.
 | `public/index.php` | entry point | — (the canonical one is in lavaphp/app) | — |
 | `config/database.php` | optional | `array` (string keys) — **lavaphp/db** | `invalid_config` |
 | `app/Database/Migrations/*.php` | optional | `return new class extends Migration {…};` — **lavaphp/db** | `invalid_migration_file` |
-| `app/Listeners.php` | optional | `array` of event class => listener id or list of ids — **lavaphp/events** | `invalid_listeners_file` |
+| `app/Listeners.php` | optional | `array` of event class => a listener id, a `Phase::first()`/`Phase::last()` of one, or a list of either — **lavaphp/events** | `invalid_listeners_file` |
 
 The last three rows are contributed by packs rather than by core: the file path,
 the expected shape, and the code all belong to `lavaphp/db` or `lavaphp/events`,

@@ -22,6 +22,7 @@ use Lava\Events\Tests\Support\TakesStdClass;
 use Lava\Events\Tests\Support\TakesString;
 use Lava\Events\Tests\Support\TakesTrackable;
 use Lava\Events\Tests\Support\TakesUnion;
+use Lava\Events\Tests\Support\Trackable;
 use Lava\View\ViewModule;
 use Lava\View\ViewRenderer;
 use PHPUnit\Framework\TestCase;
@@ -296,5 +297,101 @@ final class EventsModuleBootTest extends TestCase
         $listener = $app->container->get(RendersShipment::class);
         self::assertInstanceOf(RendersShipment::class, $listener);
         self::assertSame(['note for B7'], $listener->rendered);
+    }
+
+    /** An `app/Listeners.php` written out, so it can hold `Phase::…()` calls `var_export()` cannot. */
+    private static function listenersFile(string $returned): string
+    {
+        return "<?php\nuse Lava\\Events\\Phase;\nreturn {$returned};\n";
+    }
+
+    public function testAListenerGivenTwoPhasesIsRefusedAtBoot(): void
+    {
+        $shipped = Shipped::class;
+        $trackable = Trackable::class;
+        $records = RecordsShipment::class;
+        $cases = [
+            'two entries disagree' => "['{$shipped}' => [Phase::last('{$records}')], '{$trackable}' => ['{$records}']]",
+            'one entry says both' => "['{$shipped}' => [Phase::first('{$records}'), Phase::last('{$records}')]]",
+            'a phase beside a bare id' => "['{$shipped}' => [Phase::first('{$records}'), '{$records}']]",
+        ];
+
+        foreach ($cases as $case => $returned) {
+            $boot = $this->boot([], [RecordsShipment::class], [], ['app/Listeners.php' => self::listenersFile($returned)]);
+
+            self::assertInstanceOf(BootFailure::class, $boot, $case);
+            $problems = $boot->problems->problems();
+            self::assertSame(['listener_order_conflict'], array_map(static fn ($p): string => $p->code(), $problems), $case);
+            self::assertSame($records, $problems[0]->context['listener'], $case);
+            self::assertStringContainsString("Listener '{$records}' is ", $problems[0]->getMessage(), $case);
+            self::assertStringContainsString('it runs once', $problems[0]->getMessage(), $case);
+            self::assertStringContainsString('Give it one phase', $problems[0]->fix, $case);
+            self::assertStringEndsWith('app/Listeners.php', (string) $problems[0]->source?->file, $case);
+        }
+    }
+
+    public function testAConflictArrivesWithEverythingElseTheFileGotWrong(): void
+    {
+        // Both are facts about the file alone, so one boot names both.
+        $returned = "['App\\\\Nowhere' => ['" . RecordsShipment::class . "'],"
+            . " '" . Shipped::class . "' => [Phase::last('" . RecordsShipment::class . "')],"
+            . " '" . Trackable::class . "' => ['" . RecordsShipment::class . "']]";
+
+        $boot = $this->boot([], [RecordsShipment::class], [], ['app/Listeners.php' => self::listenersFile($returned)]);
+
+        self::assertInstanceOf(BootFailure::class, $boot);
+        self::assertSame(
+            ['bad_listener', 'listener_order_conflict'],
+            array_map(static fn ($p): string => $p->code(), $boot->problems->problems()),
+        );
+    }
+
+    public function testAPhaseDoesNotExcuseAListenerFromAnyOtherCheck(): void
+    {
+        // The wrapper is unwrapped before every existing check, so a phase
+        // never turns a refusal into silence.
+        $unregistered = $this->boot([], [], [], [
+            'app/Listeners.php' => self::listenersFile("['" . Shipped::class . "' => [Phase::last('App\\\\Nobody')]]"),
+        ]);
+        self::assertInstanceOf(BootFailure::class, $unregistered);
+        self::assertSame(
+            ['service_not_registered'],
+            array_map(static fn ($p): string => $p->code(), $unregistered->problems->problems()),
+        );
+
+        $services = "<?php\nreturn function (\\Lava\\Core\\Container\\Container \$c, \\Lava\\Core\\Boot\\AppContext \$ctx): void {\n"
+            . "    \$c->factory('" . RecordsShipment::class . "', static fn () => new \\" . RecordsShipment::class . "());\n"
+            . "};\n";
+        $factory = $this->boot([], [], [], [
+            'app/Services.php' => $services,
+            'app/Listeners.php' => self::listenersFile("['" . Shipped::class . "' => [Phase::first('" . RecordsShipment::class . "')]]"),
+        ]);
+        self::assertInstanceOf(BootFailure::class, $factory);
+        self::assertSame(
+            ['factory_listener'],
+            array_map(static fn ($p): string => $p->code(), $factory->problems->problems()),
+        );
+    }
+
+    public function testPhasesOrderTheListenersDispatchReaches(): void
+    {
+        $returned = "['" . Shipped::class . "' => [Phase::last('" . TakesAnything::class . "'), '" . RecordsShipment::class . "'],"
+            . " '" . Trackable::class . "' => [Phase::first('" . TakesTrackable::class . "')]]";
+
+        $app = $this->boot(
+            [],
+            [RecordsShipment::class, TakesTrackable::class, TakesAnything::class],
+            [],
+            ['app/Listeners.php' => self::listenersFile($returned)],
+        );
+        self::assertInstanceOf(App::class, $app, $app instanceof BootFailure ? $app->text() : '');
+
+        $map = $app->container->get(\Lava\Events\ListenerMap::class);
+        self::assertInstanceOf(\Lava\Events\ListenerMap::class, $map);
+        self::assertSame(
+            [TakesTrackable::class, RecordsShipment::class, TakesAnything::class],
+            $map->for(new Shipped('A1')),
+            'first, then the default phase in file order, then last — across both entries.',
+        );
     }
 }
