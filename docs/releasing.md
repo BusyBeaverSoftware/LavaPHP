@@ -167,16 +167,16 @@ Done once, on 2026-09-12, and kept as the procedure for recreating a mirror.
 These steps create public repositories and publish packages, so a maintainer
 does them by hand:
 
-1. Create six **empty** public repositories under `BusyBeaverSoftware`, named as
-   in the table — no README, license or `.gitignore`, so the first push is not
-   refused as unrelated history.
+1. Create seven **empty** public repositories under `BusyBeaverSoftware`, named
+   as in the table — no README, license or `.gitignore`, so the first push is
+   not refused as unrelated history.
 2. For each mirror, generate an SSH key pair. Add the public half to the mirror
    as a deploy key **with write access**, and the private half to this
    repository as the Actions secret `SPLIT_KEY_<NAME>`: `SPLIT_KEY_CORE`,
    `SPLIT_KEY_DB`, `SPLIT_KEY_VALIDATE`, `SPLIT_KEY_VIEW`,
-   `SPLIT_KEY_HTTP_CLIENT`, `SPLIT_KEY_APP`. One key per mirror, because GitHub
-   will not attach one deploy key to two repositories, and because a leaked key
-   should publish one package rather than six.
+   `SPLIT_KEY_HTTP_CLIENT`, `SPLIT_KEY_EVENTS`, `SPLIT_KEY_APP`. One key per
+   mirror, because GitHub will not attach one deploy key to two repositories,
+   and because a leaked key should publish one package rather than seven.
 3. Push `main`. Check that each mirror now has `composer.json` at its root and
    the history of its own directory.
 4. Sign in to packagist.org and submit each mirror's URL. Then make updates
