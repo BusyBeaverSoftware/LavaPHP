@@ -6,6 +6,7 @@ namespace Lava\Core\Console\Commands;
 
 use Lava\Core\Boot\App;
 use Lava\Core\Config\ProcessEnv;
+use Lava\Core\Config\Secrets;
 use Lava\Core\Console\Args;
 use Lava\Core\Console\IO;
 use Lava\Core\Console\Table;
@@ -164,7 +165,9 @@ final class DescribeCommand extends AppCommand
         $fromFile = $app->dotEnv[$selector] ?? null;
         $real = ProcessEnv::real($selector);
         $value = $real ?? $fromFile;
-        $secret = $var !== null && $var->secret;
+        // The same rule `lava env` applies, from the same place: a bare
+        // `.env` entry nothing declared still falls to the name heuristic.
+        $secret = Secrets::isSecret($var, $selector);
 
         return [
             'name' => $selector,

@@ -85,8 +85,9 @@ final class EnvCommand extends AppCommand
                 ? $override
                 : ($real ?? $app->dotEnv[$name] ?? null);
             // A declaration is authoritative; the name heuristic only covers
-            // vars nothing claimed (a bare .env entry).
-            $secret = $var !== null ? $var->secret : Secrets::looksSecret($name);
+            // vars nothing claimed (a bare .env entry). Shared with `describe`,
+            // which must not disagree about what it may print.
+            $secret = Secrets::isSecret($var, $name);
             $description = $var !== null ? $var->description : '';
 
             $records[] = [

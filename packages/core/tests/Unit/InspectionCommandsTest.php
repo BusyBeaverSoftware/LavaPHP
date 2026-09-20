@@ -182,7 +182,7 @@ final class InspectionCommandsTest extends CommandTestCase
         $byName = array_column($envelope['data']['env'], null, 'name');
 
         self::assertSame(
-            ['STRIPE_SECRET', 'APP_REGION', 'LEGACY_TOKEN', 'OPTIONAL_UNSET', 'UNCLAIMED'],
+            ['STRIPE_SECRET', 'APP_REGION', 'LEGACY_TOKEN', 'OPTIONAL_UNSET', 'UNCLAIMED', 'UNCLAIMED_API_KEY'],
             array_column($envelope['data']['env'], 'name'),
         );
         self::assertSame('app/Services.php', $byName['STRIPE_SECRET']['declared_by']);
@@ -192,6 +192,31 @@ final class InspectionCommandsTest extends CommandTestCase
         // is the one view of the app where such an entry is visible at all.
         self::assertNull($byName['UNCLAIMED']['declared_by']);
         self::assertSame('dotenv', $byName['UNCLAIMED']['source']);
+    }
+
+    public function testDescribeRedactsExactlyWhatEnvRedacts(): void
+    {
+        // A security review found these two disagreeing: `describe` dropped the
+        // name heuristic, so an undeclared DB_PASSWORD printed in full — and
+        // reported `secret: false`, telling a consumer it was safe to log.
+        [, $env] = $this->json('env-app', ['env']);
+        $rows = array_column($env['data']['env'], null, 'name');
+        self::assertArrayHasKey('UNCLAIMED_API_KEY', $rows);
+
+        foreach ($rows as $name => $row) {
+            [, $described] = $this->json('env-app', ['describe', (string) $name]);
+            $match = $described['data']['match'];
+
+            self::assertSame($row['secret'], $match['secret'], "{$name}: the two views disagree about secrecy");
+            self::assertSame($row['value'], $match['value'], "{$name}: one view printed what the other withheld");
+        }
+
+        // The undeclared credential is the case that was leaking.
+        self::assertTrue($rows['UNCLAIMED_API_KEY']['secret']);
+        self::assertNull($rows['UNCLAIMED_API_KEY']['value']);
+        $out = $this->text('env-app', ['describe', 'UNCLAIMED_API_KEY']);
+        self::assertStringNotContainsString('undeclared-fixture-key', $out);
+        self::assertStringContainsString('undeclared-fixture-key', $this->text('env-app', ['describe', 'UNCLAIMED_API_KEY', '--reveal']));
     }
 
     public function testEnvWarnsForARequiredUnsetVarWithoutFailing(): void

@@ -27,6 +27,21 @@ final class Secrets
         'credentials', 'dsn', 'database_url', 'private',
     ];
 
+    /**
+     * Whether a value is redacted: the declaration if there is one, the name
+     * heuristic if there is not.
+     *
+     * Every view that prints an env var asks this, and asks it HERE, because
+     * the two that asked it separately drifted: `lava env` fell back to the
+     * heuristic for a bare `.env` entry and `lava describe` did not, so one
+     * command redacted an undeclared DB_PASSWORD while the other printed it
+     * and reported `secret: false`.
+     */
+    public static function isSecret(?EnvVar $var, string $name): bool
+    {
+        return $var !== null ? $var->secret : self::looksSecret($name);
+    }
+
     public static function looksSecret(string $name): bool
     {
         $words = preg_split('/[^a-z0-9]+/', strtolower($name)) ?: [];
