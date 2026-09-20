@@ -68,6 +68,10 @@ return [
     'retries'         => 2,                     // extra attempts, idempotent methods only
     'backoff_ms'      => 100,                   // milliseconds between attempts
     'user_agent'      => 'lavaphp/http-client',
+
+    // The most a response body may weigh. 8 MiB by default; see "What this
+    // pack defends" below for why there is a ceiling at all.
+    'max_response_bytes' => 8388608,
 ];
 ```
 
@@ -82,6 +86,12 @@ HTTP.
 
 `timeout => 0` is refused rather than honoured: curl reads it as "no timeout at
 all", which is the opposite of what someone writing `0` means.
+
+**`timeout` is per attempt, and attempts multiply.** With the defaults — a
+10-second timeout, two retries, 100ms of backoff — one `get()` against a host
+that hangs occupies the worker for about **thirty seconds**, not ten. Size the
+two numbers together: the budget a caller actually has is
+`timeout × (retries + 1)` plus the backoff between them.
 
 The pack reads no environment variable of its own. An app that wants
 `HTTP_CLIENT_TIMEOUT` to win should read it in `config/http_client.php`, where
@@ -185,18 +195,45 @@ for every caller, rather than a special case per verb.
 *scalar* is a `bad_json_response` too: `"ok"` decodes cleanly and is still not
 something a caller can index, and `json_error` says which of the two happened.
 
-## The scheme rule
+## What this pack defends, and what it does not
 
-The client fetches `http` and `https` and refuses everything else. This is a
-security rule, not a formality: curl will happily read `file:///etc/passwd` and
-speak `gopher://`, and a URL handed to this pack is exactly the kind of value
-that arrives from outside — a webhook target, a callback, a URL read out of a
-row. An HTTP client that fetches whatever scheme it is given is a
-file-disclosure and SSRF primitive.
+Four rules are enforced, all of them before the bytes leave the process, and all
+of them in `HttpClient` **and** in `CurlTransport` — because the transport is a
+public id an app may take on its own, and a guard that only runs on the path
+most callers take is not a guard.
 
-A URL with no scheme, no host, or a scheme that is not `http`/`https` is
-`bad_request_url`, raised **before** the transport sees it, so the rule holds
-whatever transport an app injected.
+| Rule | What it stops | What you get |
+|---|---|---|
+| The scheme is `http` or `https` | curl speaks thirty-two protocols: `file://` reads the disk, `gopher://` writes attacker-chosen bytes to any TCP port (the classic Redis SSRF) | `bad_request_url` |
+| The method is an RFC 9110 token | a `\r\n` in the method ends the request line and puts a **second request** on the connection, path, headers and body chosen by whoever supplied the method | `unsendable_request` |
+| No header name or value carries CR, LF or NUL | the same split, one line further down | `unsendable_request` |
+| The response body stops at `max_response_bytes` | a body is buffered in memory, so an upstream answering with more than `memory_limit` ends the request in a **fatal error** — no problem, no error page, no log line. A timeout is no defence: a slow dribble exhausts memory inside any budget | `response_too_large` |
+
+**What it does not defend: where the request goes.** There is no host policy, no
+allow-list and no hook. `http://127.0.0.1/`, `http://[::1]/`,
+`http://169.254.169.254/` (the cloud metadata service), `http://10.0.0.5/`,
+`http://2130706433/`, `http://0177.0.0.1/` and a DNS name that resolves to any
+of them all pass every rule above, because every one of them is a perfectly
+well-formed `http` URL. **The scheme rule is not an SSRF defence** — scheme is
+the one thing an attacker need not change.
+
+So: a URL that came from a request body, a form field, a webhook registration or
+a database row someone else can write is **not** safe to hand this client.
+Before you fetch it, resolve the host and refuse the private and link-local
+ranges (`FILTER_VALIDATE_IP` with `FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE`),
+then pin the address you checked for the request you make — or keep a list of
+hosts the app is willing to talk to, which is simpler and usually what the
+feature actually needs.
+
+**Two things curl takes from the environment**, which this pack does not
+override: `http_proxy` / `https_proxy` / `no_proxy` silently reroute every
+request, and `CURL_CA_BUNDLE` / `SSL_CERT_FILE` decide which authorities are
+trusted. Both are normal libcurl behaviour and both are worth knowing about on a
+host you do not control.
+
+TLS verification itself is on and cannot be switched off through this pack's
+API: a self-signed certificate and a certificate whose name does not match are
+both `transport_failed`.
 
 ## Redirects are not followed
 
@@ -206,7 +243,8 @@ following a redirect to another host would silently resend the `Authorization`
 header somewhere it was never meant to go.
 
 An app that wants redirects handles them explicitly, which is a place to decide
-whether the new host may see the credentials.
+whether the new host may see the credentials — and the place to apply the host
+checks above a second time, since a redirect is a URL someone else chose.
 
 ## What a failure looks like
 

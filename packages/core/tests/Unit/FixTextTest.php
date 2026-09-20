@@ -516,6 +516,13 @@ final class FixTextTest extends TestCase
             $fixtures[\Lava\HttpClient\Problem\UnencodableJsonBody::class] = [
                 \Lava\HttpClient\Problem\UnencodableJsonBody::of('POST', 'https://api.example/posts', 'a resource cannot be encoded'),
             ];
+            $fixtures[\Lava\HttpClient\Problem\ResponseTooLarge::class] = [
+                \Lava\HttpClient\Problem\ResponseTooLarge::of($request, 8_388_608, 8_400_000),
+            ];
+            $fixtures[\Lava\HttpClient\Problem\UnsendableRequest::class] = [
+                \Lava\HttpClient\Problem\UnsendableRequest::method($request, "GET\r\nX: y", 'it is not a method name'),
+                \Lava\HttpClient\Problem\UnsendableRequest::header($request, 'X-Note'),
+            ];
             $fixtures[\Lava\HttpClient\Problem\UnexpectedStatus::class] = [
                 \Lava\HttpClient\Problem\UnexpectedStatus::of('GET', 'https://api.example/posts', 404, 'not found'),
                 \Lava\HttpClient\Problem\UnexpectedStatus::of('GET', 'https://api.example/posts', 500, 'boom'),
