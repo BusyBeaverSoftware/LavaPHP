@@ -22,25 +22,49 @@ use Psr\Http\Message\ServerRequestInterface;
  * passed and none recorded, the page is the production one: the default that
  * shows less is the one that cannot put a submitted value in front of a browser.
  *
- * **In production, a server fault withholds its context and source in JSON too.**
- * A 5xx problem's context is where the internals are — the SQL and its bound
- * values for `query_failed`, an upstream's response body for
- * `unexpected_status`, an exception's message for `unexpected_failure` — and
- * JSON is what any client without an `Accept` header gets. So a production 5xx
- * keeps its code, sentence and fix, and sends `context` as `{}` and `source` as
- * null ({@see redacts()}). When the problem was thrown to `App` — from a handler,
- * a middleware or a subject resolver — `App` writes the whole problem to the log
- * instead. A 5xx a handler renders itself through this class is redacted the
- * same way and logged by nobody, because this class has no logger: throw the
- * problem rather than rendering it, or log it before calling this. A
- * 4xx keeps everything in every environment: it is the caller's mistake, and
- * the field, the rule and the fix are what let an agent repair its request in
- * one round trip.
+ * **In production, a server fault withholds everything but its code.** A 5xx
+ * problem's context is where the internals are — the SQL and its bound values
+ * for `query_failed`, an upstream's response body for `unexpected_status`, an
+ * exception's message for `unexpected_failure` — and JSON is what any client
+ * without an `Accept` header gets. The SENTENCE and the FIX are internals too,
+ * which cost us a finding: `template_not_found` interpolates the absolute
+ * template directory and the app's whole template inventory, `query_failed`
+ * carries the driver's message, and a transport failure carries the upstream
+ * URL. Withholding the context while sending the same facts in the sentence
+ * beside it was a guard that looked like one. So a production 5xx keeps its
+ * code, its severity and the shape a client parses, and sends a fixed sentence,
+ * a fixed fix, `context` as `{}` and `source` as null ({@see redacts()}).
+ *
+ * The code is what a client can act on, and it is the one field built from a
+ * constant rather than from the app. Redacting by default rather than per
+ * problem is deliberate: a new problem class that forgot to redact would leak,
+ * and a guard whose safe case is the one nobody wrote is not a guard.
+ *
+ * When the problem was thrown to `App` — from a handler, a middleware or a
+ * subject resolver — `App` writes the whole problem, sentence included, to the
+ * log. A 5xx a handler renders itself through this class is redacted the same
+ * way and logged by nobody, because this class has no logger: throw the problem
+ * rather than rendering it, or log it before calling this. A 4xx keeps
+ * everything in every environment: it is the caller's mistake, and the field,
+ * the rule and the fix are what let an agent repair its request in one round
+ * trip.
  */
 final class HttpErrors
 {
     /** The request attribute `App::handle()` records the app's environment under. */
     public const ENV_ATTRIBUTE = 'lava.env';
+
+    /**
+     * What a redacted problem says instead of its own sentence and fix.
+     *
+     * Constants, and public, because the two media have to agree: JSON goes
+     * through {@see redacted()} and the browser page through
+     * {@see DiagnosticsPage}, and a production 500 that said one thing in one
+     * medium and another in the other would send a reader looking for a
+     * difference that is not there.
+     */
+    public const REDACTED_MESSAGE = 'The server could not handle this request.';
+    public const REDACTED_FIX = 'Read the server log: the diagnosis, with the problem sentence, its context and its source, was written there.';
 
     public static function toResponse(LavaProblem $problem, ?ServerRequestInterface $request = null, ?string $env = null): ResponseInterface
     {
@@ -141,7 +165,10 @@ final class HttpErrors
                 $status,
             )->withHeader('Content-Type', 'application/json');
         }
-        return Responses::html(DiagnosticsPage::render($report, $env), $status);
+        // The status goes with it: the page renders the sentence and the fix
+        // whatever `$env` is, so without the status it would print in prod what
+        // the JSON beside it withholds.
+        return Responses::html(DiagnosticsPage::render($report, $env, $status), $status);
     }
 
     /**
@@ -159,7 +186,7 @@ final class HttpErrors
     }
 
     /**
-     * A problem object with its context and source withheld. The keys stay, so
+     * A problem object with everything but its code withheld. The keys stay, so
      * the shape a client parses is the same in every environment: `context` as
      * an empty JSON object (an empty PHP array would encode as a list) and
      * `source` as null.
@@ -169,6 +196,8 @@ final class HttpErrors
      */
     private static function redacted(array $problem): array
     {
+        $problem['problem'] = self::REDACTED_MESSAGE;
+        $problem['fix'] = self::REDACTED_FIX;
         $problem['context'] = new \stdClass();
         $problem['source'] = null;
 

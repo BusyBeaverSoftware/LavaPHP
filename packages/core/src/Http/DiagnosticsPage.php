@@ -12,23 +12,30 @@ use Lava\Core\Problem\ProblemReport;
  * The core never depends on a template engine — this file is the reason
  * broken apps still render something readable in a browser.
  *
- * In prod only the problem sentence and the fix are shown; everything else
- * is dev-mode information — the context, and the source, which is an absolute
- * path on the server.
+ * In prod a server fault shows its code and nothing else: the context and the
+ * source are dev-mode information, and so are the sentence and the fix, which
+ * are built from the app's own paths and internals ({@see HttpErrors}, which
+ * owns that decision and the words this page prints in its place). A 4xx keeps
+ * its sentence in every environment — it is the caller's own mistake.
  *
  * @internal the dev error page's rendering
  */
 final class DiagnosticsPage
 {
-    public static function render(ProblemReport $report, string $env): string
+    /**
+     * @param int $status the status this page is being sent with; 500 when the
+     *        caller does not say, so an unstated status redacts rather than tells
+     */
+    public static function render(ProblemReport $report, string $env, int $status = 500): string
     {
         $verbose = $env !== 'prod';
+        $redact = HttpErrors::redacts($status, $env);
         $count = $report->count();
         $title = self::e('LavaPHP found ' . $count . ' problem' . ($count === 1 ? '' : 's'));
 
         $cards = '';
         foreach ($report->problems() as $problem) {
-            $cards .= self::card($problem, $verbose);
+            $cards .= self::card($problem, $verbose, $redact);
         }
 
         return <<<HTML
@@ -62,12 +69,12 @@ dd{margin:0}
 HTML;
     }
 
-    private static function card(LavaProblem $problem, bool $verbose): string
+    private static function card(LavaProblem $problem, bool $verbose, bool $redact): string
     {
         $code = self::e($problem->code());
         $severity = self::e($problem->severity()->value);
-        $message = self::e($problem->getMessage());
-        $fix = self::e($problem->fix);
+        $message = self::e($redact ? HttpErrors::REDACTED_MESSAGE : $problem->getMessage());
+        $fix = self::e($redact ? HttpErrors::REDACTED_FIX : $problem->fix);
 
         $meta = "<code>{$code}</code> · {$severity}";
         if ($verbose && $problem->source !== null) {
