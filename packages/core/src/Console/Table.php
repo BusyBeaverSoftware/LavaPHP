@@ -30,19 +30,28 @@ final class Table
             return '(none)' . "\n";
         }
 
-        $widths = array_map(static fn (string $h): int => strlen($h), $this->headers);
-        foreach ($this->rows as $row) {
+        // Before anything is measured: a cell holding an escape sequence or a
+        // newline would otherwise print a row nobody wrote, and be measured at
+        // a width the terminal does not use ({@see PlainText}).
+        $headers = array_map(PlainText::of(...), $this->headers);
+        $rows = array_map(
+            static fn (array $row): array => array_map(PlainText::of(...), $row),
+            $this->rows,
+        );
+
+        $widths = array_map(static fn (string $h): int => strlen($h), $headers);
+        foreach ($rows as $row) {
             foreach ($row as $index => $cell) {
                 $widths[$index] = max($widths[$index] ?? 0, strlen($cell));
             }
         }
 
-        $lines = [$this->formatRow($this->headers, $widths)];
+        $lines = [$this->formatRow($headers, $widths)];
         $lines[] = implode('  ', array_map(
             static fn (int $w): string => str_repeat('-', $w),
             $widths,
         ));
-        foreach ($this->rows as $row) {
+        foreach ($rows as $row) {
             $lines[] = $this->formatRow($row, $widths);
         }
 

@@ -48,6 +48,26 @@ final class ConsoleTest extends TestCase
         self::assertSame("(none)\n", (new Table(['a'], []))->render());
     }
 
+    public function testAValueCannotForgeARowWithControlCharacters(): void
+    {
+        // A security review forged a `lava env` row from a .env value: the
+        // escape erases the row it is on and prints whatever follows, so a
+        // cloned repository could make any command say what it liked.
+        $table = new Table(['name', 'value'], [
+            ['API_URL', "https://ok.example\x1b[2K\rDB_PASSWORD  not-a-secret-at-all"],
+            ['NOTE', "first\nsecond"],
+        ]);
+
+        $out = $table->render();
+
+        self::assertStringNotContainsString("\x1b", $out, 'an escape sequence reached the terminal');
+        self::assertStringNotContainsString("\r", $out);
+        // Header, rule, and exactly one line per row — nothing invented.
+        self::assertCount(4, array_filter(explode("\n", $out), static fn (string $l): bool => $l !== ''));
+        self::assertStringContainsString('https://ok.example?[2K?DB_PASSWORD', $out);
+        self::assertStringContainsString('first?second', $out);
+    }
+
     public function testEnvelopeHasTheVersionedShape(): void
     {
         $envelope = Envelope::of('routes', 'ok', ['routes' => []], []);
