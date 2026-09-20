@@ -6013,3 +6013,68 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     branches the features came from, each after `git cherry` showed every commit
     had landed. Not run for this release: the MySQL and PostgreSQL live tests,
     which no release has run yet.
+
+327. **Every problem's `fix` is tested against the framework it names (the round-3 review's second
+    recommendation).** The fix is the fourth pillar — one error, one round trip — and across three rounds of
+    outside builds it was the pillar that broke most often: six times a printed fix was wrong or unfollowable,
+    and following it produced a second error (round 1 B6 and B12, round 2 B9, round 3 B2, B6 and B12). Every one
+    of those was a sentence nobody could test, in the one place a reader has been told to trust.
+
+    `FixTextTest` constructs every problem class through its real named constructors — 61 classes, 150-odd
+    instances — and holds each fix to five claims:
+
+    - **The accounting.** Every class under `packages/*/src/Problem/` is in the fixture table or named in
+      `NO_FIXTURE` with a reason, guarded the way `ProblemCodeRegistryTest` guards the catalog. A new problem
+      class fails the build until someone states what its fix looks like.
+    - **Commands exist, with the flags they take.** `Run: lava map --check` is parsed and checked against the
+      registry — core's commands plus every installed pack's, derived from each pack's module class rather than
+      listed here, because a pack's fix may say `lava db:rollback` and a core-only registry would call a real
+      command missing. A typo'd flag fails here rather than in the reader's terminal.
+    - **The safe ones actually run.** `map`, `routes`, `api`, `about`, `services`, `env`, `features` and `list`
+      are executed against a green app and must exit 0. `lava check` is validated but not executed: it shells
+      out to PHPUnit, and a unit test that runs a test runner is a test of the runner. The app is written fresh
+      rather than copied from a fixture — a fixture app's handlers autoload through the suite's own loader, so a
+      copy would fail for a reason that has nothing to do with the fix.
+    - **Symbols exist.** Every `Lava\…` name a fix writes, and every `Class::method()` it names, resolved against
+      the index `lava api` publishes so short names are checked as a reader would type them.
+    - **Artifacts exist.** Every relative path a fix tells the reader to open is one the framework reads, taken
+      from conventions.md's table of fixed artifacts, `FrameworkReference`'s snippets and each installed pack's
+      declared `configFiles` — three sources that each own their half, so the list cannot drift from them.
+
+    **What it caught.** No framework fix text was wrong: every command, flag, symbol and artifact path the 61
+    classes name is real today. What the first runs caught was the checker's own naivety, and each correction is
+    part of the guard's contract now: prose mentions the binary ("Run lava from your app's root directory"), so
+    only a `Run:`-introduced or backticked invocation counts as one; a fix quotes absolute paths for where
+    something already is, so only relative paths are checked as artifacts; and a pack command is a command.
+    The gate's value is therefore the next fix, not this one — which is what a guard is for.
+
+328. **Every PHP snippet in `docs/` is checked against the code it teaches (the round-3 review's third
+    recommendation).** Documentation was the largest single category of bug the three rounds found — twelve of
+    about forty-four — and two of the four recipe pages written to fix earlier rounds shipped with their own
+    drift (round 3 B15 and B16). Nothing read the pages, so a renamed method left the prose behind.
+
+    `DocumentationSnippetTest` reads every ```php fence in `docs/` and `docs/packs/` and proves: it parses; every
+    `Lava\` name it writes exists; every static call exists on the class it names; and every call on a variable
+    whose type the snippet itself states exists on that type. That last check is the shape that actually rotted —
+    a page calling `$config->integer(…)`, a method `Config` never had. A call on an untyped variable is left
+    alone rather than guessed at, because a wrong guess would fail a snippet that is right.
+
+    **A fence is checked or it says why not.** A snippet that shows a mistake on purpose opts out with
+    `<!-- lava-docs: skip — reason -->`, and found must equal checked plus skipped, so a new page cannot arrive
+    unchecked. Nothing in the repository needs that marker today.
+
+    **What it caught.** Four fences, and the split between them is the useful part:
+
+    - Two were the checker's assumption, not the docs': a method shown on its own (`public function complete(…)`)
+      and an array entry shown on its own (`'url' => Field::str()->…`) are legitimate ways to show code, and are
+      now parsed in the context they depict — a file, a class body, a function body, or an array body.
+    - Two were the docs': `lava-view.md` and `translation.md` each packed two files into one fence
+      (`// app/Services.php` statements followed by a `// config/view.php` array entry), which no context can
+      parse and which reads as one file to anyone skimming. Both are now one fence per file, as the rest of the
+      pages do it.
+
+    No name, call or signature in any page was wrong — the drift the reviews found had already been fixed in
+    0.4.1 and 0.5.0, and this is what keeps it fixed.
+
+    **The parsing is shared.** `PhpSnippet` holds the reading both guards do, and `ApiExampleTest`'s own checks
+    were moved onto it: three copies of the same regex is how two of them quietly stop agreeing.
