@@ -140,7 +140,7 @@ final class RegexRule extends Rule
             }
 
             $modifiers = substr($pattern, $at + 1);
-            if (preg_match('/^[a-zA-Z]*$/', $modifiers) !== 1) {
+            if (preg_match('/^[a-zA-Z]*$/D', $modifiers) !== 1) {
                 continue;
             }
 
@@ -168,12 +168,29 @@ final class RegexRule extends Rule
     private static function anchor(array $parsed): string
     {
         $body = $parsed['body'];
+        $modifiers = self::endOfSubject($parsed['modifiers']);
 
         if (str_starts_with($body, '^') || str_ends_with($body, '$')) {
-            return $parsed['delimiter'] . $body . $parsed['closer'] . $parsed['modifiers'];
+            return $parsed['delimiter'] . $body . $parsed['closer'] . $modifiers;
         }
 
-        return $parsed['delimiter'] . '^' . $body . '$' . $parsed['closer'] . $parsed['modifiers'];
+        return $parsed['delimiter'] . '^' . $body . '$' . $parsed['closer'] . $modifiers;
+    }
+
+    /**
+     * The modifiers, with `D` added so `$` means the end of the value.
+     *
+     * Without it, PCRE's `$` also matches immediately before a trailing
+     * newline, so `->regex('/[a-z0-9-]+/')` accepted `"my-slug\n"` — a value
+     * the rule says matched "the whole value", carrying a byte that goes on to
+     * split a log line or a header. `m` is left alone: a caller who asked for
+     * multiline meant `$` to be the end of a line (security review).
+     */
+    private static function endOfSubject(string $modifiers): string
+    {
+        return str_contains($modifiers, 'D') || str_contains($modifiers, 'm')
+            ? $modifiers
+            : $modifiers . 'D';
     }
 
     /**

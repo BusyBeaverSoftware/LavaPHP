@@ -600,7 +600,7 @@ final readonly class ProjectMap
         // marker that still fits the layout wins: a package that vendors its own
         // dependencies nests a second `vendor/`, and the inner one names the
         // file's real owner. A lazy `.*` would pick the outer one every time.
-        if (preg_match('#^.*/(?:vendor/[^/]+|packages)/([^/]+)/(.+)$#', $path, $matches) !== 1) {
+        if (preg_match('#^.*/(?:vendor/[^/]+|packages)/([^/]+)/(.+)$#D', $path, $matches) !== 1) {
             return null;
         }
 

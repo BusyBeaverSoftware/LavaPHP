@@ -34,10 +34,10 @@ final readonly class PackInfo
     public static function of(string $package, string $feature, array $configFiles = [], array $envVars = []): self
     {
         $problems = [];
-        if (preg_match('/^lavaphp\/[a-z0-9-]+$/', $package) !== 1) {
+        if (preg_match('/^lavaphp\/[a-z0-9-]+$/D', $package) !== 1) {
             $problems[] = "package '{$package}' should look like lavaphp/<pack-name>";
         }
-        if (preg_match('/^[a-z][a-z0-9_]*$/', $feature) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_]*$/D', $feature) !== 1) {
             $problems[] = "feature '{$feature}' should be snake_case";
         }
         // Params are array<mixed> because this factory's job is to validate
@@ -49,7 +49,7 @@ final readonly class PackInfo
                 $problems[] = 'env var names must be non-empty strings';
                 continue;
             }
-            if (preg_match('/^[A-Z][A-Z0-9_]*$/', $name) !== 1) {
+            if (preg_match('/^[A-Z][A-Z0-9_]*$/D', $name) !== 1) {
                 $problems[] = "env var name '{$name}' should be UPPER_SNAKE";
             }
             $vars[] = $name;

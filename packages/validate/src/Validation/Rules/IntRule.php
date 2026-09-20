@@ -49,7 +49,7 @@ final class IntRule extends Rule
 
         // A digit string that coerce() refused is out of range, not malformed —
         // it matched the digit pattern and still did not fit.
-        if (is_string($value) && preg_match('/^-?\d+$/', $value) === 1) {
+        if (is_string($value) && preg_match('/^-?\d+$/D', $value) === 1) {
             return new RuleViolation(
                 "Field '{$field}' is a whole number too large to hold: it must fit between -"
                 . self::MIN_MAGNITUDE_DIGITS . ' and ' . self::MAX_DIGITS . '.',
@@ -80,7 +80,7 @@ final class IntRule extends Rule
             return $value;
         }
 
-        if (!is_string($value) || preg_match('/^-?\d+$/', $value) !== 1) {
+        if (!is_string($value) || preg_match('/^-?\d+$/D', $value) !== 1) {
             return null;
         }
 

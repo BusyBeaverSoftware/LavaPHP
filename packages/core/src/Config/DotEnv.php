@@ -19,7 +19,7 @@ use Lava\Core\Problem\ProblemReport;
  */
 final class DotEnv
 {
-    private const KEY_PATTERN = '/^[A-Z_][A-Z0-9_]*$/';
+    private const KEY_PATTERN = '/^[A-Z_][A-Z0-9_]*$/D';
 
     /**
      * Parses the file, appending a problem (and skipping) each malformed line.

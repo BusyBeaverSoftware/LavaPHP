@@ -56,7 +56,7 @@ final class Router
     /** Registers a custom param type usable as {name:type} in route paths. */
     public function pattern(string $name, string $regex): void
     {
-        if (preg_match('/^[a-z][a-z0-9_]*$/', $name) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_]*$/D', $name) !== 1) {
             throw new BadRoutePattern(
                 "Param type name '{$name}' is invalid.",
                 "Param type names are snake_case — e.g. \$r->pattern('handle', '[a-z0-9_]{2,32}').",
@@ -98,7 +98,7 @@ final class Router
         if (!str_starts_with($path, '/')) {
             throw BadRoutePattern::of($path, 'paths must start with /', "Write the path as '/{$path}'", self::caller());
         }
-        if (preg_match('/^[a-z][a-z0-9_.]*$/', $name) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_.]*$/D', $name) !== 1) {
             throw new BadRoutePattern(
                 "Route name '{$name}' is invalid.",
                 "Route names are lowercase and dot-separated — e.g. 'users.show'.",
@@ -209,7 +209,7 @@ final class Router
                 // Each fragment compiled on its own in pattern(); together they
                 // can still clash, and a route regex that does not compile would
                 // warn and miss on every request instead of failing here, once.
-                if (@preg_match('#^' . $regex . '$#', '') === false) {
+                if (@preg_match('#^' . $regex . '$#D', '') === false) {
                     throw BadRoutePattern::of(
                         $parts['path'],
                         'its compiled pattern is not a valid regex',
@@ -284,8 +284,8 @@ final class Router
         // in RedirectHandler can see it.
         $ownSample = self::sampleUrl($route);
         $targetSample = self::sampleUrl($target);
-        $redirectTakesTarget = $targetSample !== null && preg_match('#^' . $route->regex . '$#', $targetSample) === 1;
-        $targetTakesRedirect = $ownSample !== null && preg_match('#^' . $target->regex . '$#', $ownSample) === 1;
+        $redirectTakesTarget = $targetSample !== null && preg_match('#^' . $route->regex . '$#D', $targetSample) === 1;
+        $targetTakesRedirect = $ownSample !== null && preg_match('#^' . $target->regex . '$#D', $ownSample) === 1;
         $order = array_keys($this->routes);
         $redirectFirst = array_search($route->name, $order, true) < array_search($to, $order, true);
 
@@ -318,7 +318,7 @@ final class Router
         $allowed = [];
 
         foreach ($this->routes as $route) {
-            if (preg_match('#^' . $route->regex . '$#', $path, $captures) !== 1) {
+            if (preg_match('#^' . $route->regex . '$#D', $path, $captures) !== 1) {
                 continue;
             }
             if (!$this->gateOpen($route, $features)) {
@@ -437,7 +437,7 @@ public function paramRegex(string $type): ?string
      */
     public static function anchored(string $fragment): string
     {
-        return '#^(?:' . self::escapeDelimiter($fragment) . ')$#';
+        return '#^(?:' . self::escapeDelimiter($fragment) . ')$#D';
     }
 
     /** Every `#` a backslash does not already escape, escaped. */
@@ -476,7 +476,7 @@ public function paramRegex(string $type): ?string
             }
             $name = substr($spec, 0, $colon);
             $type = substr($spec, $colon + 1);
-            if (preg_match('/^[a-z][a-z0-9_]*$/', $name) !== 1) {
+            if (preg_match('/^[a-z][a-z0-9_]*$/D', $name) !== 1) {
                 throw BadRoutePattern::of($path, "param name '{$name}' must be snake_case", "Write {<snake_case>:{$type}}", $source);
             }
             if (isset($params[$name])) {

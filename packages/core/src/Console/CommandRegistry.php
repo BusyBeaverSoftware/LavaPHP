@@ -36,7 +36,7 @@ final class CommandRegistry
      * `blog:publish`. Narrow because the name becomes the envelope's contract id
      * (`lava.db.status/1`), whose pattern admits nothing else.
      */
-    public const NAME_PATTERN = '/^[a-z][a-z0-9]*(?::[a-z][a-z0-9]*)*$/';
+    public const NAME_PATTERN = '/^[a-z][a-z0-9]*(?::[a-z][a-z0-9]*)*$/D';
 
     /** @var array<string, Command> in registration order */
     private array $commands = [];

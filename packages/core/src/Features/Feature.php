@@ -18,7 +18,7 @@ final readonly class Feature
         public ?string $pack,
         public string $description,
     ) {
-        if (preg_match('/^[a-z][a-z0-9_]*$/', $name) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_]*$/D', $name) !== 1) {
             throw InvalidFeatureName::of($name);
         }
     }

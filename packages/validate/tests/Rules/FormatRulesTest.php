@@ -114,14 +114,33 @@ final class FormatRulesTest extends TestCase
             (new RegexRule('/\d+/'))->expects(),
             (new RegexRule('/^\d+$/'))->expects(),
         );
-        self::assertSame('/^\d+$/', (new RegexRule('/\d+/'))->expects());
+        self::assertSame('/^\d+$/D', (new RegexRule('/\d+/'))->expects());
     }
 
     public function testTheExpectationIsTheAnchoredPattern(): void
     {
         // The problem context shows what was expected; for a regex that is the
-        // pattern as it will actually be applied, not as the caller typed it.
-        self::assertSame('/^[a-z]+$/', (new RegexRule('/[a-z]+/'))->expects());
+        // pattern as it will actually be applied, not as the caller typed it —
+        // including the `D` that makes `$` the end of the value.
+        self::assertSame('/^[a-z]+$/D', (new RegexRule('/[a-z]+/'))->expects());
+    }
+
+    public function testATrailingNewlineIsNotTheWholeValue(): void
+    {
+        // PCRE's `$` also matches immediately before a final newline, so every
+        // `->regex()` in every app accepted a value with one on the end — a
+        // slug that validated and then split a log line (security review).
+        $rule = new RegexRule('/[a-z0-9-]+/');
+
+        Inspect::accepts($rule, 'my-slug');
+        Inspect::refuses($rule, "my-slug\n");
+        self::assertStringEndsWith('D', $rule->expects());
+
+        // `m` is a deliberate request for `$` to mean the end of a LINE, and is
+        // left as the caller wrote it.
+        $multiline = new RegexRule('/^[a-z]+$/m');
+        self::assertSame('/^[a-z]+$/m', $multiline->expects());
+        Inspect::accepts($multiline, "abc\n");
     }
 
     public function testAnUnusablePatternIsRefusedWhenItIsWritten(): void
@@ -171,7 +190,7 @@ final class FormatRulesTest extends TestCase
         // `'/abc/i'` into `/^abc/$/` and refuses a pattern that was fine.
         $rule = new RegexRule('/ABC/i');
 
-        self::assertSame('/^ABC$/i', $rule->expects());
+        self::assertSame('/^ABC$/iD', $rule->expects());
         Inspect::accepts($rule, 'abc');
         Inspect::refuses($rule, 'abcde');
     }
@@ -182,7 +201,7 @@ final class FormatRulesTest extends TestCase
         // it, so a body containing the delimiter still parses.
         $rule = new RegexRule('/a\/b/');
 
-        self::assertSame('/^a\/b$/', $rule->expects());
+        self::assertSame('/^a\/b$/D', $rule->expects());
         Inspect::accepts($rule, 'a/b');
     }
 
@@ -192,7 +211,7 @@ final class FormatRulesTest extends TestCase
         // closer is not the same character as the opener.
         $rule = new RegexRule('{[a-z]+}');
 
-        self::assertSame('{^[a-z]+$}', $rule->expects());
+        self::assertSame('{^[a-z]+$}D', $rule->expects());
         Inspect::accepts($rule, 'ada');
         Inspect::refuses($rule, 'ada1');
     }

@@ -102,7 +102,7 @@ final class ServiceNotRegistered extends LavaProblem implements NotFoundExceptio
      */
     private static function namesAMissingType(string $id): bool
     {
-        if (preg_match('/^\\\\?[A-Z_a-z][A-Za-z0-9_]*(\\\\[A-Z_a-z][A-Za-z0-9_]*)+$/', $id) !== 1) {
+        if (preg_match('/^\\\\?[A-Z_a-z][A-Za-z0-9_]*(\\\\[A-Z_a-z][A-Za-z0-9_]*)+$/D', $id) !== 1) {
             return false;
         }
 

@@ -139,7 +139,7 @@ final class ViewModule implements Module
     {
         $namespaces = [];
         foreach ($ctx->config->array('view.namespaces', []) as $namespace => $dirs) {
-            if (!is_string($namespace) || preg_match('/^[a-z][a-z0-9_]*$/', $namespace) !== 1) {
+            if (!is_string($namespace) || preg_match('/^[a-z][a-z0-9_]*$/D', $namespace) !== 1) {
                 throw InvalidConfig::badType('view.namespaces', 'a map from namespace names (lowercase letters, digits and _) to directories', 'the key ' . var_export($namespace, true), 'config/view.php');
             }
             $list = is_string($dirs) ? [$dirs] : $dirs;

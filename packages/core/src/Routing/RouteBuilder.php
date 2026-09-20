@@ -50,7 +50,7 @@ final class RouteBuilder
     /** Per-request audience gate: the route 404s for subjects the flag is off for. */
     public function when(string $feature): self
     {
-        if (preg_match('/^[a-z][a-z0-9_]*$/', $feature) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_]*$/D', $feature) !== 1) {
             throw \Lava\Core\Problem\InvalidFeatureName::of($feature);
         }
         $this->feature = $feature;

@@ -32,7 +32,7 @@ final class UuidRule extends Rule
     public function inspect(string $field, mixed $value): ?RuleViolation
     {
         if (is_string($value)
-            && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1) {
+            && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iD', $value) === 1) {
             return null;
         }
 

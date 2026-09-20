@@ -96,14 +96,14 @@ final readonly class Flag
         if ($syntax === 'off') {
             return self::off();
         }
-        if (preg_match('/^rollout:(\d+)$/', $syntax, $m) === 1) {
+        if (preg_match('/^rollout:(\d+)$/D', $syntax, $m) === 1) {
             return self::rollout((int) $m[1]);
         }
-        if (preg_match('/^users:(.+)$/', $syntax, $m) === 1) {
+        if (preg_match('/^users:(.+)$/D', $syntax, $m) === 1) {
             $ids = array_map(trim(...), explode(',', $m[1]));
             return self::users(...$ids);
         }
-        if (preg_match('/^env:(.+)$/', $syntax, $m) === 1) {
+        if (preg_match('/^env:(.+)$/D', $syntax, $m) === 1) {
             $branches = [];
             foreach (explode(',', $m[1]) as $pair) {
                 $eq = strpos($pair, '=');

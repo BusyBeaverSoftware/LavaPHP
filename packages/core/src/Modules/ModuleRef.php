@@ -30,13 +30,13 @@ final readonly class ModuleRef
     public static function of(string $moduleClass, string $package, string $feature): self
     {
         $problems = [];
-        if (!preg_match('/^Lava\\\\[A-Za-z0-9]+\\\\[A-Za-z0-9]+Module$/', $moduleClass)) {
+        if (!preg_match('/^Lava\\\\[A-Za-z0-9]+\\\\[A-Za-z0-9]+Module$/D', $moduleClass)) {
             $problems[] = "module class '{$moduleClass}' should be a Pack module class like Lava\\Db\\DbModule";
         }
-        if (!preg_match('/^lavaphp\/[a-z0-9-]+$/', $package)) {
+        if (!preg_match('/^lavaphp\/[a-z0-9-]+$/D', $package)) {
             $problems[] = "package '{$package}' should look like lavaphp/<pack-name>";
         }
-        if (!preg_match('/^[a-z][a-z0-9_]*$/', $feature)) {
+        if (!preg_match('/^[a-z][a-z0-9_]*$/D', $feature)) {
             $problems[] = "feature '{$feature}' should be snake_case";
         }
         if ($problems !== []) {
