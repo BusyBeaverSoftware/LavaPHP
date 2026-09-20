@@ -8,6 +8,7 @@ use Lava\Core\Config\Config;
 use Lava\Core\Config\DotEnv;
 use Lava\Core\Problem\InvalidConfig;
 use Lava\Core\Problem\InvalidEnvFile;
+use Lava\Core\Problem\LavaProblem;
 use Lava\Core\Problem\ProblemReport;
 use PHPUnit\Framework\TestCase;
 
@@ -148,5 +149,36 @@ final class ConfigTest extends TestCase
         self::assertInstanceOf(InvalidEnvFile::class, $second);
         self::assertSame(6, $first->source->line); // 'bad line' — no equals sign
         self::assertSame(7, $second->source->line); // '1BAD' — keys start A-Z or _
+    }
+
+    public function testAMalformedLineReportsItsKeyAndNeverItsValue(): void
+    {
+        // A security review found this reaching every command's report, the
+        // diagnostics page and any CI log running `lava check --strict`: the
+        // two shapes that fail this parser most often both carry a credential.
+        $tmp = tempnam(sys_get_temp_dir(), 'lava-env-');
+        file_put_contents($tmp, implode("\n", [
+            'export DB_PASSWORD=hunter2-LEAKED',        // `export` puts a space in the key
+            'stripe_secret_key=sk_live_LEAKED',         // lowercase keys are refused too
+            'sk_live_PASTED_ON_ITS_OWN_LINE_LEAKED',    // no `=`: the line IS a value
+            str_repeat('qwerty', 10) . '=LEAKED',       // base64 padding makes the key half a secret
+        ]) . "\n");
+        $report = new ProblemReport();
+        DotEnv::load($tmp, $report);
+        unlink($tmp);
+
+        $contents = array_map(
+            static fn (LavaProblem $problem): string => (string) ($problem->context['content'] ?? ''),
+            $report->problems(),
+        );
+        self::assertSame(
+            ['export DB_PASSWORD=<redacted>', 'stripe_secret_key=<redacted>', '<redacted>', '<redacted>'],
+            $contents,
+        );
+
+        foreach ($report->problems() as $problem) {
+            $printed = $problem->getMessage() . $problem->fix . json_encode($problem->context);
+            self::assertStringNotContainsString('LEAKED', $printed, 'a value escaped into the report');
+        }
     }
 }
