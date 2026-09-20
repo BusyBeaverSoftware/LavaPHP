@@ -46,7 +46,9 @@ final class TranslationExtension extends AbstractExtension
 // app/Services.php
 $c->singleton(Translator::class, static fn (): Translator => new Translator(dirname(__DIR__) . '/lang'));
 $c->singleton(TranslationExtension::class, static fn (Container $c): TranslationExtension => new TranslationExtension($c->get(Translator::class)));
+```
 
+```php
 // config/view.php
 'extensions' => [App\View\TranslationExtension::class],
 ```

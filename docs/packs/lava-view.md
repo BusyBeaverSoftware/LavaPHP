@@ -116,7 +116,9 @@ its theme can check the name without a second list of themes.
 ```php
 // app/Services.php
 $c->singleton(App\View\AppExtension::class, static fn (): App\View\AppExtension => new App\View\AppExtension());
+```
 
+```php
 // config/view.php
 'extensions' => [App\View\AppExtension::class],
 ```
