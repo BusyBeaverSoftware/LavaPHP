@@ -9,6 +9,8 @@ namespace Lava\Core\Container;
  * (dependencies) and which ids resolved it (dependents). Captured from real
  * resolutions, not static analysis — `lava services` reports what the
  * container truly did.
+ *
+ * @internal the dependency trace the map and `lava services` render
  */
 final class ResolutionTrace
 {

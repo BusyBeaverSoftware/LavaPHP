@@ -190,6 +190,8 @@ final class Router
      * Compiles every pending builder into a Route. Bad routes become problems
      * on the shared report and are skipped — one bad route never hides the
      * others or blocks the rest of boot.
+     *
+     * @internal boot compiles the routes; an app registers them and never calls this
      */
     public function finalize(ProblemReport $problems): void
     {
@@ -394,7 +396,10 @@ final class Router
         return $best;
     }
 
-    /** Boot-time: the handler's injection plan, attached by HandlerInvoker once per route. */
+    /** Boot-time: the handler's injection plan, attached by HandlerInvoker once per route.
+     *
+     * @internal boot attaches each handler's injection plan
+     */
     public function attachPlan(string $name, HandlerPlan $plan): void
     {
         if (!isset($this->routes[$name])) {
@@ -403,14 +408,18 @@ final class Router
         $this->plans[$name] = $plan;
     }
 
-    /** The handler's injection plan for a route — attached at boot, never computed at runtime. */
+    /** The handler's injection plan for a route — attached at boot, never computed at runtime.
+     *
+     * @internal the injection plan boot attached, read by the request path
+     */
     public function plan(string $name): HandlerPlan
     {
         return $this->plans[$name]
             ?? throw new \LogicException("Route '{$name}' has no injection plan — BuildRouter must attach one.");
     }
 
-    public function paramRegex(string $type): ?string
+    /** @internal the fragment behind a param type, used by URL generation */
+public function paramRegex(string $type): ?string
     {
         return $this->patterns[$type] ?? null;
     }
@@ -423,6 +432,8 @@ final class Router
      * checked and turned into URLs inside `/…/`, where a `/` ended the pattern
      * (so `[a-z]+(?:/[a-z]+)*` was refused and core's own `str`, `[^/]+`, could
      * not generate a URL), and matched inside `#…#`, where a `#` did.
+     *
+     * @internal how a fragment becomes a whole-value regex
      */
     public static function anchored(string $fragment): string
     {

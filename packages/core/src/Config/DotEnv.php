@@ -14,6 +14,8 @@ use Lava\Core\Problem\ProblemReport;
  *
  * DotEnv never overrides real environment variables; that policy belongs to
  * the boot step, not the parser.
+ *
+ * @internal config/.env promotion, done once at boot
  */
 final class DotEnv
 {

@@ -13,6 +13,8 @@ namespace Lava\Core\Config;
  * if its name matches, because explicit beats heuristic. This is a redaction
  * safety net, not a policy engine: it errs toward hiding a value an operator
  * might not want in a log, and `--reveal` is always one flag away.
+ *
+ * @internal redaction for problem context and env output
  */
 final class Secrets
 {

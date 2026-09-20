@@ -15,6 +15,8 @@ use Lava\Core\Problem\ProblemReport;
  * In prod only the problem sentence and the fix are shown; everything else
  * is dev-mode information — the context, and the source, which is an absolute
  * path on the server.
+ *
+ * @internal the dev error page's rendering
  */
 final class DiagnosticsPage
 {

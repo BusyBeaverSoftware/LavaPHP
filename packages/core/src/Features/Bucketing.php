@@ -10,6 +10,8 @@ namespace Lava\Core\Features;
  * request, every machine, forever. Documented trade-offs: not cryptographic,
  * and mildly non-uniform (crc32 output is not perfectly even mod 100) — both
  * acceptable for rollout decisions, neither acceptable for security.
+ *
+ * @internal the sticky hash behind a rollout percentage
  */
 final class Bucketing
 {

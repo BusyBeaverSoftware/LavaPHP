@@ -20,6 +20,8 @@ use Lava\Core\Problem\BadTestReport;
  *
  * The runner's exit code is carried through, not dropped, because the report
  * alone is not a verdict: see {@see TestRun::unreportedFailure()}.
+ *
+ * @internal JUnit XML parsing for `lava test`
  */
 final class Junit
 {

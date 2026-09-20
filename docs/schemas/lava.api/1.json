@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lavaphp.dev/schemas/lava.api/1.json",
+  "title": "lava api --json",
+  "description": "The framework's own public API, compiled by reflecting over the installed packages — not the app's declarations, which are `lava map` and `lava describe`. Every class under a package's src/ is indexed, promoted because an indexed signature names it, or excluded by a named rule the pack declares, and a drift guard fails the build on a fourth case: that is what makes an empty `symbols` mean 'the framework has nothing by that name' rather than 'nothing was found'. Answers without booting the app, because an agent asking what it can call must not be told to fix the boot first.",
+  "allOf": [
+    { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
+    {
+      "properties": {
+        "schema": { "const": "lava.api/1" },
+        "command": { "const": "api" },
+        "data": {
+          "type": "object",
+          "required": ["query", "mode", "total", "truncated", "packs", "symbols"],
+          "properties": {
+            "query": {
+              "description": "What was asked for — a symbol, a search term, or a pack name. Null when nothing was: the roster is the answer to no question.",
+              "anyOf": [{ "type": "string" }, { "type": "null" }]
+            },
+            "mode": {
+              "enum": ["roster", "class", "method", "search", "pack", "all"],
+              "description": "How the query was resolved, so a consumer knows what `symbols` holds. `class` is an exact class-name match (one entry, in full); `method` is an exact method-name match, each entry cut down to the matching methods; `search` is a substring match over names and summaries, also cut down; `pack` and `all` are whole surfaces; `roster` carries no symbols at all."
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "How many symbols matched. For `roster` it is the size of the whole index, which is how a consumer learns the surface it is searching."
+            },
+            "truncated": {
+              "type": "boolean",
+              "description": "True when `symbols` holds fewer entries than `total`. A search shows at most 50: a narrower query is the next move, which is why there is no cursor."
+            },
+            "packs": {
+              "type": "array",
+              "description": "Every installed package that declares a surface, in install order with core first. Reported on every exit path, including an invocation the kernel rejected and an app that cannot boot, because the roster needs no app.",
+              "items": {
+                "type": "object",
+                "required": ["pack", "package", "version", "feature", "enabled", "types", "methods"],
+                "properties": {
+                  "pack": { "type": "string", "description": "The short name the map and the CLI use: `core`, `db`." },
+                  "package": { "type": "string", "description": "The Composer package, e.g. `lavaphp/db`." },
+                  "version": {
+                    "description": "What Composer installed, or null when it cannot say — an install without Composer's generated files.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "feature": {
+                    "description": "The flag that gates the pack, or null for core, which is never gated.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "enabled": {
+                    "description": "Whether the gate resolved on for this app, or null when the app did not boot. A pack that is off is still indexed: not knowing a capability exists is the failure this command fixes.",
+                    "anyOf": [{ "type": "boolean" }, { "type": "null" }]
+                  },
+                  "types": { "type": "integer", "minimum": 0, "description": "Indexed classes, interfaces and enums this pack declares as its own surface." },
+                  "methods": { "type": "integer", "minimum": 0, "description": "Public methods across those types." }
+                },
+                "additionalProperties": false
+              }
+            },
+            "symbols": {
+              "type": "array",
+              "description": "The matching classes, interfaces and enums, sorted by name. Empty in `roster` mode, and empty with `total: 0` when nothing matches — which, over a closed surface, is an answer.",
+              "items": {
+                "type": "object",
+                "required": ["pack", "name", "kind", "at", "summary", "extends", "implements", "cases", "constants", "methods", "example"],
+                "properties": {
+                  "pack": { "type": "string" },
+                  "name": { "type": "string", "description": "Fully qualified, as it must be written or imported." },
+                  "kind": { "enum": ["class", "interface", "enum"] },
+                  "at": { "type": "string", "description": "`pack:src/File.php`, the same spelling the project map uses, so a path reads the same however the package is installed." },
+                  "summary": {
+                    "description": "The first sentence of the docblock, or null when it has none.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "extends": {
+                    "description": "The parent class, or null.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "implements": { "type": "array", "items": { "type": "string" }, "description": "Interfaces, including PSR ones — how a reader learns a response is a PSR-7 message." },
+                  "cases": { "type": "array", "items": { "type": "string" }, "description": "Enum case names, empty for anything else." },
+                  "constants": {
+                    "type": "array",
+                    "description": "Public constants this class declares, with their values rendered as one line of PHP.",
+                    "items": {
+                      "type": "object",
+                      "required": ["name", "value"],
+                      "properties": {
+                        "name": { "type": "string" },
+                        "value": { "type": "string" }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "methods": {
+                    "type": "array",
+                    "description": "Public methods this class declares — not inherited ones, which belong to the class that declares them, reachable through `extends` and `implements`. In `method` and `search` modes this holds only the matching methods.",
+                    "items": {
+                      "type": "object",
+                      "required": ["name", "static", "signature", "summary", "at"],
+                      "properties": {
+                        "name": { "type": "string" },
+                        "static": { "type": "boolean" },
+                        "signature": { "type": "string", "description": "The method as it must be called, with fully qualified types and defaults: `static rollout(int $percentage): Lava\\Core\\Features\\Flag`." },
+                        "summary": {
+                          "description": "The first sentence of the method's docblock, or null. Roughly a third of methods carry one; the class summary is the fallback a reader gets in the text view.",
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
+                        },
+                        "at": { "type": "string", "description": "`pack:src/File.php:line`." }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "example": {
+                    "description": "A worked snippet for an entry-point class, or null. Only entry points have one — a hand-written example is the one thing here that can rot, so there are a couple of dozen, each parsed and method-checked by the build.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

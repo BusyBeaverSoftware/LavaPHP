@@ -9,6 +9,8 @@ use Lava\Core\Problem\ProblemReport;
 /**
  * The mutable accumulator steps share. Boot-only: everything here is
  * consumed into {@see App} (or {@see BootFailure}) when boot ends.
+ *
+ * @internal the mutable state boot steps pass between themselves
  */
 final class BootCtx
 {

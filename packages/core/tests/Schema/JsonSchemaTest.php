@@ -47,6 +47,10 @@ final class JsonSchemaTest extends TestCase
     {
         return [
             'about' => [['about', '--json'], self::APP],
+            // The roster and one class in full: the two shapes `symbols` takes,
+            // empty and populated, under the same six required keys.
+            'api' => [['api', '--json'], self::APP],
+            'api for one class' => [['api', 'Router', '--json'], self::APP],
             'check' => [['check', '--json'], self::APP],
             'config' => [['config', '--json'], self::APP],
             'describe' => [['describe', 'users.show', '--json'], self::APP],

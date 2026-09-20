@@ -25,6 +25,8 @@ use Psr\Http\Message\ServerRequestInterface;
  *     (the request), RouteArgs (the matched params), or a registered
  *     container id (a service). Scalars, unions, defaults, variadics: no;
  *   - the return type is declared and is a ResponseInterface.
+ *
+ * @internal a handler's injection plan, built at boot
  */
 final class HandlerInvoker
 {

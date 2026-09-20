@@ -17,6 +17,8 @@ namespace Lava\Core\Console;
  * errors - skipped` is the green count without a second field.
  *
  * @phpstan-type TestCase array{name: string, class: string, file: string, line: int, status: string, type: string, message: string}
+ *
+ * @internal one test run as `lava test` and `lava check` report it
  */
 final readonly class TestRun
 {

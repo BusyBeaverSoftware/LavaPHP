@@ -27,6 +27,8 @@ namespace Lava\Core\Map;
  * The examples are minimal on purpose — they show the shape, not the error
  * handling — so they are checked for truth, not for bootability. The `lavaphp/app`
  * skeleton is the working-app proof, and `lava check` is what verifies it.
+ *
+ * @internal the reference section `lava map` writes into AGENTS.md
  */
 final class FrameworkReference
 {

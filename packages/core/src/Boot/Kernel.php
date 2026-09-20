@@ -23,6 +23,8 @@ use Lava\Core\Boot\Steps\WireModules;
  * The entire boot, as one readable list. This constant IS the boot order —
  * there is no hidden sequencing anywhere else. Steps grow in with the
  * milestones (router, commands, wiring validation) and freeze at 0.1.0.
+ *
+ * @internal the boot sequence itself; an app boots through TestApp or public/index.php
  */
 final class Kernel
 {

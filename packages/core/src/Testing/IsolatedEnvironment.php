@@ -17,6 +17,8 @@ namespace Lava\Core\Testing;
  * CI setting can never steer what a test sees.
  *
  * Shared by {@see TestApp} and {@see TestConsole}, which make the same promise.
+ *
+ * @internal the environment save/restore around a test boot
  */
 final class IsolatedEnvironment
 {

@@ -19,6 +19,8 @@ use Lava\Core\Problem\ProblemReport;
  * Keys become `"<name>.<key>"` — the file's bare name, so `config/database.php`
  * yields `database.dsn`. That is what makes a pack's config indistinguishable
  * from core's to every reader downstream.
+ *
+ * @internal how a config file is read; an app reads values through Config
  */
 final class ConfigFile
 {

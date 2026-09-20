@@ -34,6 +34,8 @@ use Twig\Loader\FilesystemLoader;
  * function and `{% dump %}` tag, which are development tools, and the pack's
  * job is to wire the app's environment state into Twig rather than to have an
  * opinion of its own.
+ *
+ * @internal how the pack builds Twig; an app takes ViewRenderer and configures it through config/view.php
  */
 final class TwigFactory
 {

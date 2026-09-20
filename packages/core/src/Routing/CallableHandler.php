@@ -11,6 +11,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Adapts a callable into the PSR-15 RequestHandlerInterface middlewares
  * expect. The pipeline composes these; nothing else needs the adapter.
+ *
+ * @internal how a handler spec becomes something callable
  */
 final class CallableHandler implements RequestHandlerInterface
 {

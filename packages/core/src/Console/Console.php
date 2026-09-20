@@ -26,6 +26,8 @@ use Lava\Core\Problem\UnknownCommand;
  * `main()` is the whole entry point `bin/lava` needs; the app directory
  * defaults to the current working directory, so `lava` runs from an app root
  * exactly like composer does.
+ *
+ * @internal the CLI dispatcher; a command is written against Command and IO
  */
 final class Console
 {

@@ -16,6 +16,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * container ids (class-strings), resolved from the container when the layer
  * actually runs. The list is outermost-first — the first entry is the first
  * to see the request and the last to see the response.
+ *
+ * @internal the per-request middleware chain
  */
 final class MiddlewarePipeline
 {

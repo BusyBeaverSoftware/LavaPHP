@@ -286,6 +286,19 @@ the first release was not tagged — so it would have been a schema file no code
 can produce, which is a document that lies about what exists. The version has
 one home, `Envelope::schema()`, so a bump cannot be half-applied.
 
+**Two commands answer "what is there?", and they answer about different
+things.** `lava describe <name>` resolves what THIS APP declares — a route, a
+service, a flag, an env var, a command — and boots the app to do it. `lava api`
+answers about the FRAMEWORK: every class, method and signature the installed
+packages offer, compiled by reflection, with no boot, so it still answers when
+the app does not start. Each package declares which of its directories are API
+(`ApiSurface`), and a class that is neither indexed, named by an indexed
+signature, nor covered by a declared rule fails the build — which is what makes
+`lava api --search=<term>` finding nothing mean the framework has nothing,
+rather than that the search missed it. A pack whose gate is off is still
+indexed: not knowing a capability exists is the failure the command exists to
+prevent.
+
 - **Exit codes**: `0` ok, `1` a problem or a red result, `2` a malformed
   invocation (a typo'd command name, a bad flag value, a flag the command does
   not declare). Only `2` is about how the command was typed; `1` means it ran

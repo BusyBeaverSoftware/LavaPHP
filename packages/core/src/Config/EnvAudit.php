@@ -15,6 +15,8 @@ use Lava\Core\Problem\MissingEnvVar;
  * `lava check` share {@see \Lava\Core\Console\TestRun}. Boot cannot answer it:
  * a variable nothing reads is never resolved, so the app boots green while a
  * required value is missing, and only a sweep over every declaration notices.
+ *
+ * @internal what `lava env` reports on
  */
 final class EnvAudit
 {

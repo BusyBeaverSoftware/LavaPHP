@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lava\Core\Console;
 
 use Lava\Core\Console\Commands\AboutCommand;
+use Lava\Core\Console\Commands\ApiCommand;
 use Lava\Core\Console\Commands\CheckCommand;
 use Lava\Core\Console\Commands\ConfigCommand;
 use Lava\Core\Console\Commands\DescribeCommand;
@@ -176,6 +177,7 @@ final class CommandRegistry
         $registry->add(new TestCommand());
         $registry->add(new ServeCommand());
         $registry->add(new DescribeCommand());
+        $registry->add(new ApiCommand());
         $registry->add(new ListCommand($registry));
         return $registry;
     }

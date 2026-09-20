@@ -20,6 +20,8 @@ use Lava\Core\Problem\MissingTestRunner;
  * Results come back through `--log-junit`, never by scraping PHPUnit's summary
  * line: that line is a human convenience PHPUnit may reword, and a framework
  * that parses it would break on an upgrade with no code change of its own.
+ *
+ * @internal how `lava test` runs the app suite
  */
 final class PhpUnitRunner
 {
