@@ -232,44 +232,43 @@ Neither pushes or publishes anything, and neither can show Packagist itself.
   believed second. If consumers ask for one, it should be generated from the
   commit log at tag time rather than written alongside it.
 
-## Known gaps at 0.4.1
+## Known gaps at 0.5.0
 
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
 - **Packagist updates itself, for all seven packages.** Nobody pressed
-  **Update**. The tag was pushed at 15:14:19 UTC and split run 34860845044
-  pushed it to the seven mirrors. A fresh `composer show -a` saw `0.4.1` for six
-  packages by 15:15:38 and for `lavaphp/core` at 15:24:57: the core-only lag is
-  back at ten minutes, after thirty seconds for `0.4.0` (DECISIONS.md 256, 269,
+  **Update**. The tag was pushed at 06:09:32 UTC, split run 35493497438 pushed it
+  to the seven mirrors, and a fresh `composer show -a` from an empty directory
+  saw `0.5.0` for all seven between 06:10:41 and 06:10:44 — seventy seconds, and
+  the first release since `0.4.0` with no core-only lag (DECISIONS.md 256, 269,
   281, 295, 313). Check a release with `composer show -a` from a fresh Composer
   home **run in an empty directory**, never with `curl` and never from this
   repository's root, where the path repositories answer with their pinned
-  version before Packagist has it. If a package is still missing after fifteen
-  minutes, read that mirror's hook deliveries
-  (`gh api repos/BusyBeaverSoftware/lava-<name>/hooks/<id>/deliveries`) before
-  pressing **Update**.
-- **CI was green on the tag commit, three times.** `030d1f3` passed all nine jobs
-  on its branch (run 34805345304), on `main` (34805421980), and on the tag
-  (34860845137).
-- **`0.4.1` installs from Packagist on PHP 8.5, 8.4 and 8.3.** With a fresh
+  version before Packagist has it.
+- **CI was green on the tag commit, three times.** `57c442c` passed all nine jobs
+  on its branch (run 35490757412), on `main` (35490815439) and on the tag
+  (35493497468); the split ran green on `main` (35490815454) and on the tag.
+- **`0.5.0` installs from Packagist on PHP 8.5, 8.4 and 8.3.** With a fresh
   Composer home, `composer create-project lavaphp/app` and `composer require` of
-  the five packs locked all six `lavaphp/*` packages at `0.4.1` on 8.5.4, and in
-  `php:8.4-cli` (8.4.25) and `php:8.3-cli` (8.3.33). In each, a scratch app with
-  `$r->redirect('/docs/{rest:path}', …)` into `/{rest:path}` answered
-  `GET /docs//evil.example/x` with `Location: /%2Fevil.example/x`, and `lava check
-  --strict` passed. The packs were required, not enabled; the tag's CI enables
-  them. Those images ship neither `ext-zip` nor `unzip`, so install `unzip`
+  the five packs locked all six `lavaphp/*` packages at `0.5.0` on 8.5.4, and in
+  `php:8.4-cli` (8.4.25) and `php:8.3-cli` (8.3.33). In each, `lava check
+  --strict` passed and `lava api --search=…` answered from the installed
+  packages. Those images ship neither `ext-zip` nor `unzip`, so install `unzip`
   before running Composer in them.
-- **`0.4.1` asks nothing of an app.** Lava Notes moved from `0.4.0` to `0.4.1`
-  with `composer update 'lavaphp/*'` alone and passed `lava check --strict` with
-  its map current. What would have asked something waits for `0.5.0`
-  (DECISIONS.md 312).
-- **The open redirect has a published advisory**,
-  [GHSA-x76q-3p93-qcc2](https://github.com/BusyBeaverSoftware/LavaPHP/security/advisories/GHSA-x76q-3p93-qcc2),
-  for `lavaphp/core` `< 0.4.1`. A repository advisory reaches the GitHub Advisory
-  Database, and so `composer audit`, only once GitHub has reviewed it; that has
-  not been checked.
+- **The upgrade was rehearsed on a real app before the tag, and again after.**
+  Lava Notes moved from `0.4.1` to `0.5.0` and needed exactly the two actions the
+  README names: run `lava map`, and read the new `lava events --json` shape in the
+  one test that asserted the old one. Its 230 tests then passed (one skipped for
+  GD) with `lava check --strict` green.
+- **`0.5.0` asks four things of an app**, listed in the README's "Upgrading from
+  0.4 to 0.5": run `lava map`; stop decoding route params it now receives
+  decoded; re-pin `lava.routes`, `lava.about` and `lava.events` to `/2`; and
+  alias `select()` columns that differ only in case.
+- **The `0.4.1` advisory still stands for older versions.**
+  [GHSA-x76q-3p93-qcc2](https://github.com/BusyBeaverSoftware/LavaPHP/security/advisories/GHSA-x76q-3p93-qcc2)
+  covers `lavaphp/core` `< 0.4.1`. Whether GitHub has reviewed it into the
+  Advisory Database, which is what `composer audit` reads, has not been checked.
 - **PHP 8.3 and 8.4 are exercised by CI, and the floor is checkable locally.**
   Development here is on 8.5.4. The CI matrix runs the suite on 8.3 and 8.4;
   locally, `composer check:floor` (step 3) lints every tracked file against a

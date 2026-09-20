@@ -5981,3 +5981,35 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
       `lava.about/1` and `lava.events/1` — because nothing emits a superseded
       version and `JsonSchemaTest` derives the expected file list from
       `Envelope::schema()`.
+
+326. **`0.5.0` is released.** The user said "yes" once the branch was green on
+    CI and merged. `57c442c` had passed all nine jobs on its branch (run
+    35490757412) and on `main` (35490815439), where the split filled all seven
+    mirrors (35490815454); the annotated tag went on it and was pushed at
+    06:09:32 UTC. The tag's split (35493497438) and CI (35493497468) both passed.
+
+    Packagist updated itself for all seven, and for the first time since `0.4.0`
+    without a core-only lag: a fresh `composer show -a` from an empty directory
+    saw every package at `0.5.0` between 06:10:41 and 06:10:44, seventy seconds
+    after the push.
+
+    Installed from Packagist with a fresh Composer home: `create-project
+    lavaphp/app` plus the five packs locked all six at `0.5.0` on PHP 8.5.4 and
+    in `php:8.3-cli` (8.3.33) and `php:8.4-cli` (8.4.25). In each, `lava check
+    --strict` passed and `lava api --search=` answered out of the installed
+    packages — `dropIndex` on the host, `Phase` in both containers — which is
+    the new command doing its job on an app nobody prepared for it.
+
+    **The upgrade was rehearsed twice on Lava Notes**, once against the working
+    tree before the tag and once from Packagist after it. Both times it needed
+    exactly the two actions the README names: `lava map`, and one test that
+    asserted the old `lava events --json` shape. Its 230 tests pass (one skipped
+    for GD). Finding that failure before the release is the reason the rehearsal
+    exists: it is the difference between an upgrade note that was written and one
+    that was checked.
+
+    `feat/0.5.0` was deleted locally and on GitHub once `git merge-base
+    --is-ancestor` confirmed `main` contains it, as were the four worktree
+    branches the features came from, each after `git cherry` showed every commit
+    had landed. Not run for this release: the MySQL and PostgreSQL live tests,
+    which no release has run yet.
