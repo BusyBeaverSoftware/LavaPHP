@@ -5636,3 +5636,130 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     fields present, files present, a small empty form, JSON over the limit, and
     no limit configured. The ini-driven default was verified by serving
     `apps/demo` under `php -d post_max_size=1K`.
+
+318. **Two column references alike apart from case are one name (Lava Notes, R3-B6, the case half).** Entry 288's refusal
+    compared result names exactly, so `select('posts.ID', 'users.id')` passed. SQLite returns a column reference under the
+    name its TABLE declares rather than the name the query wrote, so both sides came back as `id` and a row kept one of the
+    two values — the same silent loss entry 288 exists to stop, one case change away, and the only round-3 finding that
+    loses data rather than reporting badly.
+
+    `select()` now groups result names by their folded form and refuses a folded match **between two unaliased
+    references**, alongside the exact match it already refused.
+
+    The review's sketch was to fold every side. That would refuse calls that work, and the review's own reproduction shows
+    why: `select(['ID' => 'posts.id'], 'users.id')` returned `{"ID":2,"id":1}` on SQLite, two columns and nothing lost,
+    because an alias is quoted and comes back as written on every engine. So an alias is compared exactly, and only the
+    spellings the DATABASE chooses are folded. That matches every case the review observed: the two unaliased references
+    lose a column and are refused; `posts.ID` beside `users.NAME` does not fold and is allowed; either side aliased is
+    allowed.
+
+    The message names both spellings ("two columns named 'ID' and 'id'"), since neither is a name the reader wrote twice,
+    and `context` gains `names`. The suggested alias was already compared case-insensitively (0.4.1), so the two halves
+    agree. A live SQLite test records the loss itself — a raw two-reference `SELECT` returns one column — beside the
+    refusal, so the reason is checked and not merely asserted.
+
+    **Class: minor.** A call with two mixed-case duplicate references that returns rows today starts to throw, and must
+    alias one of them. That is the same upgrade note 0.4.0 carried for the same-name refusal itself. Not done, and not
+    needed: nothing folds for MySQL (which names a result column as the select list writes it) or PostgreSQL (which would
+    reject `"posts"."ID"` as an unknown column) — both inferred, no server was run.
+
+319. **`lava about` reports installed versions and a pack's own facts (Lava Notes, R3-G4).** Entry 289 scoped `RuntimeFacts`
+    to the facts `lava about` printed, which left out the two facts the question "why won't this start" most often needs.
+
+    - **Versions.** Each pack entry gains `version` from `Composer\InstalledVersions`, and a new top-level
+      `framework_version` for `lavaphp/core` sits beside `php`, set before the boot branch so a boot that FAILED still
+      reports which framework it was. Null rather than absent when Composer cannot say — an install with no generated
+      Composer files, or a pack written inside a fixture, as core's own `module-app` is. `InstalledVersions` answers for a
+      path-repository install, so the monorepo's own apps report versions too.
+    - **Pack facts.** A new optional module interface, `ProvidesFacts::facts(App $app): array`, in the idiom of
+      `ProvidesMapSection`. `RuntimeFacts::packs()` takes an optional `App`: given one, each enabled module implementing it
+      is asked and its facts are merged into that pack's `facts`; without one, `facts` is the empty map `of()` built. Asked
+      when the facts are READ, never at construction, because boot builds this service inside `ValidateWiring`, where
+      constructors do no I/O — and the first fact worth having needs exactly that. `lavaphp/db` reports
+      `pending_migrations`, the count and not the names: "the code is deployed and the schema is not" explains a class of
+      failure no other command reports unless someone thinks to run `db:status`.
+    - **A pack that throws does not take the report down.** `about` is what someone runs when the app is already broken, so
+      a throwing pack becomes an `error` fact and every other pack still reports. A `LavaProblem` contributes its message
+      as well — it is written to be shown and the pack has already scrubbed it — while any other throwable contributes only
+      its class, because a raw driver message can carry the DSN it failed to open. An app with no DSN therefore reports
+      `error: db_not_configured` beside its PHP facts, which is tested.
+    - **The text output** gains a `version` and a `facts` column and a `lavaphp/core <version>` line, so the human form
+      carries what the payload does.
+
+    **Class: minor**, on the schema rule alone: the envelope is now `lava.about/2`, because `/1` closed each pack item and a
+    consumer pinned to it would reject `version` and `facts`.
+
+    **A deviation from the brief worth recording.** The brief said to keep `lava.about/1.json` on disk as history. It was
+    DELETED instead, because `Envelope::VERSIONS`' docblock states the project's rule — nothing emits a superseded version,
+    so a bump means deleting the old file — and `JsonSchemaTest::testEverySchemaIsClaimedAndEveryClaimIsDocumented` enforces
+    it: every file under `docs/schemas/` must be claimed by a registered command. `lava.check` and `lava.map` each hold only
+    a `2.json`, the same way. Keeping `/1` would have failed the gate the brief also required to be green.
+
+    **Left for the parent:** `docs/conventions.md:115-118` describes what `RuntimeFacts` holds and now understates it
+    (versions, and a pack's own facts); conventions.md was out of scope for this branch.
+
+320. **The map is compiled as if every installed pack's gate were on (Lava Notes, R3-B11).**
+
+        **The bug.** A pack's gate is resolved state: with it off, `CheckModules` records the module disabled,
+        `WireModules` never calls its `register()`, and `BuildRouter` never asks it for routes. So the pack's services,
+        commands and routes were absent from the container, the registry and the router — and `ProjectMap`, which compiles
+        the document from exactly those three, silently wrote a map of a smaller app. A committed `AGENTS.md` therefore
+        read stale on every machine whose gate differed: `LAVA_FEATURE_EVENTS=off lava map --check` exited 1, and `lava
+        check --strict` failed on a deploy that changed nothing. A gate set with `Flag::env(['dev' => on, 'prod' => off])`
+        broke the exact sentence conventions.md makes — the same bytes under `--env=dev` and `--env=prod` — with no
+        environment variable anywhere in the app.
+
+        **The change.** `Kernel::boot()` takes `allPacksEnabled`, recorded on `BootCtx`, and `CheckModules` then does not
+        resolve gates at all: every `ModuleRef` whose class exists counts as enabled, and one whose class does not is
+        recorded disabled. `AppBoot::forMap()` is the seam the commands use — it returns the app it was given when every
+        installed pack is already wired, and otherwise makes that second boot. `lava map`, `lava map --check` and `lava
+        check`'s map section all go through it, so the two doors onto "is this file current?" cannot disagree.
+
+        **Why not the alternatives.** Dropping pack-contributed facts from the fingerprint would leave a map that is
+        silently missing a pack's services — the document would be wrong rather than stale. Compiling declarations without
+        booting would mean a second reading of the app's files, which is the one thing the map is designed never to do
+        (pillar 3: compiled, not written).
+
+        **What a failed map boot reports.** Its own problems, not `stale_map`. A pack enabled only for this boot can fail
+        it (a config file it needs, a factory that throws), and answering "your map is stale" would send the reader to run
+        `lava map`, which would meet the same failure. In `lava check` those problems join the report and land in their own
+        sections; the map section then makes no claim.
+
+        **What it costs.** `lava map` on an app with a switched-off pack now writes MORE rows than before, so such an app
+        must run `lava map` once after upgrading — the reason this is a minor (releasing.md: "a map that reads stale goes
+        out in a minor"). An app with every pack on keeps its fingerprint, which is why `apps/demo`, `apps/blog`, the
+        skeleton and Lava Notes needed no regeneration. One diagnostic is deliberately given up: with gates unresolved,
+        `lava map` no longer reports `missing_pack` or `invalid_gating` for a pack it treats as installed-and-on. Both are
+        still fatal on every ordinary boot, which is where an app learns about them.
+
+        **Also fixed.** `CheckModules`' docblock claimed a disabled pack's routes stay listed by `lava routes --all`. They
+        are absent, as conventions.md says.
+
+321. **A boot reports every listener mistake in `app/Listeners.php`, not the first (Lava Notes, R3-B9).**
+
+        **The bug.** A throw carries one value, so the events pack could report one finding per boot: `register()` stopped
+        at the first unknown event key, and the `ListenerProvider` factory at the first listener that was unregistered or
+        could not take its event. A file with three mistakes took three boots to learn about, against conventions.md's
+        "collect all problems in one pass; nothing fails fast and hides the rest".
+
+        **The change, in core.** `Lava\Core\Problem\ManyProblems` is a carrier, not a problem: a `\RuntimeException` holding
+        a non-empty list of `LavaProblem`s, with no code and no renderer. `ManyProblems::raise()` throws the single problem
+        when there is one and the carrier when there are several, so nothing downstream ever unpacks a carrier of one and
+        every existing report reads exactly as it did. `WireModules` unpacks what a module's `register()` raised;
+        `ValidateWiring` unpacks what a factory raised, in its throwable branch — a factory is app or pack code, and the
+        container's `get()` promises nothing about what comes out of one, so this is the honest place rather than a
+        `catch` the analyser can prove dead. Each carried problem then goes through the same reporting as a single one,
+        including the cycle deduplication of entry 301.
+
+        **The change, in events.** `register()` collects every key that names no class or interface; the provider factory
+        tries every listener and keeps each problem, then raises them together. Order is file order, which is the order a
+        reader fixes them in.
+
+        **What it costs.** This is why the cycle needs both packages: `lavaphp/events` 0.5.0 uses a core class that 0.4.1
+        does not have, so the lockstep constraints move together — which they do in a minor anyway.
+
+        **Not done.** A line number for each entry inside `app/Listeners.php`. Every problem about a whole data file is
+        sourced at line 1, in this pack and in core (`WireAppServices`), and computing an entry's line would need a token
+        scan nothing in the framework does today. Also not done: unpacking a carrier on the REQUEST path. Boot builds the
+        provider, so a carrier cannot reach `App::handle` from the events pack; if another pack ever raises one lazily, it
+        renders as `unexpected_failure` whose message names the codes it carried.

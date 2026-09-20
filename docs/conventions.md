@@ -114,8 +114,12 @@ hand-edited: change the app and run `lava map`.
   drift-guarded by a test) → enabled modules in `app/Modules.php` order →
   `app/Services.php`. Re-registering an id is fatal. Among core's ids is
   `Lava\Core\Boot\RuntimeFacts`, the facts `lava about` prints (PHP, extensions,
-  PDO drivers, each pack and whether it is on), for a handler such as a status
-  page to take; `lava about` reads the same service.
+  PDO drivers, the framework's version, and each pack with its version, whether
+  it is on, and whatever the pack itself reports through `ProvidesFacts` —
+  pending migrations, say), for a handler such as a status page to take; `lava
+  about` reads the same service. A pack's facts are computed when they are read,
+  never when the service is built, because boot builds it in a step where
+  constructors do no I/O.
 
 ## The gating rule
 
