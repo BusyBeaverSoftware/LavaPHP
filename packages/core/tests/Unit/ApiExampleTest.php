@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lava\Core\Tests\Unit;
 
 use Lava\Core\Map\ApiIndex;
+use Lava\Core\Tests\Support\PhpSnippet;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -33,11 +34,8 @@ final class ApiExampleTest extends TestCase
     public function testEverySnippetIsValidPhp(): void
     {
         foreach (self::examples() as $class => $code) {
-            try {
-                token_get_all("<?php\n" . $code, TOKEN_PARSE);
-            } catch (\ParseError $error) {
-                self::fail("the example for {$class} is not valid PHP: {$error->getMessage()}");
-            }
+            $error = PhpSnippet::parseError($code);
+            self::assertNull($error, "the example for {$class} is not valid PHP: {$error}");
         }
 
         self::assertNotSame([], self::examples());
@@ -51,7 +49,7 @@ final class ApiExampleTest extends TestCase
         );
 
         foreach (self::examples() as $class => $code) {
-            foreach (self::lavaNames($code) as $name) {
+            foreach (PhpSnippet::lavaNames($code) as $name) {
                 // A name from a package that is not installed cannot be checked
                 // here; the package that owns it checks its own examples.
                 $installed = array_filter($prefixes, static fn (string $prefix): bool => str_starts_with($name, $prefix));
@@ -69,12 +67,11 @@ final class ApiExampleTest extends TestCase
     public function testEveryStaticCallOnAFrameworkClassExists(): void
     {
         foreach (self::examples() as $class => $code) {
-            $imports = self::imports($code);
+            $imports = PhpSnippet::imports($code);
 
-            preg_match_all('/([A-Za-z_][A-Za-z0-9_\\\\]*)::([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/', $code, $matches, PREG_SET_ORDER);
-            foreach ($matches as [, $written, $method]) {
-                $target = $imports[$written] ?? $written;
-                if (!str_starts_with($target, 'Lava\\') || !class_exists($target) && !interface_exists($target) && !enum_exists($target)) {
+            foreach (PhpSnippet::staticCalls($code) as [$written, $method]) {
+                $target = PhpSnippet::resolve($written, $imports);
+                if ($target === null) {
                     continue;
                 }
                 self::assertTrue(
@@ -104,8 +101,7 @@ final class ApiExampleTest extends TestCase
         foreach (self::examples() as $class => $code) {
             // Only calls on a variable: `$this->events->dispatch(…)` and
             // `$db->fetch(…)`. A call chained onto another call is the same shape.
-            preg_match_all('/(?:\$[A-Za-z_][A-Za-z0-9_]*|\))\s*->\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/', $code, $matches);
-            foreach ($matches[1] as $method) {
+            foreach (PhpSnippet::instanceCalls($code) as $method) {
                 $checked++;
                 self::assertArrayHasKey(
                     strtolower($method),
@@ -149,29 +145,4 @@ final class ApiExampleTest extends TestCase
         return ApiIndex::of(ApiIndex::surfaces(), dirname(__DIR__, 4));
     }
 
-    /**
-     * The `use Lava\…;` lines a snippet declares, short name => fully qualified.
-     *
-     * @return array<string, string>
-     */
-    private static function imports(string $code): array
-    {
-        preg_match_all('/^\s*use\s+(Lava\\\\[A-Za-z0-9_\\\\]+);/m', $code, $matches);
-
-        $imports = [];
-        foreach ($matches[1] as $name) {
-            $at = strrpos($name, '\\');
-            $imports[$at === false ? $name : substr($name, $at + 1)] = $name;
-        }
-
-        return $imports;
-    }
-
-    /** @return list<string> */
-    private static function lavaNames(string $code): array
-    {
-        preg_match_all('/Lava\\\\[A-Za-z0-9_\\\\]+/', $code, $matches);
-
-        return array_values(array_unique($matches[0]));
-    }
 }
