@@ -41,6 +41,46 @@ and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 
+### Upgrading from 0.5 to 0.6
+
+**Upgrade promptly if you are on `0.5.0`.** A security review of the whole
+framework found two high-severity faults introduced in that release, plus
+several older ones. `0.5.0` decoded the request path for routing but left the
+request carrying the original, so a middleware guarding `/admin` by prefix never
+saw `/%61dmin` while the router routed it — an authorization bypass — and the
+same decode delivered `%2e%2e%2f` into a `{rest:path}` param as `../`, a remote
+path traversal. Neither existed in `0.4.1`. Require every `lavaphp/*` package at
+`^0.6.0` together, then:
+
+- **A request path with a `..` segment or a control byte is now refused**
+  (`bad_request_path`, 400) instead of routed. A test asserting 404 for a
+  traversal attempt asserts 400 now — that was the only change the reference
+  blog needed.
+- **A production 5xx no longer carries the problem's sentence or fix**, only its
+  `code` and `severity`. Messages had been built from exactly what redaction
+  exists to withhold: absolute template directories, the database driver's
+  sentence, an upstream URL with its query string. `dev` is unchanged, and a 4xx
+  keeps its detail, because that is the caller's own mistake.
+- **Check your `->regex()` rules.** PCRE's `$` also matches before a final
+  newline, so every anchored pattern in the framework — including the one that
+  validates your rules — accepted a trailing newline. They are anchored with
+  `\z` now: a value that validated with a newline on the end will start failing.
+- **Table names are validated like column names**, and a literal default
+  containing a backslash is refused in a migration.
+- **The HTTP client refuses more.** A response over 8 MiB is
+  `response_too_large` (raise `http_client.max_response_bytes` if you fetch
+  bigger); a method or header containing CR or LF is `unsendable_request`; the
+  transport speaks only http and https; a body that cannot be rewound is no
+  longer resent on a retry. Redaction now masks `client_secret`,
+  `refresh_token` and every other name it used to miss.
+- **Every response carries `X-Content-Type-Options: nosniff`**, and JSON bodies
+  escape `<` and `&` so they are safe to embed in a page.
+- **Secrets stay out of your logs.** A malformed `config/.env` line reports its
+  key and never its value, and `lava describe` and `lava config` redact exactly
+  what `lava env` does — at any depth.
+
+The findings, and what each fix does, are DECISIONS.md entries 329–344.
+
 ### Upgrading from 0.4 to 0.5
 
 `0.5.0` is the round-3 release: it fixes what agents building on `0.4` found,

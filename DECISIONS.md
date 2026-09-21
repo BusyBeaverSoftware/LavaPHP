@@ -6462,3 +6462,38 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     SQL of every single-table query, which is a visible behaviour change with its own test churn, it
     cannot be done for a joined query, and a partial fix that looks total is worse than a documented
     limit. It deserves its own release.
+
+345. **`0.6.0` is prepared: a security release, and a minor because of what it
+    refuses.** The user asked whether to audit the framework before requesting a
+    CVE for the 0.4.1 advisory. Five reviewers did, each finding reproduced twice
+    (`scratchpad/security/`), and the answer justified the question: entry 314's
+    decode had introduced two high-severity faults in `0.5.0` — an authorization
+    bypass and a remote path traversal — that `0.4.1` did not have. Entries 329
+    to 344 are the fixes.
+
+    **Why not `0.5.1`.** The 0.x policy says a change an app has to act on goes
+    out in a minor, never a patch, and several of these do: `->regex()` rules now
+    refuse a trailing newline (every anchored pattern in the framework had the
+    same `$` bug, including the one validating an app's own rules); a table name
+    is validated like a column name; a literal default containing a backslash is
+    refused; a response over 8 MiB is refused; a path with a `..` segment is
+    refused where it used to route; a production 5xx no longer carries its
+    sentence. Shipping that as a patch would be the version number lying to make
+    the release sound smaller, which is the opposite of what a security release
+    owes its readers. The number is free; the trust is not.
+
+    The lockstep constraints moved to `^0.6.0` together with the path pins and
+    the three locks, as entries 268, 280, 294 and 325 did. The README gains
+    "Upgrading from 0.5 to 0.6", which leads with the two 0.5.0 faults and what
+    each refusal now costs an app; docs/releasing.md names `0.6.0` in its history,
+    its tag example and its lockstep sentence.
+
+    **Verified before the tag**, with the ini shim: `composer verify` (1316
+    tests, nothing skipped, both PHPStan runs clean), `composer coverage` (every
+    floor met), `composer check:install` (nine targets) and `composer
+    check:split`. Lava Notes, upgraded against this branch, needed exactly one
+    change: a test asserting 404 for a traversal attempt now asserts 400.
+
+    **Disclosure is the maintainer's to decide** and is not part of this entry:
+    what to publish as an advisory, for which version ranges, and whether to
+    request a CVE.
