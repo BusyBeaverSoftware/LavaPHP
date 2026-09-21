@@ -25,9 +25,10 @@ use Composer\InstalledVersions;
  * method, while reflection cannot be: it reads the installed code itself. The
  * whole sweep measures in tens of milliseconds, so there is nothing to cache.
  *
- * @phpstan-type ApiMethod array{name: string, static: bool, signature: string, summary: string|null, at: string}
+ * @phpstan-type ApiMethod array{name: string, static: bool, abstract: bool, signature: string, summary: string|null, at: string}
+ * @phpstan-type ApiProperty array{name: string, type: string|null, readonly: bool, static: bool, summary: string|null}
  * @phpstan-type ApiConstant array{name: string, value: string}
- * @phpstan-type ApiSymbol array{pack: string, name: string, kind: string, at: string, summary: string|null, extends: string|null, implements: list<string>, cases: list<string>, constants: list<ApiConstant>, methods: list<ApiMethod>, example: string|null}
+ * @phpstan-type ApiSymbol array{pack: string, name: string, kind: string, abstract: bool, at: string, summary: string|null, extends: string|null, implements: list<string>, cases: list<string>, constants: list<ApiConstant>, constructor: string|null, properties: list<ApiProperty>, methods: list<ApiMethod>, example: string|null}
  * @phpstan-type ApiPack array{pack: string, package: string, version: string|null, feature: string|null, enabled: bool|null, types: int, methods: int}
  */
 final readonly class ApiIndex
@@ -160,8 +161,10 @@ final readonly class ApiIndex
     /**
      * Why this class is not part of the API, or null when it is.
      *
-     * The order is the order a reader would apply: a trait is never API, then
-     * the pack's own path rules, then the per-class override. Each answer is a
+     * The order is the order a reader would apply: a trait is never API; then
+     * `@internal` on the class, which the author wrote about this class and so
+     * outranks anything positional; then a declared extension point, which is
+     * API wherever it sits; then the pack's path rules. Each answer is a
      * sentence rather than a code, because it is what the drift guard prints
      * when a new class lands somewhere unaccounted for.
      *
@@ -173,15 +176,19 @@ final readonly class ApiIndex
             return 'a trait is an implementation detail of the classes that use it';
         }
 
+        $doc = (new \ReflectionClass($class))->getDocComment();
+        if (is_string($doc) && str_contains($doc, '@internal')) {
+            return 'marked @internal';
+        }
+
+        if (isset($surface->extensionPoints()[$class])) {
+            return null;
+        }
+
         foreach ($surface->exclusions() as $prefix => $reason) {
             if (str_starts_with($relative, $prefix)) {
                 return $reason;
             }
-        }
-
-        $doc = (new \ReflectionClass($class))->getDocComment();
-        if (is_string($doc) && str_contains($doc, '@internal')) {
-            return 'marked @internal';
         }
 
         return null;
@@ -236,14 +243,23 @@ final readonly class ApiIndex
     {
         $reflection = new \ReflectionClass($class);
         $file = $reflection->getFileName();
+        $abstract = $reflection->isAbstract() && !$reflection->isInterface();
 
         $methods = [];
-        foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+        foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC | \ReflectionMethod::IS_PROTECTED) as $method) {
             // Declared here only: an inherited method belongs to the class that
             // declares it, and repeating it would list the same signature under
             // every subclass. `extends` and `implements` are how a reader
-            // follows it. Magic methods are the object's mechanics, not its API.
+            // follows it. Magic methods are the object's mechanics, not its API,
+            // and a constructor is carried on its own below.
             if ($method->getDeclaringClass()->getName() !== $class || str_starts_with($method->getName(), '__')) {
+                continue;
+            }
+            // A protected method is an implementation detail — unless it is
+            // abstract on a class an app extends, where it is the contract
+            // itself: `AppCommand::inspect()` is the one method an app command
+            // must write, and a base class listed without it teaches nothing.
+            if (!$method->isPublic() && !($abstract && $method->isAbstract())) {
                 continue;
             }
             $methodDoc = $method->getDocComment();
@@ -256,9 +272,44 @@ final readonly class ApiIndex
             $methods[] = [
                 'name' => $method->getName(),
                 'static' => $method->isStatic(),
+                'abstract' => $method->isAbstract(),
                 'signature' => self::signature($method),
                 'summary' => self::summary($method->getDocComment()),
                 'at' => self::at($method->getFileName(), $appDir, $method->getStartLine()),
+            ];
+        }
+
+        // The constructor, separately, because `new` is not a method call and an
+        // index that hid it read as "a class you receive" for every class you
+        // actually construct — `LavaProblem` among them, which an app subclasses
+        // to raise a problem of its own (Lava Notes round 4, R4-G9).
+        $made = $reflection->getConstructor();
+        $constructor = $made !== null && $made->isPublic() && $made->getDeclaringClass()->getName() === $class
+            ? self::signature($made)
+            : null;
+
+        // Public properties, which a framework built on `final readonly` value
+        // objects keeps most of its surface in: without these, `AppContext` — four
+        // promoted properties and no methods — printed "(none)", and the reader
+        // guessed a name and got a failed boot (round 4, R4-B3).
+        $properties = [];
+        foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
+            if ($property->getDeclaringClass()->getName() !== $class) {
+                continue;
+            }
+            $propertyDoc = $property->getDocComment();
+            if (is_string($propertyDoc) && str_contains($propertyDoc, '@internal')) {
+                continue;
+            }
+            $properties[] = [
+                'name' => $property->getName(),
+                'type' => self::type($property->getType()),
+                'readonly' => $property->isReadOnly(),
+                'static' => $property->isStatic(),
+                // A promoted property is documented in the constructor's
+                // `@param`, which is where this framework's value objects say
+                // what each field means.
+                'summary' => self::summary($propertyDoc) ?? self::promotedSummary($made, $property->getName()),
             ];
         }
 
@@ -287,19 +338,22 @@ final readonly class ApiIndex
                 $reflection->isInterface() => 'interface',
                 default => 'class',
             },
+            'abstract' => $abstract,
             'at' => self::at($file, $appDir, null),
             'summary' => self::summary($reflection->getDocComment()),
             'extends' => $parent === false ? null : $parent->getName(),
             'implements' => $reflection->getInterfaceNames(),
             'cases' => $cases,
             'constants' => $constants,
+            'constructor' => $constructor,
+            'properties' => $properties,
             'methods' => $methods,
             'example' => $example,
         ];
     }
 
     /**
-     * Indexes every `Lava\` type an indexed signature names but the payload
+     * Indexes every `Lava\` type the indexed surface names but the payload
      * lacks, and reports the ones it cannot.
      *
      * Without this the index would answer a question with a type the reader
@@ -308,6 +362,10 @@ final readonly class ApiIndex
      * A type named by the API IS part of the API, whatever directory it sits
      * in — except one marked `@internal`, which is a contradiction the author
      * has to resolve, so it is collected for the guard rather than papered over.
+     *
+     * "Names" means a method signature, a constructor, or a public property's
+     * type: all three are ways an app meets a type, and a property-blind scan
+     * would leave a `final readonly` value object's fields unaccounted for.
      *
      * @param array<string, ApiSymbol> $symbols
      * @param array<string, string> $excluded
@@ -327,22 +385,20 @@ final readonly class ApiIndex
         do {
             $added = false;
             foreach ($symbols as $symbol) {
-                foreach ($symbol['methods'] as $method) {
-                    foreach (self::lavaNamesIn($method['signature']) as $named) {
-                        if (isset($symbols[$named])) {
-                            continue;
-                        }
-                        if (($excluded[$named] ?? null) === 'marked @internal') {
-                            $leaks[$named] = $symbol['name'] . '::' . $method['name'] . '()';
-                            continue;
-                        }
-                        $surface = self::surfaceFor($named, $byPrefix);
-                        if ($surface === null || !class_exists($named) && !interface_exists($named) && !enum_exists($named)) {
-                            continue;
-                        }
-                        $symbols[$named] = self::symbol($surface, $named, $appDir, null);
-                        $added = true;
+                foreach (self::namedTypesIn($symbol) as $named => $where) {
+                    if (isset($symbols[$named])) {
+                        continue;
                     }
+                    if (($excluded[$named] ?? null) === 'marked @internal') {
+                        $leaks[$named] = $where;
+                        continue;
+                    }
+                    $surface = self::surfaceFor($named, $byPrefix);
+                    if ($surface === null || !class_exists($named) && !interface_exists($named) && !enum_exists($named)) {
+                        continue;
+                    }
+                    $symbols[$named] = self::symbol($surface, $named, $appDir, null);
+                    $added = true;
                 }
             }
         } while ($added);
@@ -351,6 +407,44 @@ final readonly class ApiIndex
         ksort($leaks);
 
         return [$symbols, $leaks];
+    }
+
+    /**
+     * Every `Lava\` type one symbol exposes, mapped to where it exposes it.
+     *
+     * First mention wins, because the guard's message only needs one place to
+     * send the author — and a type named by three methods is one decision, not
+     * three.
+     *
+     * @param ApiSymbol $symbol
+     * @return array<string, string> type => `Class::method()`, `Class::__construct()` or `Class::$property`
+     */
+    private static function namedTypesIn(array $symbol): array
+    {
+        $found = [];
+
+        if ($symbol['constructor'] !== null) {
+            foreach (self::lavaNamesIn($symbol['constructor']) as $named) {
+                $found[$named] ??= $symbol['name'] . '::__construct()';
+            }
+        }
+
+        foreach ($symbol['properties'] as $property) {
+            if ($property['type'] === null) {
+                continue;
+            }
+            foreach (self::lavaNamesIn($property['type']) as $named) {
+                $found[$named] ??= $symbol['name'] . '::$' . $property['name'];
+            }
+        }
+
+        foreach ($symbol['methods'] as $method) {
+            foreach (self::lavaNamesIn($method['signature']) as $named) {
+                $found[$named] ??= $symbol['name'] . '::' . $method['name'] . '()';
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -388,6 +482,10 @@ final readonly class ApiIndex
 
     /**
      * A method as it is written, fully qualified: what an agent has to type.
+     *
+     * The modifiers lead, because `abstract protected inspect(…)` is an
+     * instruction — write this — while `inspect(…)` alone reads as something to
+     * call.
      */
     private static function signature(\ReflectionMethod $method): string
     {
@@ -408,9 +506,37 @@ final readonly class ApiIndex
 
         $returns = self::type($method->getReturnType());
 
-        return ($method->isStatic() ? 'static ' : '')
+        return ($method->isAbstract() ? 'abstract ' : '')
+            . ($method->isProtected() ? 'protected ' : '')
+            . ($method->isStatic() ? 'static ' : '')
             . $method->getName() . '(' . implode(', ', $parameters) . ')'
             . ($returns === null ? '' : ': ' . $returns);
+    }
+
+    /**
+     * What a constructor's `@param` says about one promoted property.
+     *
+     * A promoted property carries no docblock of its own, so this is where a
+     * value object's fields are actually documented: `@param list<string>
+     * $globalMiddleware class-strings from app/Middleware.php`. Only the first
+     * line is taken — the rest of a wrapped `@param` is reasoning, and this is a
+     * column in a table.
+     */
+    private static function promotedSummary(?\ReflectionMethod $constructor, string $property): ?string
+    {
+        $doc = $constructor?->getDocComment();
+        if (!is_string($doc)) {
+            return null;
+        }
+
+        $pattern = '/@param\s+\S+\s+\$' . preg_quote($property, '/') . '\s+([^\r\n]+)/';
+        if (preg_match($pattern, $doc, $matches) !== 1) {
+            return null;
+        }
+
+        $text = trim((string) preg_replace('#\s*\*/?\s*$#D', '', $matches[1]));
+
+        return $text === '' ? null : mb_strimwidth($text, 0, 200, '…');
     }
 
     private static function type(?\ReflectionType $type): ?string
@@ -434,14 +560,16 @@ final readonly class ApiIndex
      *
      * `var_export` is the only total renderer for a mixed value, and its
      * multi-line arrays would break the one-line signature, so they are
-     * collapsed — a default is read, not copied.
+     * collapsed. `NULL` is lowercased for the same reason the types are
+     * qualified: a signature is copied, and `null` is how PHP is written here.
      */
     private static function render(mixed $value): string
     {
         $exported = var_export($value, true);
         $exported = (string) preg_replace('/\s+/', ' ', $exported);
+        $exported = str_replace(['array ( )', 'array ( ', ' )'], ['[]', '[', ']'], $exported);
 
-        return str_replace(['array ( )', 'array ( ', ' )'], ['[]', '[', ']'], $exported);
+        return $value === null ? 'null' : $exported;
     }
 
     /**

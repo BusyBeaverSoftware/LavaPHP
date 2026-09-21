@@ -8,8 +8,10 @@ namespace Lava\Core\Map;
  * `lavaphp/core`'s public surface: what an app calls, and what it does not.
  *
  * Three directories are ruled out wholesale, each because something else in the
- * repository already owns that list, and the fourth kind of internal — a class
- * in a directory that is otherwise API — carries `@internal` on itself.
+ * repository already owns that list; a class in a directory that is otherwise
+ * API carries `@internal` on itself; and one class inside an excluded directory
+ * is named an extension point, because `Console/Commands/` holds both the
+ * concrete commands `lava list` owns and the base class an app extends.
  */
 final class CoreApiSurface extends ApiSurface
 {
@@ -61,6 +63,13 @@ final class CoreApiSurface extends ApiSurface
             'Problem/' => 'every problem is catalogued in docs/problem-codes.md, with its code, the class, when it is raised and the fix — a second list here would be the one that rots',
             'Boot/Steps/' => 'boot steps run in a fixed order chosen by the kernel; nothing an app writes calls one',
             'Console/Commands/' => '`lava list` names every command with its flags and the schema its envelope claims',
+        ];
+    }
+
+    public function extensionPoints(): array
+    {
+        return [
+            \Lava\Core\Console\Commands\AppCommand::class => 'app/Commands.php extends it, and the generated AGENTS.md says so; `lava list` names the commands that exist, not the class you write one from',
         ];
     }
 

@@ -97,6 +97,113 @@ final class ApiCommandTest extends TestCase
         self::assertContains(\Lava\Core\Routing\Router::class, $names, 'Router::redirect() should surface');
     }
 
+    /**
+     * A value object's whole API is its properties, and the index used to be
+     * blind to them: `AppContext` is four promoted properties and no methods, so
+     * it answered "(none)" and a reader guessed a name and broke their boot
+     * (Lava Notes round 4, R4-B3).
+     */
+    public function testAValueObjectAnswersWithItsPropertiesAndItsConstructor(): void
+    {
+        $data = self::console()->json('api', 'AppContext')->data();
+
+        self::assertSame('class', $data['mode']);
+        $context = $data['symbols'][0];
+        self::assertSame(\Lava\Core\Boot\AppContext::class, $context['name']);
+        self::assertSame([], $context['methods'], 'it has none — which is exactly why properties had to be indexed');
+
+        $properties = array_column($context['properties'], null, 'name');
+        self::assertSame(['appDir', 'env', 'config', 'features'], array_keys($properties));
+        self::assertSame('string', $properties['appDir']['type']);
+        self::assertTrue($properties['appDir']['readonly']);
+        self::assertSame(\Lava\Core\Config\Config::class, $properties['config']['type']);
+
+        self::assertIsString($context['constructor']);
+        self::assertStringContainsString('string $appDir', $context['constructor']);
+        self::assertFalse($context['abstract']);
+
+        // And the text view shows them, rather than a bare "(none)".
+        $text = self::console()->run('api', 'AppContext')->output();
+        self::assertStringContainsString('readonly string $appDir', $text);
+        self::assertStringContainsString('construct: new AppContext(', $text);
+    }
+
+    public function testAPropertyNameResolvesLikeAMethodName(): void
+    {
+        // `--search=routeName` and `api routeName` both answered 0 matches, for
+        // the property every middleware that dispatches on a route needs.
+        $data = self::console()->json('api', 'routeName')->data();
+
+        self::assertSame('property', $data['mode']);
+        self::assertSame(\Lava\Core\Routing\RouteArgs::class, $data['symbols'][0]['name']);
+        self::assertSame(['routeName'], array_column($data['symbols'][0]['properties'], 'name'));
+        self::assertSame([], $data['symbols'][0]['methods'], 'a hit is about the property, not the class\'s other API');
+
+        $qualified = self::console()->json('api', 'RouteArgs::$routeName')->data();
+        self::assertSame('property', $qualified['mode']);
+        self::assertSame(['routeName'], array_column($qualified['symbols'][0]['properties'], 'name'));
+    }
+
+    /**
+     * An abstract class has to read as one — `LavaProblem` looked like a class
+     * you receive, so an app that wanted a problem code of its own could not see
+     * the constructor or the method it must write (round 4, R4-G9).
+     */
+    public function testAnAbstractClassIsMarkedAndCarriesWhatASubclassNeeds(): void
+    {
+        $data = self::console()->json('api', 'LavaProblem')->data();
+
+        $problem = $data['symbols'][0];
+        self::assertTrue($problem['abstract']);
+        self::assertStringContainsString('string $fix', (string) $problem['constructor']);
+        $methods = array_column($problem['methods'], null, 'name');
+        self::assertArrayHasKey('code', $methods);
+        self::assertTrue($methods['code']['abstract']);
+
+        self::assertStringContainsString('(abstract class, core)', self::console()->run('api', 'LavaProblem')->output());
+    }
+
+    public function testTheClassTheGeneratedReferenceTellsAnAppToExtendIsFindable(): void
+    {
+        // AGENTS.md says to extend AppCommand; `lava api` said the framework had
+        // no such thing, because its whole directory is `lava list`'s business.
+        $data = self::console()->json('api', 'AppCommand')->data();
+
+        self::assertSame('class', $data['mode']);
+        self::assertSame(\Lava\Core\Console\Commands\AppCommand::class, $data['symbols'][0]['name']);
+        $signatures = array_column($data['symbols'][0]['methods'], 'signature', 'name');
+        self::assertStringStartsWith('abstract protected inspect(', (string) ($signatures['inspect'] ?? ''));
+    }
+
+    /**
+     * A count of prose hits is not a count of things that exist.
+     *
+     * "1 match for session" was the words "mid-session" in a test helper's
+     * docblock — fine to read, wrong to branch on.
+     */
+    public function testASearchSaysWhetherItMatchedANameOrJustProse(): void
+    {
+        $byName = self::console()->json('api', '--search=rollout')->data();
+        self::assertSame(['name'], array_values(array_unique(array_column($byName['symbols'], 'matched'))));
+
+        $byProse = self::console()->json('api', '--search=mid-session')->data();
+        self::assertGreaterThan(0, $byProse['total']);
+        self::assertSame(['prose'], array_values(array_unique(array_column($byProse['symbols'], 'matched'))));
+        self::assertStringContainsString('prose', self::console()->run('api', '--search=mid-session')->output());
+
+        // Present in every mode, so a consumer never has to test for the key.
+        self::assertNull(self::console()->json('api', 'Router')->data()['symbols'][0]['matched']);
+    }
+
+    public function testASearchResultCanBeCopiedStraightIntoAUseStatement(): void
+    {
+        // A short name costs a second command: the round-4 build's first test run
+        // died on a class whose namespace it had to guess.
+        $text = self::console()->run('api', '--search=rollout')->output();
+
+        self::assertStringContainsString('Lava\Core\Features\Flag::rollout', $text);
+    }
+
     public function testAScopedRequestAnswersForOnePackOnly(): void
     {
         $data = self::console()->json('api', '--pack=events')->data();

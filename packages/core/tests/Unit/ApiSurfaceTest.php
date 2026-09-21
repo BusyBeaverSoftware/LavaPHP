@@ -6,6 +6,7 @@ namespace Lava\Core\Tests\Unit;
 
 use Lava\Core\Map\ApiIndex;
 use Lava\Core\Map\ApiSurface;
+use Lava\Core\Map\FrameworkReference;
 use Lava\Core\Modules\Module;
 use PHPUnit\Framework\TestCase;
 
@@ -93,6 +94,120 @@ final class ApiSurfaceTest extends TestCase
                 array_values($leaks),
             ),
         )));
+    }
+
+    /**
+     * Everything the generated reference tells an app to use must be findable.
+     *
+     * `FrameworkReference` is what `lava map` writes into every app's
+     * `AGENTS.md`, so it is the framework's own answer to "what do I extend, and
+     * what do I call?". A fourth outside build followed it to
+     * `Lava\Core\Console\Commands\AppCommand`, asked `lava api` about the class,
+     * was told the framework had nothing — `Console/Commands/` is excluded
+     * wholesale — and started writing its own. Two documents, one of them the
+     * index, disagreeing about whether a class exists is the failure this whole
+     * feature was built to end, so it is a test rather than a convention.
+     */
+    public function testEveryClassTheFrameworkReferenceNamesIsInTheIndex(): void
+    {
+        $index = self::index();
+        preg_match_all('/Lava\\\\[A-Za-z0-9_\\\\]+/', FrameworkReference::markdown(), $matches);
+        $named = array_values(array_unique($matches[0]));
+        $checked = 0;
+
+        foreach ($named as $class) {
+            if (!class_exists($class) && !interface_exists($class) && !enum_exists($class)) {
+                // Prose can name a type an app writes, or a pack that is not
+                // installed here; only real, loadable types are the index's job.
+                continue;
+            }
+            $checked++;
+            self::assertArrayHasKey($class, $index->symbols, implode("\n", [
+                "the framework reference tells an app to use {$class}, and `lava api` cannot find it.",
+                'An app reads that reference in its own AGENTS.md, so the two cannot disagree about what exists.',
+                'Either index it — name it in the pack surface\'s extensionPoints() if it sits in an',
+                'excluded directory — or stop naming it in FrameworkReference.',
+            ]));
+        }
+
+        self::assertGreaterThan(10, $checked, 'the reference named almost no framework types — is markdown() still rendering?');
+    }
+
+    /**
+     * The closed surface covers properties, not just signatures.
+     *
+     * A framework of `final readonly` value objects keeps most of its API in
+     * promoted properties: `AppContext` is four of them and no methods, and while
+     * the index was property-blind it answered "(none)" for the class and
+     * "0 matches" for `appDir`. Both are the same bug as a missing method.
+     */
+    public function testAValueObjectsPropertiesAreIndexedAndTheirTypesAreToo(): void
+    {
+        $index = self::index();
+        $withProperties = 0;
+
+        foreach ($index->symbols as $class => $symbol) {
+            $declared = array_filter(
+                (new \ReflectionClass($class))->getProperties(\ReflectionProperty::IS_PUBLIC),
+                static fn (\ReflectionProperty $p): bool => $p->getDeclaringClass()->getName() === $class
+                    && !str_contains((string) $p->getDocComment(), '@internal'),
+            );
+            self::assertSameSize(
+                $declared,
+                $symbol['properties'],
+                "{$class} declares " . count($declared) . ' public properties and the index carries ' . count($symbol['properties']),
+            );
+            if ($symbol['properties'] !== []) {
+                $withProperties++;
+            }
+
+            foreach ($symbol['properties'] as $property) {
+                foreach (self::lavaTypesIn($property['type'] ?? '') as $type) {
+                    self::assertArrayHasKey(
+                        $type,
+                        $index->symbols,
+                        "{$class}::\${$property['name']} is typed {$type}, which the index does not carry — a reader cannot look it up.",
+                    );
+                }
+            }
+        }
+
+        self::assertGreaterThan(20, $withProperties, 'almost nothing carries properties — is the reflection still reading them?');
+    }
+
+    /**
+     * A class an app extends has to read as one: `abstract`, its constructor, and
+     * the abstract methods a subclass must write.
+     */
+    public function testAnAbstractClassSaysSoAndShowsWhatASubclassMustWrite(): void
+    {
+        $index = self::index();
+
+        $problem = $index->symbols[\Lava\Core\Problem\LavaProblem::class] ?? null;
+        self::assertNotNull($problem, 'LavaProblem is what an app subclasses to raise a problem of its own');
+        self::assertTrue($problem['abstract']);
+        self::assertIsString($problem['constructor'], 'an app cannot subclass what it cannot construct');
+        self::assertStringContainsString('string $fix', $problem['constructor']);
+        self::assertContains('code', array_column($problem['methods'], 'name'), 'code() is the one method a subclass must write');
+
+        $command = $index->symbols[\Lava\Core\Console\Commands\AppCommand::class] ?? null;
+        self::assertNotNull($command, 'the generated reference tells an app to extend AppCommand');
+        self::assertTrue($command['abstract']);
+        $inspect = array_column($command['methods'], 'signature', 'name')['inspect'] ?? null;
+        self::assertIsString($inspect, 'inspect() is protected and abstract — the contract, not plumbing');
+        self::assertStringStartsWith('abstract protected inspect(', $inspect);
+    }
+
+    /**
+     * Every `Lava\` type a string names.
+     *
+     * @return list<string>
+     */
+    private static function lavaTypesIn(string $type): array
+    {
+        preg_match_all('/Lava\\\\[A-Za-z0-9_\\\\]+/', $type, $matches);
+
+        return array_values(array_unique($matches[0]));
     }
 
     public function testEveryEntryPointIsIndexedAndCarriesItsExample(): void

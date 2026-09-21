@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lavaphp.dev/schemas/lava.api/1.json",
+  "$id": "https://lavaphp.dev/schemas/lava.api/2.json",
   "title": "lava api --json",
-  "description": "The framework's own public API, compiled by reflecting over the installed packages — not the app's declarations, which are `lava map` and `lava describe`. Every class under a package's src/ is indexed, promoted because an indexed signature names it, or excluded by a named rule the pack declares, and a drift guard fails the build on a fourth case: that is what makes an empty `symbols` mean 'the framework has nothing by that name' rather than 'nothing was found'. Answers without booting the app, because an agent asking what it can call must not be told to fix the boot first.",
+  "description": "The framework's own public API, compiled by reflecting over the installed packages — not the app's declarations, which are `lava map` and `lava describe`. Every class under a package's src/ is indexed, promoted because the indexed surface names it, or excluded by a named rule the pack declares, and a drift guard fails the build on a fourth case: that is what makes an empty `symbols` mean 'the framework has nothing by that name' rather than 'nothing was found'. Answers without booting the app, because an agent asking what it can call must not be told to fix the boot first. Since /1 a symbol also carries its public properties, its constructor, whether it is abstract, and — for a search — whether it matched by name or only in prose: four ways /1 could answer 'nothing' about something that exists.",
   "allOf": [
     { "$ref": "https://lavaphp.dev/schemas/lava-envelope/1.json#/$defs/envelope" },
     {
       "properties": {
-        "schema": { "const": "lava.api/1" },
+        "schema": { "const": "lava.api/2" },
         "command": { "const": "api" },
         "data": {
           "type": "object",
@@ -18,8 +18,8 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }]
             },
             "mode": {
-              "enum": ["roster", "class", "method", "search", "pack", "all"],
-              "description": "How the query was resolved, so a consumer knows what `symbols` holds. `class` is an exact class-name match (one entry, in full); `method` is an exact method-name match, each entry cut down to the matching methods; `search` is a substring match over names and summaries, also cut down; `pack` and `all` are whole surfaces; `roster` carries no symbols at all."
+              "enum": ["roster", "class", "method", "property", "search", "pack", "all"],
+              "description": "How the query was resolved, so a consumer knows what `symbols` holds. `class` is an exact class-name match (one entry, in full); `method` and `property` are exact member-name matches, each entry cut down to the matching members; `search` is a substring match over names and summaries, also cut down; `pack` and `all` are whole surfaces; `roster` carries no symbols at all."
             },
             "total": {
               "type": "integer",
@@ -62,11 +62,19 @@
               "description": "The matching classes, interfaces and enums, sorted by name. Empty in `roster` mode, and empty with `total: 0` when nothing matches — which, over a closed surface, is an answer.",
               "items": {
                 "type": "object",
-                "required": ["pack", "name", "kind", "at", "summary", "extends", "implements", "cases", "constants", "methods", "example"],
+                "required": ["pack", "name", "kind", "abstract", "at", "summary", "extends", "implements", "cases", "constants", "constructor", "properties", "methods", "example", "matched"],
                 "properties": {
                   "pack": { "type": "string" },
                   "name": { "type": "string", "description": "Fully qualified, as it must be written or imported." },
                   "kind": { "enum": ["class", "interface", "enum"] },
+                  "abstract": {
+                    "type": "boolean",
+                    "description": "True for a class an app extends rather than constructs — `LavaProblem`, `AppCommand`. Without this an abstract base read as a class you receive, which is how a reader ends up writing their own."
+                  },
+                  "matched": {
+                    "description": "Why this symbol is in a search's results: `name` when a class, method or property is called that, `prose` when only a summary mentions the word. Null in every other mode. A count of prose matches is not a count of things that exist, and an agent branching on `total` needs to be able to tell.",
+                    "anyOf": [{ "enum": ["name", "prose"] }, { "type": "null" }]
+                  },
                   "at": { "type": "string", "description": "`pack:src/File.php`, the same spelling the project map uses, so a path reads the same however the package is installed." },
                   "summary": {
                     "description": "The first sentence of the docblock, or null when it has none.",
@@ -91,16 +99,43 @@
                       "additionalProperties": false
                     }
                   },
-                  "methods": {
+                  "constructor": {
+                    "description": "The public constructor this class declares, rendered like a signature, or null when it has none or inherits one. `new` is not a method call, and a class whose constructor was hidden read as one you could only receive.",
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
+                  "properties": {
                     "type": "array",
-                    "description": "Public methods this class declares — not inherited ones, which belong to the class that declares them, reachable through `extends` and `implements`. In `method` and `search` modes this holds only the matching methods.",
+                    "description": "Public properties this class declares, including promoted readonly ones — where a framework of value objects keeps most of its surface. A class with four promoted properties and no methods used to report nothing at all. In `property` and `search` modes this holds only the matching ones.",
                     "items": {
                       "type": "object",
-                      "required": ["name", "static", "signature", "summary", "at"],
+                      "required": ["name", "type", "readonly", "static", "summary"],
+                      "properties": {
+                        "name": { "type": "string", "description": "Without the `$`." },
+                        "type": {
+                          "description": "The declared type, fully qualified, or null when the property is untyped.",
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
+                        },
+                        "readonly": { "type": "boolean" },
+                        "static": { "type": "boolean" },
+                        "summary": {
+                          "description": "The property's own docblock, or — for a promoted one, which cannot have its own — the first line of the constructor's matching `@param`, which is where these are documented.",
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "methods": {
+                    "type": "array",
+                    "description": "Public methods this class declares — not inherited ones, which belong to the class that declares them, reachable through `extends` and `implements`. An abstract class also carries its protected abstract methods, because those are the contract an app implements rather than plumbing. In `method` and `search` modes this holds only the matching methods.",
+                    "items": {
+                      "type": "object",
+                      "required": ["name", "static", "abstract", "signature", "summary", "at"],
                       "properties": {
                         "name": { "type": "string" },
                         "static": { "type": "boolean" },
-                        "signature": { "type": "string", "description": "The method as it must be called, with fully qualified types and defaults: `static rollout(int $percentage): Lava\\Core\\Features\\Flag`." },
+                        "abstract": { "type": "boolean", "description": "True for a method a subclass must write." },
+                        "signature": { "type": "string", "description": "The method as it is written, with fully qualified types and defaults, modifiers first: `static rollout(int $percentage): Lava\\Core\\Features\\Flag`, `abstract protected inspect(…): int`." },
                         "summary": {
                           "description": "The first sentence of the method's docblock, or null. Roughly a third of methods carry one; the class summary is the fallback a reader gets in the text view.",
                           "anyOf": [{ "type": "string" }, { "type": "null" }]

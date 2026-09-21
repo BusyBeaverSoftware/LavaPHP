@@ -117,6 +117,11 @@ final class ApiCommand extends Command
         $total = $mode === 'roster' ? count($symbols) : count($matches);
         $shown = $mode === 'search' ? array_slice($matches, 0, self::LIMIT) : $matches;
 
+        // `matched` is present on every symbol, in every mode, because a
+        // consumer that has to test for a key cannot tell "not a search" from
+        // "the search did not say". Only a search sets it.
+        $shown = array_map(static fn (array $symbol): array => $symbol + ['matched' => null], $shown);
+
         $io->data('query', $query ?? ($pack !== null ? $pack : null));
         $io->data('mode', $mode);
         $io->data('total', $total);
@@ -184,10 +189,14 @@ final class ApiCommand extends Command
     {
         if (!$forceSearch) {
             if (str_contains($query, '::')) {
-                [$class, $method] = explode('::', $query, 2);
-                $found = self::methodMatches($symbols, $method, $class);
+                [$class, $member] = explode('::', $query, 2);
+                $found = self::methodMatches($symbols, $member, $class);
                 if ($found !== []) {
                     return ['method', $found];
+                }
+                $property = self::propertyMatches($symbols, ltrim($member, '$'), $class);
+                if ($property !== []) {
+                    return ['property', $property];
                 }
             }
 
@@ -199,6 +208,14 @@ final class ApiCommand extends Command
             $byMethod = self::methodMatches($symbols, $query, null);
             if ($byMethod !== []) {
                 return ['method', $byMethod];
+            }
+
+            // A property name, last among the exact matches and before any
+            // search: in a framework of `final readonly` value objects, `appDir`
+            // and `routeName` are the question as often as a method name is.
+            $byProperty = self::propertyMatches($symbols, ltrim($query, '$'), null);
+            if ($byProperty !== []) {
+                return ['property', $byProperty];
             }
         }
 
@@ -263,9 +280,46 @@ final class ApiCommand extends Command
     }
 
     /**
-     * Substring search over method names, class names and summaries — the
-     * corpus a reader's word could plausibly be in. A class hit keeps all its
-     * methods; a method hit keeps the matching ones.
+     * Symbols carrying a public property of exactly this name, cut down to it.
+     *
+     * @param array<string, array<string, mixed>> $symbols
+     * @return array<string, array<string, mixed>>
+     */
+    private static function propertyMatches(array $symbols, string $property, ?string $class): array
+    {
+        $wanted = strtolower($property);
+        $onClass = $class === null ? null : strtolower(ltrim($class, '\\'));
+        $found = [];
+
+        foreach ($symbols as $name => $symbol) {
+            if ($onClass !== null && !self::isNamed($name, $onClass)) {
+                continue;
+            }
+            $properties = is_array($symbol['properties'] ?? null) ? $symbol['properties'] : [];
+            $hits = array_values(array_filter(
+                $properties,
+                static fn (mixed $p): bool => is_array($p) && is_string($p['name'] ?? null) && strtolower($p['name']) === $wanted,
+            ));
+            if ($hits !== []) {
+                // The methods go too: a hit is about the property, and a value
+                // object's other fields are the context for it, not noise.
+                $found[$name] = ['properties' => $hits, 'methods' => []] + $symbol;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Substring search over the names — class, method, property — and over the
+     * summaries, which are two different answers and are labelled as such.
+     *
+     * A name match is the thing itself; a prose match is a sentence that happens
+     * to contain the word, so "1 match for session" could be the word
+     * "mid-session" in an unrelated helper's docblock. Never misleading to read,
+     * and misleading to COUNT — an agent branching on `total` was the reader
+     * this distinction is for (Lava Notes round 4). Each symbol therefore
+     * carries `matched`, and the two groups are counted separately.
      *
      * @param array<string, array<string, mixed>> $symbols
      * @return array<string, array<string, mixed>>
@@ -277,27 +331,61 @@ final class ApiCommand extends Command
 
         foreach ($symbols as $name => $symbol) {
             $summary = is_string($symbol['summary'] ?? null) ? $symbol['summary'] : '';
-            $classHit = str_contains(strtolower($name), $needle) || str_contains(strtolower($summary), $needle);
+            $nameHit = str_contains(strtolower($name), $needle);
+            $proseHit = str_contains(strtolower($summary), $needle);
 
-            $methods = is_array($symbol['methods']) ? $symbol['methods'] : [];
-            $hits = array_values(array_filter($methods, static function (mixed $m) use ($needle): bool {
-                if (!is_array($m)) {
-                    return false;
-                }
-                $name = is_string($m['name'] ?? null) ? $m['name'] : '';
-                $summary = is_string($m['summary'] ?? null) ? $m['summary'] : '';
+            $methods = self::membersMatching($symbol['methods'] ?? null, $needle);
+            $properties = self::membersMatching($symbol['properties'] ?? null, $needle);
 
-                return str_contains(strtolower($name), $needle) || str_contains(strtolower($summary), $needle);
-            }));
-
-            if ($classHit) {
-                $found[$name] = $symbol;
-            } elseif ($hits !== []) {
-                $found[$name] = ['methods' => $hits] + $symbol;
+            if ($nameHit || $proseHit) {
+                // A class hit keeps the whole class: the reader asked about it,
+                // not about one of its members.
+                $found[$name] = ['matched' => $nameHit ? 'name' : 'prose'] + $symbol;
+                continue;
             }
+            if ($methods['hits'] === [] && $properties['hits'] === []) {
+                continue;
+            }
+            $found[$name] = [
+                'matched' => $methods['byName'] || $properties['byName'] ? 'name' : 'prose',
+                'methods' => $methods['hits'],
+                'properties' => $properties['hits'],
+            ] + $symbol;
         }
 
         return $found;
+    }
+
+    /**
+     * The members whose name or summary contains the needle, and whether any of
+     * them matched by NAME.
+     *
+     * The member type is `array<mixed>` rather than `array<string, mixed>`
+     * because it arrives through the payload as `mixed`: being an array is all
+     * that is proven, and every read below states what it expects.
+     *
+     * @return array{hits: list<array<mixed>>, byName: bool}
+     */
+    private static function membersMatching(mixed $members, string $needle): array
+    {
+        $hits = [];
+        $byName = false;
+
+        foreach (is_array($members) ? $members : [] as $member) {
+            if (!is_array($member)) {
+                continue;
+            }
+            $name = is_string($member['name'] ?? null) ? $member['name'] : '';
+            $summary = is_string($member['summary'] ?? null) ? $member['summary'] : '';
+            $named = str_contains(strtolower($name), $needle);
+            if (!$named && !str_contains(strtolower($summary), $needle)) {
+                continue;
+            }
+            $byName = $byName || $named;
+            $hits[] = $member;
+        }
+
+        return ['hits' => $hits, 'byName' => $byName];
     }
 
     /**
@@ -313,38 +401,96 @@ final class ApiCommand extends Command
             return self::detail($symbols[0]);
         }
 
+        // Fully qualified, not shortened: a result a reader cannot `use` costs
+        // them a second command, which is what happened to the round-4 builder
+        // when its first test run named a class that does not exist.
+        $search = $mode === 'search';
         $rows = [];
         foreach ($symbols as $symbol) {
-            $methods = is_array($symbol['methods']) ? $symbol['methods'] : [];
             $name = is_string($symbol['name']) ? $symbol['name'] : '';
-            if ($methods === []) {
-                $rows[] = [self::short($name), self::text($symbol['pack']), '', self::text($symbol['summary'] ?? null)];
-                continue;
-            }
-            foreach ($methods as $method) {
+            $matched = $search ? [self::text($symbol['matched'] ?? null)] : [];
+            $members = 0;
+
+            foreach (is_array($symbol['methods'] ?? null) ? $symbol['methods'] : [] as $method) {
                 if (!is_array($method)) {
                     continue;
                 }
-                $rows[] = [
-                    self::short($name) . '::' . self::text($method['name'] ?? null),
+                $members++;
+                $rows[] = array_merge([
+                    $name . '::' . self::text($method['name'] ?? null),
                     self::text($symbol['pack']),
                     self::text($method['signature'] ?? null),
                     self::text($method['summary'] ?? $symbol['summary'] ?? null),
-                ];
+                ], $matched);
+            }
+
+            foreach (is_array($symbol['properties'] ?? null) ? $symbol['properties'] : [] as $property) {
+                if (!is_array($property)) {
+                    continue;
+                }
+                $members++;
+                $rows[] = array_merge([
+                    $name . '::$' . self::text($property['name'] ?? null),
+                    self::text($symbol['pack']),
+                    self::property($property),
+                    self::text($property['summary'] ?? $symbol['summary'] ?? null),
+                ], $matched);
+            }
+
+            if ($members === 0) {
+                $rows[] = array_merge([$name, self::text($symbol['pack']), '', self::text($symbol['summary'] ?? null)], $matched);
             }
         }
 
         $what = $query ?? $pack ?? 'the framework';
         $header = sprintf(
-            "%d %s for \"%s\"%s\n\n",
+            "%d %s for \"%s\"%s%s\n\n",
             $total,
             $total === 1 ? 'match' : 'matches',
             $what,
+            $search ? self::byWhat($symbols) : '',
             count($symbols) < $total ? sprintf(' (showing %d — narrow it, or use --json)', count($symbols)) : '',
         );
 
-        return $header . (new Table(['symbol', 'pack', 'signature', 'what it does'], $rows))->render()
+        $columns = ['symbol', 'pack', 'signature', 'what it does'];
+
+        return $header . (new Table($search ? [...$columns, 'match'] : $columns, $rows))->render()
             . "\nOne class in full: lava api <ClassName>\n";
+    }
+
+    /**
+     * ` (2 by name, 1 in prose)`, or nothing when they are all one kind.
+     *
+     * A count is what an agent branches on, and a word appearing in a sentence
+     * is not the same answer as a thing being called that.
+     *
+     * @param list<array<string, mixed>> $symbols
+     */
+    private static function byWhat(array $symbols): string
+    {
+        $byName = count(array_filter($symbols, static fn (array $s): bool => ($s['matched'] ?? null) === 'name'));
+        $byProse = count($symbols) - $byName;
+
+        if ($byName === 0 || $byProse === 0) {
+            return '';
+        }
+
+        return sprintf(' (%d by name, %d in prose)', $byName, $byProse);
+    }
+
+    /**
+     * `readonly string $appDir`, as the class declares it.
+     *
+     * @param array<mixed> $property one entry of a symbol's `properties`, as the payload carries it
+     */
+    private static function property(array $property): string
+    {
+        return trim(
+            (($property['static'] ?? false) === true ? 'static ' : '')
+            . (($property['readonly'] ?? false) === true ? 'readonly ' : '')
+            . self::text($property['type'] ?? null)
+            . ' $' . self::text($property['name'] ?? null),
+        );
     }
 
     private static function roster(ApiIndex $index): string
@@ -376,7 +522,10 @@ final class ApiCommand extends Command
     /** @param array<string, mixed> $symbol */
     private static function detail(array $symbol): string
     {
-        $out = self::text($symbol['name'] ?? null) . "  (" . self::text($symbol['kind'] ?? null) . ', ' . self::text($symbol['pack'] ?? null) . ")\n"
+        // `abstract` leads the kind, because it changes what the reader does with
+        // the class: extend it, rather than call it.
+        $kind = (($symbol['abstract'] ?? false) === true ? 'abstract ' : '') . self::text($symbol['kind'] ?? null);
+        $out = self::text($symbol['name'] ?? null) . "  ({$kind}, " . self::text($symbol['pack'] ?? null) . ")\n"
             . self::text($symbol['at'] ?? null) . "\n";
 
         $summary = $symbol['summary'] ?? null;
@@ -409,6 +558,23 @@ final class ApiCommand extends Command
             $out .= "\n" . (new Table(['constant', 'value'], $rows))->render();
         }
 
+        $constructor = $symbol['constructor'] ?? null;
+        if (is_string($constructor)) {
+            $out .= "\nconstruct: new " . self::short(self::text($symbol['name'] ?? null))
+                . '(' . self::constructorArguments($constructor) . ")\n";
+        }
+
+        $properties = is_array($symbol['properties'] ?? null) ? $symbol['properties'] : [];
+        $rows = [];
+        foreach ($properties as $property) {
+            if (is_array($property)) {
+                $rows[] = [self::property($property), self::text($property['summary'] ?? null)];
+            }
+        }
+        if ($rows !== []) {
+            $out .= "\n" . (new Table(['property', 'what it holds'], $rows))->render();
+        }
+
         $methods = is_array($symbol['methods'] ?? null) ? $symbol['methods'] : [];
         $rows = [];
         foreach ($methods as $method) {
@@ -416,7 +582,14 @@ final class ApiCommand extends Command
                 $rows[] = [self::text($method['signature'] ?? null), self::text($method['summary'] ?? null)];
             }
         }
-        $out .= "\n" . (new Table(['method', 'what it does'], $rows))->render();
+        if ($rows !== []) {
+            $out .= "\n" . (new Table(['method', 'what it does'], $rows))->render();
+        } elseif ($properties === [] && $constants === [] && $cases === [] && !is_string($constructor)) {
+            // Nothing at all to list is a real answer for a marker interface, and
+            // it has to read as one: an empty table under a class that HAS
+            // properties is what made a reader think it had no API.
+            $out .= "\nNo public members: this type is named in signatures rather than called.\n";
+        }
 
         $example = $symbol['example'] ?? null;
         if (is_string($example)) {
@@ -431,6 +604,20 @@ final class ApiCommand extends Command
         $at = strrpos($class, '\\');
 
         return $at === false ? $class : substr($class, $at + 1);
+    }
+
+    /**
+     * `__construct(string $a, int $b)` as `string $a, int $b`, so the line reads
+     * as the `new` a reader writes rather than as a method they call.
+     */
+    private static function constructorArguments(string $constructor): string
+    {
+        $open = strpos($constructor, '(');
+        $close = strrpos($constructor, ')');
+
+        return $open === false || $close === false || $close <= $open
+            ? $constructor
+            : substr($constructor, $open + 1, $close - $open - 1);
     }
 
     private static function text(mixed $value): string

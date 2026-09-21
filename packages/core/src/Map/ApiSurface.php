@@ -67,6 +67,30 @@ abstract class ApiSurface
     abstract public function exclusions(): array;
 
     /**
+     * Classes that are API wherever they sit, each with why — the one override
+     * that points the other way from `@internal`.
+     *
+     * A path rule is the right shape for a directory of plumbing and the wrong
+     * shape for a directory that holds plumbing plus one extension point:
+     * `Console/Commands/` is `lava list`'s business, except for `AppCommand`,
+     * which is the class the generated `AGENTS.md` tells an app to extend. A
+     * fourth outside build asked `lava api AppCommand`, was told the framework
+     * had nothing, and began writing its own — by the method this index exists
+     * to replace. So an exception is declarable, and `ApiSurfaceTest` proves the
+     * set is sufficient: every `Lava\` type the framework reference names must be
+     * indexed.
+     *
+     * Checked before the path rules and after `@internal`, so a class cannot be
+     * both an extension point and internal without the author saying which.
+     *
+     * @return array<class-string, string> class => why it is API despite its location
+     */
+    public function extensionPoints(): array
+    {
+        return [];
+    }
+
+    /**
      * One worked example per entry-point class: the classes an app starts from.
      *
      * Only entry points, because an example is the one hand-written thing here
