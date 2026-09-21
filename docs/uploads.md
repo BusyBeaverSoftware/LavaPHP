@@ -143,19 +143,54 @@ public function show(RouteArgs $args, Uploads $uploads): ResponseInterface
         return Responses::text('Not found', 404);
     }
 
-    $factory = new Psr17Factory();
-
-    return $factory->createResponse(200)
-        ->withHeader('Content-Type', array_search(pathinfo($name, PATHINFO_EXTENSION), Images::TYPES, true))
-        ->withHeader('X-Content-Type-Options', 'nosniff')
-        ->withHeader('Cache-Control', 'public, max-age=31536000, immutable')
-        ->withBody($factory->createStreamFromFile($path));
+    return Responses::of(
+        (string) file_get_contents($path),
+        (string) array_search(pathinfo($name, PATHINFO_EXTENSION), Images::TYPES, true),
+    )->withHeader('Cache-Control', 'public, max-age=31536000, immutable');
 }
 ```
 
-The content type comes from the extension you stored, never from the upload,
-and `nosniff` stops a browser second-guessing it. A content-hashed name never
-changes content, which is what makes `immutable` safe.
+The content type comes from the extension you stored, never from the upload, and
+`nosniff` — which every response from `Responses` carries — stops a browser
+second-guessing it. A content-hashed name never changes content, which is what
+makes `immutable` safe.
+
+`Responses::of()` reads the file into memory, which is the right trade for
+images the size cap above allows. For something large enough to matter, build a
+streamed response with your own PSR-17 factory: that is one of the few places
+reaching past this framework is the correct answer.
+
+## Test it with the real client
+
+An upload handler takes attacker-supplied bytes, so it is the last route to
+leave uncovered. `TestClient::upload()` sends a multipart request the way a
+browser does — files beside fields, with this client's cookies, so the test can
+sign in through the real form first:
+
+```php
+$client = new TestClient($app);
+$client->form('POST', '/sign-in', ['email' => 'editor@example.com', 'password' => 'correct horse', 'csrf' => $token]);
+
+$response = $client->upload('POST', '/admin/media', ['cover' => __DIR__ . '/fixtures/cover.png'], ['alt' => 'A cover']);
+
+self::assertSame(303, $response->status());
+```
+
+A file is a path, `['bytes' => …, 'name' => …, 'type' => …]` for content that
+never touched a disk, or an `UploadedFile` you built yourself — which is how to
+test the refusals PHP makes before your handler runs:
+
+```php
+$refused = new UploadedFile(Stream::create(''), 0, UPLOAD_ERR_INI_SIZE, 'huge.png', 'image/png');
+$response = $client->upload('POST', '/admin/media', ['cover' => $refused]);
+```
+
+Two things to expect, because they are what production does. The body stream is
+empty: PHP parses a multipart body into `$_POST` and `$_FILES` itself and leaves
+`php://input` empty, so a handler reading the raw stream sees nothing here
+either. And `getClientMediaType()` is what the *client* claimed — sniff the bytes
+yourself, as above, because a real browser guesses from the extension and can be
+lied to.
 
 ## Mind what the file says about its author
 
