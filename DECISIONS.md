@@ -6532,3 +6532,111 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     branches the fixes came from. Not run for this release: the MySQL and
     PostgreSQL live tests, which no release has run yet — and which the database
     review's inferences about both engines still rest on.
+
+347. **`Responses::of()` takes the content type it sends (Lava Notes round 4, R4-G6).**
+    Five constructors each named the type they always send, and there was no sixth, so
+    an app serving an Atom feed, a CSV or an image it had built either declared
+    `text/plain` and corrected it with `withHeader()` — a response that is briefly
+    wrong on its way to being right — or reached past this class to the PSR-17
+    factory underneath. That second path is the reinvention `render()` returning a
+    response exists to avoid, and `docs/uploads.md` was teaching it: its serve
+    example built `Psr17Factory` by hand.
+
+    `of($body, $contentType, $status = 200)` takes the type as it goes on the wire,
+    charset included, and refuses an empty one — a response with no type leaves the
+    browser to guess, which the `nosniff` every response here carries then forbids.
+    Nothing is sniffed from the bytes, for the same reason: a framework guessing a
+    content type would be doing exactly what it tells the browser not to do.
+
+    The uploads page now serves through it, with the trade stated rather than hidden:
+    `of()` reads the file into memory, which is right for images the page's own size
+    cap allows, and a file large enough to matter still wants a streamed response an
+    app builds itself. Naming that as one of the few places where reaching past the
+    framework is correct is better than pretending the sixth constructor covers
+    everything.
+
+    **Class: patch.** Additive; no existing call changes behaviour.
+
+348. **A JSON list is not an object (R4-B1).** `docs/problem-codes.md` and
+    `docs/packs/lava-validate.md` both promised that a body which is valid JSON and
+    not an object is `malformed_body`. The check was `is_array($decoded)`, which a
+    list passes, so `[1,2,3]` reached handlers — and the build that reported this
+    paid a twelve-line guard *per endpoint* to enforce what the documentation already
+    said was enforced. The expensive kind of doc bug: it does not mislead the reader
+    about how to call something, it makes them write code that is already promised.
+
+    The fix text had to change with it. "Wrap the value in an object" is the right
+    instruction for `"hello"` or `42` and the wrong one for a list, where the caller
+    already sent a collection and needs to give it a name — so a list now gets
+    `{"items": […]}`.
+
+    An empty array is still accepted, deliberately and with the reason in the code:
+    `{}` and `[]` decode to the same PHP value, so refusing the list would refuse the
+    empty object too, and a request that sends no fields is answered far better by
+    validation naming the fields than by a parse error about the shape.
+
+    **Class: minor.** A request that reached a handler now stops at 400 — which is
+    what both pages said would happen, but an app relying on the old behaviour has to
+    act.
+
+349. **The test client can send an upload, raw bytes, and a request the test built
+    itself (R4-G2).** `docs/uploads.md` is a whole page about accepting files and had
+    no Testing section, because there was nothing to name: `TestClient` contained no
+    `withUploadedFiles()` anywhere, and `send()` — the one method that would have
+    taken a hand-built request — was private. So the single request in an admin app
+    that takes attacker-supplied bytes was the one request the framework's own client
+    could not reach. Consumers built PSR-7 requests by hand and called
+    `App::handle()` directly, which drops the cookie jar and with it the "sign in
+    through the real form" discipline `docs/sessions-and-csrf.md` insists on. The
+    framework was telling apps to test one way and making it impossible.
+
+    - **`upload()`** sends multipart the way a browser does: files beside fields,
+    each file a path, `['bytes' => …, 'name' => …, 'type' => …]` for content that
+    never touched a disk, or an `UploadedFile` the test built — which is how to
+    reach the refusals PHP makes *before* a handler runs. `UPLOAD_ERR_INI_SIZE` is
+    the one every upload handler must cope with and could not otherwise be
+    reproduced.
+    - **The body stream is left empty**, which is production, not a shortcut: PHP
+    parses a multipart body into `$_POST` and `$_FILES` itself and leaves
+    `php://input` empty for that content type. A client that wrote the encoded body
+    anyway would be more generous than the server and would hide a handler that
+    reads the raw stream. `Content-Length` is still the size the encoded body would
+    have, because that header does arrive — core reads it to tell an oversized form
+    from an empty one (entry 317).
+    - **`raw()`** sets only the stream and parses nothing, so core's own body
+    handling runs. That is what makes it the shape that proves framework behaviour
+    — the list refusal above is tested through it end to end — and the shape a
+    webhook receiver needs, where the signature is over the bytes as sent.
+    `json()` keeps setting the parsed body itself, which is the convenience it
+    exists to be.
+    - **`send()` is public**, and that was the deliberate call rather than a narrower
+    seam. It is the only method that applies the jar, so a test needing a shape the
+    named helpers do not cover had to give up cookies to get it. A callback that
+    handed the test a request to mutate would be the same power with more
+    indirection to explain, in a framework whose first pillar is that nothing is
+    hidden. Its docblock says to prefer a named helper where one fits, because that
+    is what a reader recognises.
+
+    **Class: patch.** Additive: one method changed visibility outward, which breaks
+    nothing.
+
+350. **The skeleton ships a `.gitignore` (R4-B4).** `composer create-project
+    lavaphp/app` shipped twenty-five files and none of them was one, so a new app's
+    first `git add -A` takes `vendor/` — and then `config/.env`, holding the
+    `SESSION_SECRET` that `docs/sessions-and-csrf.md` has a checkbox about keeping
+    uncommitted. The framework's own security advice was unchecked by default in
+    every project it created.
+
+    Worth recording why this survived so long: the monorepo's root ignore file covers
+    all of it — `/packages/app/composer.lock`, `.env`, `.phpunit.cache/` — so nobody
+    working in this repository could see the gap. The skeleton is the one directory
+    whose ignore rules are *not* inherited by the artifact that gets published.
+
+    The file it now ships is commented in the same voice as the root's, and says what
+    it does not cover as well as what it does: `composer.lock` is tracked on purpose,
+    because an app pins the versions it was tested against and only a published
+    package ships without one, and `AGENTS.md` is tracked because `lava map`
+    generates it and `lava check` fails when it is stale.
+
+    **Class: patch.** Additive, and it stops a new project's first commit carrying
+    its own secret.
