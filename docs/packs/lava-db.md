@@ -10,6 +10,32 @@ SQL, and the raw escape hatches (`whereRaw()`, `defaultExpression()`) take SQL
 you wrote yourself with the bindings as a separate argument — so an injection is
 a thing you would have to construct deliberately.
 
+**An identifier is code, not data.** A column or table name cannot be bound —
+SQL has no placeholder for one — so the builder quotes it instead, and checks
+its shape. That stops an injection; it does not make a *user-chosen* name safe.
+On SQLite a quoted identifier that resolves to nothing becomes the string of its
+own text, so `where($column, Operator::Eq, $value)` with a column the table does
+not have compares `'nope' = 'nope'`: true for every row. A "sort by any column"
+or "filter by any column" feature built straight from a request parameter
+therefore lets a caller neutralise a scoping term, and tells them which columns
+exist by which queries come back empty. Validate a user-chosen name against an
+allowlist your code owns:
+
+```php
+$sortable = ['title', 'created_at', 'author'];
+$sort = in_array($request['sort'] ?? '', $sortable, true) ? $request['sort'] : 'created_at';
+
+$posts = $db->table('posts')->orderBy($sort, Direction::Desc)->get();
+```
+
+When a statement or a connection fails, the driver's own sentence travels in
+`context.driver_message` rather than in the problem's message. A production 5xx
+withholds a problem's context and keeps its message, and a driver's sentence
+names tables and columns — on MySQL, the offending value — so the message says
+what happened and the context says what the database said. `lava db:status`, the
+CLI and a dev error page all render the context, so nothing is lost where it is
+safe to read.
+
 Codes this pack raises: `unsupported_dialect`, `db_not_configured`,
 `db_connection_failed`, `bad_query`, `bad_schema`, `query_failed`,
 `migration_failed`, `invalid_migration_file` — see
@@ -390,8 +416,9 @@ says "not known", which is what a caller needs to branch on.
 `bad_query` is raised before any connection is opened, for:
 
 - anything but a column name where a column goes — in `select()`, every
-  `where*()` column, `orderBy()`, both sides of a join and its table, and the
-  keys of an `insert()` or `update()`. A name may be qualified (`posts.title`,
+  `where*()` column, `orderBy()`, both sides of a join and its table, the table
+  `$db->table()` and the schema DSL are given, and the keys of an `insert()` or
+  `update()`. A name may be qualified (`posts.title`,
   `main.posts.title`) and may use any letter (`prénom`); `select()` also takes
   `*` and `posts.*`. Everything else — `COUNT(*)`, `LOWER(email)`, `name AS
   author` — would be quoted as one identifier, and SQLite answers an unknown
