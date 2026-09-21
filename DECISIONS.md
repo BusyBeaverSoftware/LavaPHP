@@ -6693,3 +6693,35 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     **Class: minor** — `properties`, `constructor`, `abstract` and `matched` join the symbol, `mode` gains
     `property`, so the envelope is `lava.api/2` and `1.json` is deleted, as `Envelope::VERSIONS` requires.
     Nothing an app declares changes.
+
+352. **`0.7.0` is prepared: what the fourth outside build asked for.** An agent new
+    to the framework built an admin dashboard and a public blog on `0.6.0` from
+    Packagist — 6,223 lines of app code, 101 tests, `lava check --strict` green —
+    and filed four bugs and ten gaps. Entries 347 to 351 are the fixes.
+
+    Two findings carry the release: `lava api` was silent about public properties,
+    constructors and abstract classes, which made the one command whose value is
+    "nothing found means nothing exists" wrong three times (351); and a JSON list
+    body was accepted where two pages promised a refusal (348). The rest are
+    additive: a response constructor that takes its content type, a test client
+    that can send an upload, and the `.gitignore` every new project needed.
+
+    **What the build proved about the two claims this project makes publicly.**
+    `lava api` answered 21 of 24 capability questions, and all sixteen of its
+    zero-match searches were correct — the closed surface holding in the field,
+    and the reason the build wrote almost no duplicate code. Eleven of twelve
+    printed fixes worked first time, none was wrong, and none produced a second
+    error: the six fix-text failures of rounds one to three are gone, which is
+    entry 327's gate doing what it was built for. The twelfth names two options
+    and leads with the worse one — worth remembering, not worth a code change.
+
+    The lockstep constraints moved to `^0.7.0` with the path pins and the three
+    locks. The README gains "Upgrading from 0.6 to 0.7"; docs/releasing.md names
+    `0.7.0` in its history, tag example and lockstep sentence.
+
+    **Verified**: `composer verify` (1341 tests, nothing skipped, both PHPStan
+    runs clean), `composer coverage` (every floor met), `composer check:floor`
+    (633 files on 8.3), `composer check:install` (nine targets) and `composer
+    check:split`. The round-4 app itself, pointed at this branch, still passes its
+    101 tests and `lava check --strict`, and the three questions its builder could
+    not answer now resolve — including `AppContext::$appDir`.

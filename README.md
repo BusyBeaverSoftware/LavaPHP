@@ -41,6 +41,35 @@ and a pack is one `composer require` away: `lavaphp/db`, `lavaphp/validate`,
 read-only mirror of its directory, because Packagist reads `composer.json` only
 at a repository root — [docs/releasing.md](docs/releasing.md#publishing) has how.
 
+### Upgrading from 0.6 to 0.7
+
+`0.7.0` is what a fourth outside build asked for. An agent that had never seen the
+framework built an admin dashboard and a blog on `0.6.0`, filed four bugs and ten
+gaps, and two of its findings ask something of an app. Require every `lavaphp/*`
+package at `^0.7.0` together, then:
+
+- **A JSON request body that is a list is now refused** with `malformed_body`
+  (400), which is what `docs/problem-codes.md` and the validate pack's page always
+  said happens to "valid JSON that is not an object" — the code checked
+  `is_array()`, and a list passes that. An endpoint that accepted a bare array now
+  needs the collection sent under a name. An empty `[]` is still accepted, because
+  `{}` decodes to the same value.
+- **`lava api --json` is `lava.api/2`.** The payload gained `properties`,
+  `constructor`, `abstract` and `matched`, and `mode` gained `property`. Re-pin if
+  you read that envelope; `1.json` is deleted, as this project's rule requires.
+- **Nothing else to do, and four things to use.** `lava api` now answers about
+  public properties (178 of them, which a codebase of `final readonly` value
+  objects mostly consists of), constructors, and abstract classes — the three
+  questions the build could not get answers to, one of which cost it a failed boot
+  guessing `$ctx->dir` instead of `$ctx->appDir`. `Responses::of($body, $type)`
+  sends a content type, so serving a feed or an image no longer means reaching past
+  the framework to a PSR-17 factory. `TestClient` can send an upload, raw bytes, or
+  a request the test built itself — `docs/uploads.md` finally has a Testing
+  section. And a new project ships a `.gitignore`, so its first commit no longer
+  takes `vendor/` and the `.env` holding its session secret.
+
+The reasoning for each is in [DECISIONS.md](DECISIONS.md), entries 347–351.
+
 ### Upgrading from 0.5 to 0.6
 
 **Upgrade promptly if you are on `0.5.0`.** A security review of the whole
