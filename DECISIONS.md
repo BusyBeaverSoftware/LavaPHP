@@ -6078,3 +6078,280 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
 
     **The parsing is shared.** `PhpSnippet` holds the reading both guards do, and `ApiExampleTest`'s own checks
     were moved onto it: three copies of the same regex is how two of them quietly stop agreeing.
+
+329. **The path the router matched is the path the request carries (security review,
+    findings F1-F3, F6, F9).** Entry 314 decoded the request path for matching and
+    left the request carrying the original, which made two strings where an app
+    reasonably expects one. A global middleware guarding `/admin` by prefix — the
+    shape conventions.md itself describes for a sign-in gate — never saw
+    `/%61dmin/panel`, and the router routed it to the route the guard existed to
+    protect. That is an authorization bypass, and it existed only in 0.5.0: on
+    0.4.1 the same request is a flat 404.
+
+    - **One canonical path.** `App::dispatch()` puts the decoded path back on the
+      request before matching. PSR-7 re-encodes what a URI must carry, so what
+      the request holds afterwards is the canonical form of the path the router
+      matched — `/%61dmin` and `/admin` become one string, which is the property
+      a guard needs.
+    - **A dot segment is refused**, as `bad_request_path` (400). Every conforming
+      client collapses a literal `../` before sending, so an app never saw one
+      until the decode delivered `%2e%2e%2f` as one — remote path traversal
+      through any `{rest:path}` param, again 0.5.0 only.
+    - **A control byte is refused** for the same reason: a decoded NUL truncates a
+      filename in the C library under any language, and a decoded newline forges
+      a line in a log.
+    - **`Responses::json()` substitutes invalid UTF-8** rather than throwing, which
+      had made any JSON route echoing a param a one-request 500, and escapes `<`
+      and `&` so a body is safe to embed in a page.
+    - **The 413 check is POST-only** and never convicts on a missing
+      `Content-Length`: PHP fills `$_POST` for no other method, so for a `PUT` the
+      check had degenerated into "longer than the limit" and refused requests
+      whose body had arrived whole (entry 317's own regression).
+    - **`url()` encodes a whole-segment dot**, so a generated URL cannot resolve
+      somewhere the route would not match, and **the logger escapes CR, LF and
+      NUL** in a message, so a route param cannot forge a second record.
+
+    **Class: patch.** Every change closes a hole, and each shape it now refuses
+    is one no conforming client sends. The upgrade note names them anyway,
+    because an app that had learned to read `%20` out of a param will now find a
+    space there instead.
+
+330. **A credential no longer survives redaction because of its prefix (security review, 2026-09-20).**
+    `Url::redact()` is the pack's headline promise — "a credential never reaches a report" — and it masked query
+    parameters with a rule anchored on `\b`. `_` is a word character, so the alternation matched only names that
+    *began* with one of the listed words. Every `<prefix>_<word>` spelling went out in clear: `client_secret`,
+    `refresh_token`, `id_token`, `private_key`, `session_token`, `app_secret`, `aws_secret_access_key`,
+    `authToken` — which is to say the names OAuth 2 and the cloud SDKs actually use.
+
+    The leak was not confined to a log. The redacted URL goes into the problem *message*, `HttpErrors` withholds a
+    production 5xx's `context` but keeps its message, and all three of the pack's upstream problems are 502 — so an
+    anonymous visitor who could make the upstream time out received the app's own upstream credential in the error
+    body, next to a masked `token=***` that made the guard look like it had worked.
+
+    - **The match now anchors on the parameter's position**, `?` or `&`, so no prefix can defeat it, and the
+    value stops at whitespace so masking a URL quoted inside curl's own error sentence no longer eats the
+    reason the reader needs.
+    - **The userinfo match runs to the last `@` before the path.** Stopping at the first one left the tail of a
+    password containing `@` in the string.
+    - The generosity of the name list is unchanged and deliberate: masking a harmless parameter costs a little
+    readability in one message, and missing a real one costs a credential.
+
+    **Also here, because it is the other half of the same question:** `Url::whyBadMethod()`, the RFC 9110 token
+    rule for a request method. It is written with `\z` rather than `$` — PCRE's `$` matches before a final
+    newline, so the obvious spelling would have admitted `"GET\n"`, and a bare LF is exactly the byte that ends a
+    request line early. (`ColumnName` in lavaphp/db has the same `$`-before-newline bug, reported separately by
+    the database reviewer; it is not fixed here.)
+
+331. **The transport refuses what would split or flood a request (security review, 2026-09-20).** Four guards, each
+    now enforced in `HttpClient` *and* in `CurlTransport`, because the transport is a public, documented container
+    id that an app may take on its own — and the review reached every one of these through it.
+
+    - **The scheme rule runs in the transport too.** It used to run only in `HttpClient`, so an app following
+    the docs ("take `CurlTransport` for one unadorned request") had no scheme rule at all, and curl speaks
+    thirty-two protocols there: the reviewer wrote attacker-chosen bytes to an internal TCP port over
+    `gopher://` — the canonical Redis SSRF primitive — and used `file://` as a readability oracle.
+    `CURLOPT_PROTOCOLS_STR` now pins libcurl to http and https as well, so the rule holds even if a URL
+    reached curl unchecked.
+    - **A method must be an RFC 9110 token, and no header may carry CR, LF or NUL.** Both reach the wire
+    verbatim: a method of `"GET / HTTP/1.1\r\nX: y\r\n\r\nGET"` put *two* requests on the connection, the
+    first entirely chosen by whoever supplied the method — which is an inbound visitor in any app that
+    forwards one. The pack's own array API was protected by nyholm, but `sendRequest()` is the PSR-18
+    boundary and takes any request object; the new `LenientRequest` double is one that validates nothing,
+    which is what makes this the pack's guard rather than nyholm's. Both raise the new
+    `unsendable_request`, and the header case never prints the value — that is where `Authorization` lives.
+    - **A response body stops at `ClientOptions::$maxResponseBytes`** (8 MiB, `http_client.max_response_bytes`).
+    Without a ceiling a hostile upstream ended the request in a PHP fatal — 64 MB killed a 128 MB worker, the
+    FPM default — which no problem type can catch and no error page can render, and retries made it three
+    times. A timeout is no defence: the reviewer burned 256 MB inside a 5-second budget from a slow dribble.
+    Enforced with a `CURLOPT_WRITEFUNCTION` byte counter rather than `CURLOPT_MAXFILESIZE`, which believes
+    `Content-Length` and so cannot see the upstream that declares nothing. Over the ceiling is
+    `response_too_large` (502), and it is deliberately *not* a `NetworkExceptionInterface`: asking for the
+    same oversized body again would only spend the memory twice more.
+    - **A retry never truncates a body.** `PUT` and `DELETE` are idempotent, so the method allowed a retry —
+    but a body that cannot be rewound was consumed by the first attempt, and attempts two and three sent an
+    **empty** body to an endpoint that would accept it happily. A one-shot body is now sent exactly once; a
+    rewindable one is rewound between attempts, which also fixes the quieter half of the same bug (the
+    retry used to re-send nothing at all).
+
+    Two smaller corrections ride along: `json()` compares `Content-Type` case-insensitively, because a header
+    name does and `+=` on the array silently replaced a caller's lowercase one; and the docs now say what the
+    pack defends and what it does not.
+
+    **The documentation correction is the most important part of this entry.** The page presented the scheme rule
+    as the answer to an untrusted URL. It is not: `http://127.0.0.1/`, `http://169.254.169.254/`,
+    `http://10.0.0.5/`, `http://2130706433/` and a DNS name resolving to any of them are all well-formed `http`
+    URLs, and scheme is the one thing an attacker need not change. There is no host policy, no allow-list and no
+    hook, so the page now states the four rules that are enforced, says plainly that **SSRF is not among them**,
+    and tells an app what it must do itself. An `allowTarget` hook was considered and left out of this branch:
+    doing it properly means resolving the host, refusing the private and link-local ranges, and pinning the
+    address that was checked with `CURLOPT_RESOLVE` so the name cannot be re-resolved to something else — a
+    feature with a design of its own, not a line in a security fix.
+
+    Also documented rather than changed: retries multiply the timeout (the shipped defaults can hold a worker for
+    thirty seconds on one call), and libcurl takes proxy and CA settings from the environment, which this pack
+    does not pin.
+
+    **Release class.** Everything above is patch-class — a problem's text changes, a request that was already
+    malformed is refused, a retry sends a whole body instead of an empty one — **except the response ceiling**,
+    which is a minor: an app fetching a payload larger than 8 MiB gets `response_too_large` where it used to get
+    the body, and must raise `http_client.max_response_bytes`. That one line is the whole upgrade note.
+
+332. **A value never reaches a report because the parser could not read it (security
+    review, F1, F2, F3).** Three views printed a secret the framework had already
+    decided to redact somewhere else, which is the failure mode a redaction policy
+    has: it is only as good as its least careful caller.
+
+    - **The malformed `.env` line.** `DotEnv` reported every line it could not parse
+    and put the raw line in the problem's context. A line is malformed whenever
+    its key fails the name pattern, and the two shapes that produce that in
+    practice are `export API_KEY=…` (the key gains a space) and
+    `stripe_secret_key=…` (a lowercase key) — both of which carry a live
+    credential on the same line. It is a boot problem, so it surfaced in every
+    command's report, on the diagnostics page, and in any CI log running `lava
+    check --strict`, which is what docs/releasing.md tells every app to do. The
+    contrast is the proof: a *well-formed* `APP_SECRET_TOKEN` in the same file was
+    redacted, and only the value the parser choked on escaped. The context now
+    carries the key half and a marker, and nothing at all when the line has no `=`
+    (a token pasted on its own line is a value, not a key), when the key is long
+    enough to be a pasted credential (base64 padding puts `=` at the end, so
+    "everything before the first `=`" can be the whole secret), or when it holds
+    control characters.
+    - **`lava describe` against `lava env`.** Both read the same list, and they
+    disagreed about what a secret is: `env` fell back to the name heuristic for a
+    bare `.env` entry nothing declared, `describe` did not. So an undeclared
+    `DB_PASSWORD` printed in full without `--reveal` — and reported `secret:
+    false`, which is worse than a silent leak, because a consumer that trusts the
+    envelope is told the value is safe to log. The decision now lives once, in
+    `Secrets::isSecret()`, and a test walks every var in the fixture asserting the
+    two views agree on both secrecy and value. Two callers that asked the same
+    question separately is how they drifted; a third would have drifted too.
+    - **`lava config` and depth.** The bag is flattened one level, so
+    `'connections' => ['primary' => ['password' => …]]` arrives as one entry named
+    `app.connections` — a name that matches no heuristic — and the whole subtree
+    was rendered, credential included. That is the ordinary shape of a config
+    file, and `'connections' => [...]` is what lavaphp/db's own convention
+    invites. Redaction now keys on the name beside the value at any depth, and
+    replaces the leaf where it stood rather than the subtree, because a report
+    that hides `connections.primary.host` has traded a leak for a useless answer.
+    `lava.config/1`'s descriptions say so; no key, type or `secret` semantic
+    changed, so the schema keeps its numeral.
+
+    **What was not done.** The heuristic itself is unchanged — this is about callers
+    applying it, not about widening the word list. `DbConnectionFailed::redact()`
+    gained `pass=`, `secret=` and a URL match that runs to the last `@` before the
+    path (a password containing one had its tail printed), which is the same class
+    of bug in the pack that already took redaction seriously.
+
+333. **The text views cannot be made to print a row nobody wrote (security review,
+    F7).** `lava` reads its values out of the app's own files and prints them in
+    aligned tables, and the project's whole premise is that an agent reads that
+    output as ground truth — which makes the text view a trust boundary, and it had
+    none. A value carrying `\x1b[2K\r` erased its own row and printed whatever the
+    file's author put after it; the reviewer forged a `DB_PASSWORD … not-a-secret-at-all`
+    row out of a `.env` entry, and the same trick hides a row entirely, which turns
+    "`lava check` found no problems" into something a cloned repository can fake.
+
+    Every control character is now replaced in one place, `PlainText`, which both
+    `Table` and `ProblemCliRenderer` pass through. Widths are measured on the
+    replaced text, so the column misalignment that was the visible tell goes with
+    it. `--json` is deliberately untouched: `json_encode` escapes these characters
+    itself, and the machine contract should carry the bytes that are really in the
+    file.
+
+    **And the gate that runs before every release.** `composer coverage` wrote to a
+    fixed `/tmp/lava-coverage` that it removed and recreated on every run — so it
+    was never there between runs, and any local user could leave a symlink in its
+    place. The remover tested `is_dir()`, which follows a symlink, and recursed, so
+    it emptied whatever the link pointed at as whoever runs the gate; `rmdir` cannot
+    remove a symlink, so the link survived to redirect the next run's writes too.
+    Every other temp path in the repository was already randomised — this one
+    function was the exception, and it now uses the same `scratch()`/`removeScratch()`
+    helpers, which refuse a path that is not a scratch directory and never follow a
+    link out of one. A passing run removes its artifacts; a failing one keeps them,
+    because the clover report is what a failure is read from.
+
+334. **A production server fault sends its code and nothing else (security review, F4).** `HttpErrors::redacted()`
+    blanked `context` and `source` and sent the problem's own sentence and fix beside them. Several problems build
+    those out of exactly what redaction exists to withhold: `TemplateNotFound` interpolates the absolute template
+    directory three times plus the app's whole template inventory, `QueryFailed` carries the driver's message
+    (`Duplicate entry 'alice@example.com' for key …` on MySQL), and a transport failure carries the upstream URL with
+    its query string. Three reviewers found the same door through three different problems, which is the sign that
+    the door was the defect rather than any of the three.
+
+    A redacted 5xx now keeps its `code` and `severity`, the keys a client parses, and replaces the sentence and the
+    fix with two constants. The code is the one field built from a constant rather than from the app, and it is what a
+    client can act on — the rest was diagnosis for someone who can read the log, and `App::logWithheld()` already
+    writes the whole problem there.
+
+    - **Redacting by default rather than per problem.** The alternative considered was a `redactedMessage()` each
+    problem supplies, which is more informative and fails open: a new problem class that forgot to override it
+    would leak, and a guard whose safe case is the one nobody wrote is not a guard. Sixty-eight problem classes,
+    one of which is written every few weeks, made that decisive.
+    - **`DiagnosticsPage::render()` takes the status.** It renders message and fix for every problem regardless of
+    environment, so without the status it printed in prod exactly what the JSON beside it withheld. The parameter
+    defaults to 500, so a caller that does not say which status it is sending gets the safe answer.
+    - **A 4xx is untouched in every environment.** It is the caller's own mistake, and the field, the rule and the
+    fix are what let an agent repair its request in one round trip.
+
+    **Class: minor.** A production 5xx body that carried a sentence now carries a fixed one; an app parsing
+    `problems[0].problem` in production sees a constant.
+
+335. **The view pack's two guarantees are enforced rather than asserted (security review, F2 and F3).**
+
+    *Autoescaping.* `TwigFactory` says autoescaping is "on, always, and is not configurable", and it is not
+    configurable through `config/view.php` — but `ViewRenderer::environment()`, the accessor the pack's own docs
+    recommend for adding a filter, hands out the `EscaperExtension`, and `setDefaultStrategy(false)` on it unescapes
+    every later render. The renderer is a singleton, so one line in one app service unescapes the whole site,
+    including pages written by someone who read the guarantee. `renderToString()` now checks the strategy for the
+    template it is about to render and raises the new `autoescape_disabled` instead. Per render, not once at boot:
+    the call that disables it can happen at any time, and a check that ran at boot would pass before the line that
+    matters. The supported opt-outs are untouched — `|raw` for one value, `{% autoescape false %}` for one template,
+    which is lexical and says nothing about any other.
+
+    *Loader errors.* "Every Twig failure leaves here as a `LavaProblem`" held for two of Twig's three error classes.
+    A name a TEMPLATE asks for — `{% include %}`, `{% extends %}`, `{% embed %}` — is resolved by the loader at render
+    time and fails with `LoaderError`, which is neither `SyntaxError` nor `RuntimeError`, so it escaped the pack as
+    `unexpected_failure` with a stack trace. That is the dynamic-theme pattern `lava-view.md` teaches
+    (`{% extends '@' ~ theme ~ '/layout.twig' %}`, theme from the render context), so an app that let a page pick its
+    theme answered every bad value with a 500 and a trace instead of a diagnosis. Now `TemplateNotFound::included()`,
+    which quotes Twig's own sentence (the loader knows which namespaces it searched; this class would be guessing)
+    and points the fix at `ViewRenderer::namespaces()` for the dynamic case.
+
+    **Class: minor** for both — a render that used to succeed with escaping off now refuses, and a 500 becomes a 404.
+
+336. **Every response says `nosniff` (security review, F5).** The header appeared exactly once in the repository, in
+    docs/uploads.md, as advice to apps. A framework that tells apps to set a header and does not set it on its own
+    error pages — which serve the request path, header values and template names an attacker influenced — is giving
+    advice it does not take. Set in `Responses::response()`, so every constructor and every error page carries it.
+
+    Deliberately not set: Content-Security-Policy, HSTS, and a frame policy. Each is a decision about the whole site —
+    which origins its scripts come from, whether it is ever served over plain HTTP, whether it may be framed — and a
+    framework that guessed would either break apps or ship a policy so loose it means nothing. Those belong in an
+    app's own middleware, where they are visible. **Class: patch** (a header added; no app has to act).
+
+337. **Four pages of guidance were a security gap rather than a documentation gap (F1, F6, and the outbound reviewer's
+    audit of our advice).** An app that followed each literally was worse off than one that improvised.
+
+    - **Escaping is contextual.** `lava-view.md` promised "a template reaches the browser escaped" and both app
+    layouts printed "every value on this page is escaped" in the footer. Twig's `html` strategy is correct in
+    element text and quoted attributes and does not cover an unquoted attribute, a `<style>` block, or
+    `<a href="{{ user.website }}">` with a `javascript:` URL — the single most common template line there is. The
+    page now names the three contexts with their one-line remedies, says that a URL needs its scheme checked where
+    it is accepted rather than escaped where it is printed, and the footers say "HTML-escaped".
+    - **The sessions page never named a CSPRNG.** An app could satisfy every line of its checklist with `uniqid()`
+    and ship a guessable CSRF nonce. Both reference apps do it correctly without the page saying so, which is how
+    it went unnoticed. `random_bytes()` is now named, with the reason, plus a checklist line.
+    - **The uploads page read the whole file before any size decision** and named no byte ceiling — the check that
+    saves the memory ran after it was spent. It now refuses on `getSize()` first, and distinguishes that ceiling
+    from `post_max_size`, which is the deployment's outer limit and the same for every field.
+    - **The mail page's DSN default failed open.** `ProcessEnv::real('MAILER_DSN') ?? 'null://null'` meant a
+    production deploy that forgot the variable booted green and silently discarded every password-reset mail — a
+    security control failing open, in the one place the failure is invisible. The default is now
+    non-production only, applying the page's own `SESSION_SECRET` lesson: a declaration is what `lava env` and
+    `lava check` read, and a production boot does not consult declarations. The page also put autoescape-off
+    templates in the same directory as the pages, one `render()` call or one `{% include %}` away from being
+    served unescaped — they move behind a `text` namespace, so the escaping-off set is a place rather than a
+    convention — and said nothing about `smtp://` negotiating TLS opportunistically, so a relay that does not
+    advertise STARTTLS takes the credentials in that DSN in the clear.
+
+    **Class: documentation**, except that the mail snippet now shows a production boot refusing to start.
