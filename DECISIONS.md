@@ -6497,3 +6497,38 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     **Disclosure is the maintainer's to decide** and is not part of this entry:
     what to publish as an advisory, for which version ranges, and whether to
     request a CVE.
+
+346. **`0.6.0` is released, with three advisories.** The user said "merge tag and
+    publish advisories". `e966223` passed all nine CI jobs on its branch (run
+    35547230156) and on `main` (35551576818), where the split filled the seven
+    mirrors; the tag went on it and was pushed at 01:40:04 UTC, and its own split
+    and CI passed. Packagist had all seven packages by 01:41:53.
+
+    Installed from Packagist on PHP 8.5.4 and, in docker, 8.3.33 and 8.4.25:
+    `create-project` plus the five packs locked everything at `0.6.0` and `lava
+    check --strict` passed in each. On 8.5 a scratch app proved the fix rather
+    than the version number: `GET /docs/%2e%2e%2fsecret.txt` answers `400
+    bad_request_path`, and an ordinary `/docs/a/b.txt` still routes. Lava Notes
+    upgraded with one assertion changed and its 230 tests green.
+
+    **The advisories.** `GHSA-3gvq-mjhr-h8vc` (high) for the authorization bypass
+    and path traversal, scoped to `lavaphp/core` 0.5.0 alone, since 0.4.1 did not
+    decode the path. `GHSA-pp36-3jgx-c95g` (high, 8.2) for the http-client's
+    credential disclosure, non-HTTP protocols and unbounded response — the first
+    vector I wrote scored it 9.1, "critical", and I rescored it: three issues
+    that each need the app to have handed the client something untrusted are not
+    the same as a remote unauthenticated compromise, and inflating the number
+    would spend the credibility the advisory exists to have.
+    `GHSA-wqqr-f9fj-9j2j` (medium) for the disclosure set. Each names its
+    workaround and what remains undefended.
+
+    **No CVE was requested**, so none of the four advisories (including 0.4.1's)
+    is in the GitHub Advisory Database, and `composer audit` therefore reports
+    nothing. That is a deliberate open question for the maintainer rather than an
+    oversight, and it is stated in releasing.md so it cannot quietly become one.
+
+    `fix/sec-request-path` was deleted locally and on GitHub once `git merge-base
+    --is-ancestor` confirmed `main` contains it, as were the five worktree
+    branches the fixes came from. Not run for this release: the MySQL and
+    PostgreSQL live tests, which no release has run yet — and which the database
+    review's inferences about both engines still rest on.
