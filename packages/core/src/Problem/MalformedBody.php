@@ -35,7 +35,11 @@ final class MalformedBody extends LavaProblem
     {
         return new self(
             "The request body is valid JSON but is {$type}, and a request body must be a JSON object.",
-            'Wrap the value in an object — {"value": …} — so the fields to validate have names.',
+            $type === 'a list'
+                // "Wrap the value" is the wrong instruction for a list: the
+                // caller already sent a collection and needs to name it.
+                ? 'Send an object with the list under a name — {"items": […]} — so a handler can read it by that name.'
+                : 'Wrap the value in an object — {"value": …} — so the fields to validate have names.',
             ['content_type' => $contentType, 'decoded_as' => $type],
         );
     }

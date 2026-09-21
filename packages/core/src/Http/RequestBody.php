@@ -83,11 +83,22 @@ final class RequestBody
             throw MalformedBody::unparsable(self::contentType($request), $error->getMessage());
         }
 
-        if (!is_array($decoded)) {
-            // Valid JSON, wrong shape: `"hello"`, `42`, `null`. A body that is
-            // not an object has no fields to validate, and passing it on would
-            // make every field look missing.
-            throw MalformedBody::notAnObject(self::contentType($request), get_debug_type($decoded));
+        // Valid JSON, wrong shape: `"hello"`, `42`, `null` — and `[1,2]`, which
+        // `is_array()` alone let through, though docs/problem-codes.md and
+        // lava-validate.md both say a body that is valid JSON and not an object
+        // is refused (Lava Notes round 4, R4-B1). A body with no named fields
+        // has nothing to validate, and passing it on makes every field look
+        // missing, which is the report a caller can act on least.
+        //
+        // An EMPTY array is allowed, because `{}` and `[]` decode to the same
+        // PHP value: refusing it would refuse the empty object too, and a
+        // request that sends no fields is answered better by validation naming
+        // them than by a parse error.
+        if (!is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+            throw MalformedBody::notAnObject(
+                self::contentType($request),
+                is_array($decoded) ? 'a list' : get_debug_type($decoded),
+            );
         }
 
         return $request->withParsedBody($decoded);
