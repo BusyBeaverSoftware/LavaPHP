@@ -1,0 +1,27 @@
+# What a created project must not commit. Everything else in here is yours.
+
+# Composer's work, rebuilt by `composer install` from composer.json and the lock.
+# The LOCK itself is tracked on purpose: an app pins the versions it was tested
+# against. Only a published package ships without one.
+/vendor/
+/composer.phar
+
+# Secrets. config/.env carries what the environment supplies — SESSION_SECRET, a
+# database password, an API token — and docs/sessions-and-csrf.md is explicit
+# that the secret stays out of the repository. config/.env.example is the tracked
+# template: it names the variables and never their values.
+config/.env
+
+# PHPUnit's caches (see cacheDirectory in phpunit.xml.dist).
+/.phpunit.cache/
+.phpunit.result.cache
+
+# A SQLite database is data, not code: `lava db:migrate` rebuilds the schema, and
+# a committed .sqlite file is one developer's rows arriving in everyone's clone.
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# AGENTS.md is deliberately absent from this list: `lava map` generates it,
+# `lava check` fails when it is stale, and keeping it in version control is how a
+# reader — human or agent — sees this app's wiring without booting it.
