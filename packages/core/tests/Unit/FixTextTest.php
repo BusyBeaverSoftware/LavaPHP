@@ -228,6 +228,43 @@ final class FixTextTest extends TestCase
         self::assertGreaterThan(5, $checked, 'no framework symbols were found in any fix — is the reader still right?');
     }
 
+    /**
+     * A fix is an imperative in a framework whose fixes are meant to be run, so
+     * what it puts inside a runnable snippet is code the reader will execute.
+     * Two fixes built SQL out of a migration name and a table name, either of
+     * which can carry `'; DROP TABLE users; --` (security review, database 6).
+     *
+     * Only the snippets are read — a `$db->statement(…)` call or a `Run:` line —
+     * because a fix may name a SQL verb in prose perfectly safely, and a value
+     * quoted in a sentence is read, not run.
+     */
+    public function testNothingAFixTellsYouToRunReadsAsTwoStatements(): void
+    {
+        $verbs = 'select|insert|update|delete|drop|alter|truncate|create';
+        $checked = 0;
+
+        foreach (self::fixtures() as $class => $problems) {
+            foreach ($problems as $problem) {
+                preg_match_all('/\$db->(?:statement|query)\(([^\n]*?)\)|Run: ([^\n]+)/i', $problem->fix, $matches, PREG_SET_ORDER);
+                foreach ($matches as $match) {
+                    $snippet = $match[1] !== '' ? $match[1] : ($match[2] ?? '');
+                    if ($snippet === '') {
+                        continue;
+                    }
+                    $checked++;
+                    self::assertSame(
+                        0,
+                        preg_match('/;\s*(?:' . $verbs . ')\b/i', $snippet),
+                        "{$class}: a snippet its fix tells you to run carries a second statement — keep an untrusted "
+                            . "name out of it, or bind it:\n{$snippet}",
+                    );
+                }
+            }
+        }
+
+        self::assertGreaterThan(0, $checked, 'No fix offers a runnable snippet any more — drop this test or fix its pattern.');
+    }
+
     public function testEveryArtifactPathAFixNamesIsOneTheFrameworkReads(): void
     {
         $known = self::artifactPaths(self::skipUnlessThePackagesAreHere());
@@ -442,6 +479,9 @@ final class FixTextTest extends TestCase
                 \Lava\Db\Problem\BadQuery::nullComparison('published_at'),
                 \Lava\Db\Problem\BadQuery::emptyIn('id'),
                 \Lava\Db\Problem\BadQuery::unbounded('update', 'posts'),
+                // A table name an app took from a request: the fix quotes it
+                // back, so what it quotes must not be able to end the statement.
+                \Lava\Db\Problem\BadQuery::unbounded('delete', "posts'); DROP TABLE users; --"),
                 \Lava\Db\Problem\BadQuery::sameResultName(
                     ['column' => 'posts.id', 'alias' => null, 'argument' => 0, 'name' => 'id'],
                     ['column' => 'users.id', 'alias' => null, 'argument' => 1, 'name' => 'id'],
@@ -469,6 +509,9 @@ final class FixTextTest extends TestCase
             $fixtures[\Lava\Db\Problem\MigrationFailed::class] = [
                 \Lava\Db\Problem\MigrationFailed::of('001_posts', 'up', $throwable, $source),
                 \Lava\Db\Problem\MigrationFailed::missingFile('001_posts', '/app/database/migrations', 2),
+                // The name comes out of the migrations table, which a compromised
+                // row controls; the fix tells someone to run SQL with it in.
+                \Lava\Db\Problem\MigrationFailed::missingFile("001_posts'; DROP TABLE users; --", '/app/database/migrations', 2),
             ];
             $fixtures[\Lava\Db\Problem\QueryFailed::class] = [
                 \Lava\Db\Problem\QueryFailed::of(new \Lava\Db\Sql\Compiled('select * from posts', []), new \PDOException('no such table: posts')),

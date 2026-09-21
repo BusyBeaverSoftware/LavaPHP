@@ -6355,3 +6355,110 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     advertise STARTTLS takes the credentials in that DSN in the clear.
 
     **Class: documentation**, except that the mail snippet now shows a production boot refusing to start.
+
+338. **An anchored pattern ends the value, not the line.** PCRE's `$` also matches immediately before a
+    trailing newline, so `/^[a-z]+$/` accepts `"admin\n"`. Three separate reviews found three separate
+    instances — `ColumnName` (the database review), the HTTP method validator (the http-client fix, which
+    hit it while writing a new check), and `RegexRule`, found here — which is the signature of something
+    that wants a guard rather than a fourth fix. All 31 anchored patterns under `packages/*/src` now
+    carry the `D` modifier, and `AnchoredRegexTest` fails the build on a new one, with a named exemption
+    list for the two sites where `$` is prose rather than a validator.
+
+    The instance that matters is the one with request data behind it: `->regex()` anchors an app's
+    pattern with `^…$` itself, so **every `regex()` validation in every app** accepted a value with a
+    trailing newline — a slug that passed validation and then carried the byte that splits a log line or
+    a header. Its reported `expects` now ends in `D`. A caller who passed `m` asked for `$` to mean the
+    end of a line and is left alone.
+
+    **Class: minor** for the validate half — a value that validated now fails, which is the point, but
+    an app that trimmed after validating will see the refusal first. Patch for the rest.
+
+339. **A table name is checked like every other identifier.** The FROM/INTO table was the one identifier
+    position with no check at all: a join's table went through the builder's grammar, and
+    `$db->table()` / `Schema::create|table|drop|dropIfExists|dropIndex` took any string. So
+    `table("a\" b'c;--")` compiled a (correctly quoted) statement the builder would have refused
+    outright, and `table('main.sqlite_master')` read the catalogue. Quoting held throughout — this was
+    never an injection. The asymmetry was the bug: an app that learned to validate its sort column,
+    because the builder taught it to, had no signal that its table name was treated differently.
+
+    One grammar in one place now: `ColumnName::isName()`, shared so the builder's `BadQuery` and the
+    schema DSL's `BadSchema::notATableName()` cannot drift apart.
+
+    **Not changed, deliberately:** a qualified name is still a name, so `table('main.posts')` still
+    reaches another schema — exactly as `innerJoin('main.posts', …)` has since R2-B8, which is a
+    recorded decision. Narrowing tables to one segment is a grammar change with its own upgrade note,
+    not something to slip inside a security fix. Flagged for the maintainer.
+
+    **Class: minor.** A table name that is not a name used to work.
+
+340. **A failed statement says what happened; the driver says it in the context.** `HttpErrors` withholds
+    a 5xx's `context` in production and keeps its `problem`, so building the sentence out of the driver's
+    own message made the default public 500 body carry the schema — `no such table: admin_sessions`,
+    `UNIQUE constraint failed: users.email` — which is precisely the knowledge an attacker otherwise has
+    to work for. On MySQL the same path carries *data*, since a duplicate-key error quotes the value
+    that collided.
+
+    `QueryFailed` and `DbConnectionFailed` now state what happened and put the driver's sentence in
+    `context.driver_message`, beside the SQL and bindings the same rule already withheld. Dev loses
+    nothing (the context is rendered), the CLI loses nothing, and the fix text points at the key.
+
+    The alternative — having `HttpErrors::redacted()` replace the message too — is broader, touches
+    every pack, and belongs to core rather than here.
+
+    **Class: patch.** Only a report changes shape.
+
+341. **Emulated prepares cannot be switched back on.** Options were merged with `+`, which keeps the LEFT
+    key, so an app that passed `ATTR_EMULATE_PREPARES => true` — the line copied out of a Laravel or
+    Doctrine snippet for MySQL buffering — silently turned off the single control this pack names as its
+    guarantee that a bound value never becomes SQL text. With emulation on, PDO interpolates values
+    itself and correctness rests on a connection charset this pack does not set.
+
+    The merge is now `Connection::driverOptions()`, a pure function that forces the one key after the
+    merge and leaves every other option the app's, including the error and fetch modes. Public and pure
+    because pdo_sqlite refuses to report that attribute at all (`driver does not support that
+    attribute`), so asserting it through a handle would only ever be a skip on this project's own engine.
+
+    **Class: patch.** An app that set it was not getting what it asked for anyway.
+
+342. **A fix is an imperative, so what it interpolates is code.** Two fixes built SQL out of a name the
+    pack does not control — a migration name read from the repository table, and a table name from the
+    caller — so `x'; DROP TABLE users; --` came back as a runnable statement, in a framework whose whole
+    premise is that an agent executes the fix. `MigrationFailed::missingFile()` now suggests
+    `WHERE name = ?` and points at `context.migration` for the value; `BadQuery::unbounded()` renders the
+    table with `var_export()`, so a quote cannot close the literal it sits in.
+
+    Worth the maintainer's attention: the new `FixTextTest` gate checks that a fix names real commands,
+    flags, symbols and artifacts. It does not check that an interpolated *value* is inert, which is a
+    different property and the one that failed here. A rule along the lines of "a fix that contains a SQL
+    verb must not interpolate" would be cheap and is not written yet.
+
+    **Class: patch.** Text only.
+
+343. **A backslash in a literal default is refused rather than escaped.** `Dialect::escapeString()` is the
+    pack's only value→SQL conversion, reached only from a column `DEFAULT` in DDL. Escaping the backslash
+    is the unsafe part: doubling it for MySQL turns `BF 5C` — one character under a GBK/BIG5/SJIS
+    connection charset — into that character plus a lone `\`, which escapes the closing quote and lets
+    the literal run on (the classic multibyte break-out); not doubling it for PostgreSQL is correct only
+    while `standard_conforming_strings` is on. Both are properties of the server and the connection, and
+    neither is knowable from the compiler.
+
+    Non-ASCII values are untouched — `default('café')` is legitimate and common, and is not the
+    dangerous shape. A default holding a backslash is rare enough that refusing it costs one call to
+    `defaultExpression()`, which is the pack's documented way to say "I have checked what this database
+    will make of it".
+
+    **Class: minor.** A migration with a backslash in a string default stops running until it uses the
+    hatch. Reachable only from developer-authored DDL, and both reviews rated the risk low.
+
+344. **Documented, not fixed: an identifier is code, not data.** SQLite reads a quoted identifier that
+    resolves to nothing as the string of its own text, so `where($userColumn, Eq, $userValue)` with a
+    column the table does not have compares `'nope' = 'nope'` — true for every row — and doubles as a
+    schema oracle. The check the builder advertises stops an injection; it does not make a user-chosen
+    name safe, and `docs/packs/lava-db.md` presented it as if it did. The page now says so and shows the
+    allowlist.
+
+    The code fix the review floated — qualifying unqualified columns with the query's own table when
+    there are no joins, so SQLite raises `no such column` — is **not** done here. It changes the compiled
+    SQL of every single-table query, which is a visible behaviour change with its own test churn, it
+    cannot be done for a joined query, and a partial fix that looks total is worse than a documented
+    limit. It deserves its own release.
