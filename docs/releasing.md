@@ -233,45 +233,35 @@ Neither pushes or publishes anything, and neither can show Packagist itself.
   believed second. If consumers ask for one, it should be generated from the
   commit log at tag time rather than written alongside it.
 
-## Known gaps at 0.6.0
+## Known gaps at 0.7.0
 
 Stated here rather than discovered later, because a release checklist that
 implies everything was verified is worse than one that lists what was not.
 
-- **`0.6.0` is a security release.** Five reviewers audited the framework, each
-  finding reproduced twice; the reports are the maintainer's, not in this
-  repository. Three advisories are published:
-  [GHSA-3gvq-mjhr-h8vc](https://github.com/BusyBeaverSoftware/LavaPHP/security/advisories/GHSA-3gvq-mjhr-h8vc)
-  (high — authorization bypass and path traversal, `lavaphp/core` 0.5.0 only),
-  [GHSA-pp36-3jgx-c95g](https://github.com/BusyBeaverSoftware/LavaPHP/security/advisories/GHSA-pp36-3jgx-c95g)
-  (high — credential disclosure, SSRF through non-HTTP protocols and an
-  unbounded response, `lavaphp/http-client` before 0.6.0) and
-  [GHSA-wqqr-f9fj-9j2j](https://github.com/BusyBeaverSoftware/LavaPHP/security/advisories/GHSA-wqqr-f9fj-9j2j)
-  (medium — information disclosure, `lavaphp/core` before 0.6.0). **No CVE has
-  been requested for any of them**, so `composer audit` cannot see them: a
-  repository advisory reaches the GitHub Advisory Database only through review,
-  which a CVE request starts. The same is true of `0.4.1`'s
-  GHSA-x76q-3p93-qcc2.
 - **Packagist updates itself, for all seven packages.** The tag was pushed at
-  01:40:04 UTC and a fresh `composer show -a` from an empty directory saw every
-  package by 01:41:53 — six within a minute, `lavaphp/core` fifty seconds later,
-  the usual shape. Check a release this way, from a fresh Composer home **in an
-  empty directory**, never with `curl` and never from this repository's root.
+  05:08:56 UTC and a fresh `composer show -a` from an empty directory saw every
+  package by 05:09:56 — sixty seconds, and no core-only lag. Check a release this
+  way, from a fresh Composer home **in an empty directory**, never with `curl`
+  and never from this repository's root.
 - **CI was green on the tag commit, three times**, and the split ran green on
   `main` and on the tag.
-- **`0.6.0` installs from Packagist on PHP 8.5, 8.4 and 8.3**, with `lava check
-  --strict` passing in each. On 8.5 a scratch app also proved the fix itself:
-  `GET /docs/%2e%2e%2fsecret.txt` answers `400 bad_request_path` while an
-  ordinary path still routes.
-- **The upgrade was rehearsed on a real app.** Lava Notes moved from `0.5.0` and
-  needed exactly one change — a test that asserted `404` for a traversal attempt
-  asserts `400` now — then passed its 230 tests (one skipped for GD).
-- **What `0.6.0` asks of an app** is in the README's "Upgrading from 0.5 to 0.6":
-  six refusals where there were none. That is why it is a minor and not a patch.
-- **SSRF is still not defended** by `lavaphp/http-client`: private and
-  link-local addresses are ordinary `http` URLs and the pack has no allow-list or
-  hook. The documentation now says so plainly; an app passing a user-supplied URL
-  must check it itself.
+- **`0.7.0` installs from Packagist**, verified on PHP 8.5: `create-project` plus
+  the five packs, `lava check --strict` green, the new skeleton `.gitignore`
+  present, and `lava api appDir` answering in property mode — the capability the
+  fourth outside build could not get an answer to.
+- **The round-4 app still passes against this release**: 101 tests and `lava
+  check --strict` green with no change of its own, which is what makes the JSON
+  list refusal safe to ship.
+- **What `0.7.0` asks of an app** is in the README's "Upgrading from 0.6 to 0.7":
+  send a JSON collection under a name rather than as a bare list, and re-pin if
+  you read `lava api --json`.
+- **Four rounds of outside builds have now asked for a session pack.** Every app
+  writes its own — the round-4 build spent 657 lines on it, the highest-
+  consequence code in the application. `docs/sessions-and-csrf.md` is good enough
+  that the build shipped none of the bugs it documents, which is the argument for
+  the pack rather than against it. Still not built.
+- **SSRF is still not defended** by `lavaphp/http-client`, and the MySQL and
+  PostgreSQL live tests have still never been run.
 - **PHP 8.3 and 8.4 are exercised by CI, and the floor is checkable locally.**
   Development here is on 8.5.4. The CI matrix runs the suite on 8.3 and 8.4;
   locally, `composer check:floor` (step 3) lints every tracked file against a

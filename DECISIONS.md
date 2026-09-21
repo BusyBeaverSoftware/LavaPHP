@@ -6725,3 +6725,27 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
     check:split`. The round-4 app itself, pointed at this branch, still passes its
     101 tests and `lava check --strict`, and the three questions its builder could
     not answer now resolve — including `AppContext::$appDir`.
+
+353. **`0.7.0` is released.** `b77cd06` passed all nine CI jobs on its branch (run
+    35562893111) and on `main` (35563419782), where the split filled the seven
+    mirrors; the tag went on it and was pushed at 05:08:56 UTC, and its own split
+    and CI passed. Packagist had all seven packages sixty seconds later, with no
+    core lag.
+
+    Installed from Packagist on PHP 8.5.4: `create-project` plus the five packs,
+    `lava check --strict` green, the skeleton's new `.gitignore` present, and
+    `lava api appDir` answering in the property mode that did not exist a day ago
+    — the exact question the round-4 build lost a boot to. The round-4 app itself,
+    pointed at this code, still passes its 101 tests unchanged, which is what
+    makes the JSON list refusal safe to ship.
+
+    `feat/round4` was deleted locally and on GitHub once `main` contained it, as
+    were the two worktree branches the fixes came from.
+
+    **Left standing after four rounds: `lavaphp/session`.** Every outside build
+    has written its own sessions and CSRF layer — 690 lines in round 1 (three real
+    security flaws found in review), 657 in round 4 (none, because
+    docs/sessions-and-csrf.md had become good enough to follow). That the document
+    now prevents the bugs is the argument FOR the pack: a page this load-bearing
+    is a specification with no implementation, and every consumer pays to write it
+    again. It remains a decision for the maintainer, not a default.
