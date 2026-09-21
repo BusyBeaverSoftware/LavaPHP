@@ -9,7 +9,14 @@ use Psr\Http\Message\ResponseInterface;
 
 /**
  * The boring way to build responses. Every handler returns one of these —
- * no response subclasses, no fluent builders, five named constructors.
+ * no response subclasses, no fluent builders, six named constructors.
+ *
+ * Five name a content type they always send; {@see of()} takes one, for the
+ * bodies an app serves that a framework should not enumerate — a feed, a CSV,
+ * an iCalendar file, an image it built. Without it an app either declares the
+ * wrong type and corrects it with `withHeader()`, or reaches past this class to
+ * the PSR-17 factory underneath, which is the reinvention returning a response
+ * from `render()` exists to avoid (Lava Notes round 4, R4-G6).
  */
 final class Responses
 {
@@ -53,6 +60,30 @@ final class Responses
     public static function noContent(): ResponseInterface
     {
         return self::response(204);
+    }
+
+    /**
+     * A body with the content type it is, for everything the five named
+     * constructors do not cover.
+     *
+     * The type is written as it goes on the wire, charset included where it
+     * matters: `Responses::of($xml, 'application/atom+xml; charset=utf-8')`.
+     * Nothing is guessed from the bytes — a framework sniffing a body would be
+     * doing exactly what `nosniff`, which every response here carries, tells the
+     * browser not to.
+     */
+    public static function of(string $body, string $contentType, int $status = 200): ResponseInterface
+    {
+        if (trim($contentType) === '') {
+            throw new \InvalidArgumentException(
+                'Responses::of() needs the content type to send, e.g. "text/csv; charset=utf-8".'
+                . ' A response with no type leaves the browser to guess, which nosniff then forbids.',
+            );
+        }
+
+        return self::response($status)
+            ->withHeader('Content-Type', $contentType)
+            ->withBody(self::factory()->createStream($body));
     }
 
     /**

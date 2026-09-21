@@ -48,6 +48,33 @@ final class HttpTest extends TestCase
         self::assertSame('', (string) $empty->getBody());
     }
 
+    public function testTheSixthConstructorTakesTheContentTypeItSends(): void
+    {
+        // R4-G6: an app serving a feed, a CSV or an image it built had to declare
+        // the wrong type and correct it, or reach past this class to the PSR-17
+        // factory underneath.
+        $feed = Responses::of('<feed/>', 'application/atom+xml; charset=utf-8');
+        self::assertSame(200, $feed->getStatusCode());
+        self::assertSame('application/atom+xml; charset=utf-8', $feed->getHeaderLine('Content-Type'));
+        self::assertSame('<feed/>', (string) $feed->getBody());
+        self::assertSame('nosniff', $feed->getHeaderLine('X-Content-Type-Options'), 'It carries what every response here carries.');
+
+        $csv = Responses::of("a,b\n1,2\n", 'text/csv; charset=utf-8', 201);
+        self::assertSame(201, $csv->getStatusCode());
+
+        // Bytes, not text: a response builder must not assume UTF-8.
+        $png = Responses::of("\x89PNG\r\n\x1a\n", 'image/png');
+        self::assertSame("\x89PNG\r\n\x1a\n", (string) $png->getBody());
+        self::assertSame('image/png', $png->getHeaderLine('Content-Type'));
+    }
+
+    public function testAResponseWithNoContentTypeIsRefusedRatherThanGuessed(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('needs the content type to send');
+        Responses::of('some bytes', '  ');
+    }
+
     public function testProblemsMapToStatusCodes(): void
     {
         $notFound = HttpErrors::toResponse(RouteNotFound::of('GET', '/nope'));

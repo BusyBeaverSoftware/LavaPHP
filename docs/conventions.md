@@ -191,7 +191,9 @@ container is explicit registrations only.
 - untyped / built-in / union / variadic / defaulted parameters: `bad_handler`;
 - the return type is declared `\Psr\Http\Message\ResponseInterface` (not
   nullable, not a subclass of something else) — build responses with
-  `Responses::json() / text() / html() / redirect() / noContent()`.
+  `Responses::json() / text() / html() / redirect() / noContent()`, plus
+  `Responses::of($body, $contentType)` for a body the other five do not name — a
+  feed, a CSV, an image an app built.
 
 Middleware: PSR-15 class-strings, resolved from the container at request time
 (register them in `app/Services.php`, validated at boot). Lists are
