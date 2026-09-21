@@ -6640,3 +6640,56 @@ before the fix went in; R2-B7 and R2-B13 are documentation only.
 
     **Class: patch.** Additive, and it stops a new project's first commit carrying
     its own secret.
+
+351. **`lava api` answers about properties, constructors and abstract classes (Lava Notes round 4, R4-B2, R4-B3,
+    R4-G9).** Entry 324 built the index on one claim — that an empty result means the framework has nothing by
+    that name — and made a closed surface the mechanism that earns it. A fourth outside build, a publishing
+    platform written by an agent that had never seen this framework, reported that **three of its four bugs were
+    that claim being false**, each in a different way, and it is worth recording that all three were the same
+    mistake: the index accounted for every *class* and only some of what a class *is*.
+
+    - **Public properties were not indexed at all.** A framework of `final readonly` value objects keeps most of
+    its surface in promoted constructor properties, so `lava api AppContext` — four of them and no methods —
+    printed `(none)`, and the builder guessed `$ctx->dir`, got a PHP warning from `app/Services.php`, and found
+    `appDir` by opening the file. `RouteArgs::$routeName` was invisible the same way, and that property is what
+    every middleware dispatching on a matched route reads. Properties are indexed now with their declared types,
+    a property name resolves like a method name (`lava api routeName`, `lava api RouteArgs::$routeName`), and
+    `--search` covers them. A promoted property has no docblock of its own, so its summary comes from the
+    constructor's matching `@param` — which is exactly where this framework documents its value objects.
+    - **Constructors and `abstract` were missing**, which together are the difference between "a class you
+    receive" and "a class you extend". `LavaProblem` is the case that matters: an app subclasses it to raise a
+    problem of its own, and from the CLI alone it read as neither abstract nor constructible. Both are in the
+    payload and in the text view now, and an abstract class also carries its **protected abstract** methods,
+    because on a base class those are the contract rather than plumbing.
+    - **`AppCommand` was hidden by a path rule.** `Console/Commands/` is excluded wholesale, and the reason is
+    sound for the concrete commands `lava list` owns — but it swept up the one class in that directory the
+    generated `AGENTS.md` tells an app to extend. The builder asked, was told the framework had nothing, and
+    began writing its own `Command` subclass; it found `AppCommand` by re-reading `AGENTS.md`, which is the
+    method `lava api` exists to replace. A surface can now declare `extensionPoints()`: classes that are API
+    wherever they sit, checked after `@internal` (the author's own word about a class outranks a position) and
+    before the path rules.
+
+    **What makes it stay fixed.** Three guard additions, not three fixes:
+
+    - A `Lava\` type named by a **public property or a constructor** must be in the payload, on the same footing
+    as one named by a method signature. The scan was signature-only, which is why a property-blind index could
+    not have been caught by the closed-surface test either.
+    - **Every `Lava\` type `FrameworkReference` names must be indexed.** That is the guard which would have
+    caught `AppCommand` without an outside build finding it: the reference is what `lava map` writes into every
+    app's `AGENTS.md`, so the framework telling an app to use a class that its own index denies exists is now a
+    failing build. Verified red by removing the extension point.
+    - An abstract class is asserted to carry its constructor and its abstract methods, with `LavaProblem` and
+    `AppCommand` as the cases.
+
+    **Two things the round did not ask for, kept because the report's own reasoning demanded them.** `--search`
+    now labels every hit `name` or `prose`: the reader's example was `1 match for "session"` resolving to the
+    word "mid-session" in a test helper's docblock — never misleading to read, and misleading to *count*, which
+    is what an agent branches on. And a search row carries the fully qualified name, because the builder's first
+    test run died on a class whose namespace it had to guess from a short name the index had printed.
+
+    **Not done.** An index of app code: `lava map` and `lava describe` own the app, and the agent that wrote 6,223
+    lines of it was not the one who needed reminding what they were called.
+
+    **Class: minor** — `properties`, `constructor`, `abstract` and `matched` join the symbol, `mode` gains
+    `property`, so the envelope is `lava.api/2` and `1.json` is deleted, as `Envelope::VERSIONS` requires.
+    Nothing an app declares changes.
